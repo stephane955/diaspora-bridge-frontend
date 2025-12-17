@@ -5,20 +5,31 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
+import { GlobalProvider } from '@/context/GlobalContext';
+
 export const unstable_settings = {
-  anchor: '(tabs)',
+    anchor: '(tabs)',
 };
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+    const colorScheme = useColorScheme();
 
-  return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
-  );
+    return (
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            {/* 2. WRAP EVERYTHING IN THE BRAIN */}
+            <GlobalProvider>
+                <Stack>
+
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+
+
+                    <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+
+                    <Stack.Screen name="diaspora" options={{ headerShown: false }} />
+                    <Stack.Screen name="provider" options={{ headerShown: false }} />
+                </Stack>
+            </GlobalProvider>
+            <StatusBar style="auto" />
+        </ThemeProvider>
+    );
 }

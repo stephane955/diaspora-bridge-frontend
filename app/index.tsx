@@ -1,36 +1,50 @@
-// app/index.tsx
+// Location: app/index.tsx
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import { useRouter } from 'expo-router';
+// ADD THIS IMPORT
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function HomeScreen() {
     const router = useRouter();
 
-    // stage 1: logo + title
     const heroOpacity = useRef(new Animated.Value(0)).current;
     const heroTranslate = useRef(new Animated.Value(30)).current;
-
-    // stage 2: buttons
     const buttonsOpacity = useRef(new Animated.Value(0)).current;
     const buttonsTranslate = useRef(new Animated.Value(20)).current;
 
     useEffect(() => {
-        // animate hero a bit slower
+        // NEW: Check login status before running animations
+        const checkLogin = async () => {
+            const loggedIn = await AsyncStorage.getItem('loggedIn');
+
+            if (loggedIn === 'true') {
+                // User is already logged in, skip animation and go to app
+                router.replace('/role');
+            } else {
+                // User is NOT logged in, run the "PowerPoint" animation
+                startAnimations();
+            }
+        };
+
+        checkLogin();
+    }, []);
+
+    const startAnimations = () => {
         Animated.parallel([
             Animated.timing(heroOpacity, {
                 toValue: 1,
-                duration: 700,              // was 400
+                duration: 700,
                 easing: Easing.out(Easing.cubic),
                 useNativeDriver: true,
             }),
             Animated.timing(heroTranslate, {
                 toValue: 0,
-                duration: 700,              // was 400
+                duration: 700,
                 easing: Easing.out(Easing.cubic),
                 useNativeDriver: true,
             }),
         ]).start(() => {
-            // then show buttons
             Animated.parallel([
                 Animated.timing(buttonsOpacity, {
                     toValue: 1,
@@ -44,7 +58,7 @@ export default function HomeScreen() {
                 }),
             ]).start();
         });
-    }, [heroOpacity, heroTranslate, buttonsOpacity, buttonsTranslate]);
+    };
 
     return (
         <View style={styles.container}>
