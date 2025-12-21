@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Image, SafeAreaView, Activity
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useGlobal } from '../context/GlobalContext';
+import { useGlobal } from '@/context/GlobalContext';
 import { supabase } from '../../lib/supabase'; // Import the cloud connection
 
 export default function PostUpdateScreen() {
