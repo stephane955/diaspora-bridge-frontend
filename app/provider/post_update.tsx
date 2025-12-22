@@ -1,207 +1,152 @@
-import { useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, SafeAreaView, ActivityIndicator } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useGlobal } from '@/context/GlobalContext';
-import { supabase } from '../../lib/supabase'; // Import the cloud connection
+import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
 
 export default function PostUpdateScreen() {
     const router = useRouter();
-    const { addEvent } = useGlobal(); // Get the function to save data
+    const { user } = useAuth();
 
-    const [permission, requestPermission] = useCameraPermissions();
-    const cameraRef = useRef<CameraView>(null);
-    const [photo, setPhoto] = useState<string | null>(null);
-    const [facing, setFacing] = useState<'back' | 'front'>('back');
-    const [uploading, setUploading] = useState(false); // New state to show spinner while uploading
+    const [description, setDescription] = useState('');
+    const [image, setImage] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [projects, setProjects] = useState<any[]>([]);
+    const [selectedProject, setSelectedProject] = useState<string | null>(null);
 
-    // 1. Permission Loading
-    if (!permission) {
-        return <View style={styles.container} />;
+    useEffect(() => {
+        fetchProjects();
+    }, []);
+
+    async function fetchProjects() {
+        const { data } = await supabase.from('projects').select('id, title');
+        if (data) setProjects(data);
     }
 
-    // 2. Permission Denied
-    if (!permission.granted) {
-        return (
-            <View style={styles.permissionContainer}>
-                <Ionicons name="camera-off" size={64} color="#ccc" />
-                <Text style={styles.permTitle}>Camera Access Needed</Text>
-                <Text style={styles.permText}>To post updates for your clients, we need access to your camera.</Text>
-                <TouchableOpacity style={styles.permButton} onPress={requestPermission}>
-                    <Text style={styles.permBtnText}>Grant Permission</Text>
-                </TouchableOpacity>
-            </View>
-        );
-    }
+    const pickImage = async () => {
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            quality: 0.5,
+        });
 
-    // 3. Take Picture Logic
-    const takePicture = async () => {
-        if (cameraRef.current) {
-            // quality: 0.5 makes the upload faster
-            const photoData = await cameraRef.current.takePictureAsync({ quality: 0.5 });
-            setPhoto(photoData?.uri || null);
+        if (!result.canceled) {
+            setImage(result.assets[0].uri);
         }
     };
 
-    // 4. Send Update Logic (The Cloud Upload)
-    const sendUpdate = async () => {
-        if (!photo) return;
+    const handleUpload = async () => {
+        if (!selectedProject || !description || !image) {
+            Alert.alert('Missing Info', 'Please select a project, add a description, and a photo.');
+            return;
+        }
 
+        setLoading(true);
         try {
-            setUploading(true); // Start spinner
-
-            // A. Create a unique file name using the current time
+            // 1. Prepare Image Name
             const fileName = `${Date.now()}.jpg`;
-
-            // B. Prepare the file for upload
             const formData = new FormData();
             formData.append('file', {
-                uri: photo,
+                uri: image,
                 name: fileName,
                 type: 'image/jpeg',
             } as any);
 
-            // C. Upload to Supabase Storage Bucket 'job_photos'
-            const { data, error } = await supabase.storage
-                .from('job_photos')
-                .upload(fileName, formData, {
-                    contentType: 'image/jpeg',
-                });
+            // 2. Upload to Supabase Storage (Assumes bucket 'updates' exists)
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('updates')
+                .upload(fileName, formData);
 
-            if (error) {
-                throw error;
-            }
+            if (uploadError) throw uploadError;
 
-            // D. Get the Public Internet Link for the photo
-            const { data: publicData } = supabase.storage
-                .from('job_photos')
-                .getPublicUrl(fileName);
+            // 3. Get Public URL
+            const { data: { publicUrl } } = supabase.storage.from('updates').getPublicUrl(fileName);
 
-            const publicImageLink = publicData.publicUrl;
+            // 4. Save to Database
+            const { error: dbError } = await supabase.from('project_updates').insert([
+                {
+                    project_id: selectedProject,
+                    provider_id: user?.id,
+                    description,
+                    image_url: publicUrl,
+                }
+            ]);
 
-            // E. Save to Database using the real cloud link
-            addEvent({
-                title: 'Work Update',
-                status: 'pending_approval',
-                description: 'Here is the latest progress from the site.',
-                image: publicImageLink // We save the URL, not the local file path
-            });
+            if (dbError) throw dbError;
 
-            alert('Update Sent to Client! 🚀');
-            router.replace('/provider/active'); // Go back to work list
-
-        } catch (error) {
-            console.log('Error uploading:', error);
-            alert('Failed to upload photo. Please try again.');
+            Alert.alert('Success', 'Update posted successfully!');
+            router.back();
+        } catch (error: any) {
+            Alert.alert('Upload Failed', error.message);
         } finally {
-            setUploading(false); // Stop spinner
+            setLoading(false);
         }
     };
 
-    // ---------------- RENDER ---------------- //
-
-    // A. PREVIEW MODE (After taking photo)
-    if (photo) {
-        return (
-            <View style={styles.container}>
-                <Image source={{ uri: photo }} style={styles.previewImage} />
-
-                {/* Overlay Controls */}
-                <View style={styles.overlay}>
-                    <View style={styles.previewActions}>
-                        <TouchableOpacity
-                            style={styles.retakeBtn}
-                            onPress={() => setPhoto(null)}
-                            disabled={uploading}
-                        >
-                            <Ionicons name="refresh" size={24} color="#fff" />
-                            <Text style={styles.retakeText}>Retake</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.sendBtn}
-                            onPress={sendUpdate}
-                            disabled={uploading}
-                        >
-                            {uploading ? (
-                                <ActivityIndicator color="#000" />
-                            ) : (
-                                <>
-                                    <Text style={styles.sendText}>Send Update</Text>
-                                    <Ionicons name="send" size={20} color="#000" />
-                                </>
-                            )}
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </View>
-        );
-    }
-
-    // B. CAMERA MODE
     return (
-        <View style={styles.container}>
-            <CameraView
-                style={styles.camera}
-                facing={facing}
-                ref={cameraRef}
-            >
-                {/* Top Controls */}
-                <SafeAreaView style={styles.topControls}>
-                    <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
-                        <Ionicons name="close" size={28} color="#fff" />
-                    </TouchableOpacity>
-                </SafeAreaView>
+        <ScrollView style={styles.container} contentContainerStyle={{ padding: 20 }}>
+            <Text style={styles.title}>Post Work Update</Text>
 
-                {/* Bottom Controls */}
-                <View style={styles.bottomControls}>
-                    <View style={styles.spacer} />
-
-                    {/* Shutter Button */}
-                    <TouchableOpacity style={styles.shutterOuter} onPress={takePicture}>
-                        <View style={styles.shutterInner} />
-                    </TouchableOpacity>
-
-                    {/* Flip Camera */}
+            <Text style={styles.label}>Select Project</Text>
+            <View style={styles.pickerContainer}>
+                {projects.map((p) => (
                     <TouchableOpacity
-                        style={styles.flipBtn}
-                        onPress={() => setFacing(f => f === 'back' ? 'front' : 'back')}>
-                        <Ionicons name="camera-reverse" size={28} color="#fff" />
+                        key={p.id}
+                        style={[styles.projectOption, selectedProject === p.id && styles.selectedOption]}
+                        onPress={() => setSelectedProject(p.id)}
+                    >
+                        <Text style={selectedProject === p.id ? styles.whiteText : {}}>{p.title}</Text>
                     </TouchableOpacity>
-                </View>
-            </CameraView>
-        </View>
+                ))}
+            </View>
+
+            <Text style={styles.label}>What was done today?</Text>
+            <TextInput
+                style={styles.input}
+                multiline
+                numberOfLines={4}
+                value={description}
+                onChangeText={setDescription}
+                placeholder="e.g., Finished the foundation blocks..."
+            />
+
+            <TouchableOpacity style={styles.imageBtn} onPress={pickImage}>
+                {image ? (
+                    <Image source={{ uri: image }} style={styles.previewImage} />
+                ) : (
+                    <View style={styles.placeholder}>
+                        <Ionicons name="camera" size={40} color="#94A3B8" />
+                        <Text style={styles.placeholderText}>Add Progress Photo</Text>
+                    </View>
+                )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={[styles.submitBtn, loading && { opacity: 0.5 }]}
+                onPress={handleUpload}
+                disabled={loading}
+            >
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Submit Update</Text>}
+            </TouchableOpacity>
+        </ScrollView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#000' },
-    camera: { flex: 1 },
-
-    // Permission Styles
-    permissionContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30, backgroundColor: '#fff' },
-    permTitle: { fontSize: 22, fontWeight: 'bold', marginTop: 20, marginBottom: 10 },
-    permText: { textAlign: 'center', color: '#666', marginBottom: 30, lineHeight: 22 },
-    permButton: { backgroundColor: '#007AFF', paddingHorizontal: 30, paddingVertical: 14, borderRadius: 30 },
-    permBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-
-    // Camera UI
-    topControls: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, marginTop: 10 },
-    bottomControls: { position: 'absolute', bottom: 50, flexDirection: 'row', width: '100%', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 40 },
-    iconBtn: { padding: 10, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 20 },
-
-    shutterOuter: { width: 80, height: 80, borderRadius: 40, borderWidth: 5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-    shutterInner: { width: 65, height: 65, borderRadius: 35, backgroundColor: '#fff' },
-    spacer: { width: 40 },
-    flipBtn: { width: 40, alignItems: 'center' },
-
-    // Preview UI
-    previewImage: { flex: 1 },
-    overlay: { position: 'absolute', bottom: 50, width: '100%', alignItems: 'center' },
-    previewActions: { flexDirection: 'row', gap: 20 },
-    retakeBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)', paddingVertical: 15, paddingHorizontal: 25, borderRadius: 30, gap: 10 },
-    retakeText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-    sendBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingVertical: 15, paddingHorizontal: 25, borderRadius: 30, gap: 10 },
-    sendText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
+    container: { flex: 1, backgroundColor: '#fff' },
+    title: { fontSize: 24, fontWeight: '800', marginBottom: 20, marginTop: 40 },
+    label: { fontSize: 14, fontWeight: '600', color: '#64748B', marginBottom: 8, marginTop: 20 },
+    input: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 15, fontSize: 16, textAlignVertical: 'top' },
+    pickerContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    projectOption: { padding: 10, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 20 },
+    selectedOption: { backgroundColor: '#0EA5E9', borderColor: '#0EA5E9' },
+    whiteText: { color: '#fff', fontWeight: '700' },
+    imageBtn: { marginTop: 20, height: 200, backgroundColor: '#F8FAFC', borderRadius: 12, overflow: 'hidden', borderStyle: 'dashed', borderWidth: 2, borderColor: '#CBD5E1' },
+    previewImage: { width: '100%', height: '100%' },
+    placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    placeholderText: { color: '#94A3B8', marginTop: 10, fontWeight: '600' },
+    submitBtn: { marginTop: 30, backgroundColor: '#0EA5E9', padding: 18, borderRadius: 12, alignItems: 'center' },
+    submitText: { color: '#fff', fontSize: 16, fontWeight: '700' }
 });

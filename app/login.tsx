@@ -1,25 +1,47 @@
-// app/login.tsx
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, SafeAreaView, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../lib/supabase'; // <--- Import Supabase
+import { useAuth } from '../context/AuthContext'; // <--- Import Auth Hook
 
 export default function LoginScreen() {
     const router = useRouter();
+    const { login } = useAuth(); // We will use this to update app state
+
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
     const [role, setRole] = useState<'diaspora' | 'provider' | null>(null);
 
     const onLogin = async () => {
-        if (!email || !password) return setError('Enter email and password to continue.');
-        if (!role) return setError('Choose a role to tailor your dashboard.');
+        if (!email || !password) return Alert.alert('Error', 'Please enter email and password.');
+        if (!role) return Alert.alert('Error', 'Please select a role (Diaspora or Provider).');
 
-        await AsyncStorage.setItem('loggedIn', 'true');
+        setLoading(true);
+        try {
+            // 1. REAL SUPABASE LOGIN
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
 
-        // send users straight into their workspace
-        router.replace(role === 'diaspora' ? '/diaspora' : '/provider');
+            if (error) throw error;
+
+            // 2. Update Context (Optional, depending on how your AuthProvider is set up)
+            // If your AuthProvider listens to Supabase auth state changes automatically, 
+            // you might not need to call login() manually.
+            // But if you are using the boilerplate I gave you:
+            login();
+
+            // 3. Route based on Role
+            router.replace(role === 'diaspora' ? '/diaspora' : '/provider');
+
+        } catch (err: any) {
+            Alert.alert('Login Failed', err.message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -71,7 +93,7 @@ export default function LoginScreen() {
                         onPress={() => setRole('diaspora')}
                     >
                         <View style={styles.roleIconCircle}>
-                            <Ionicons name="planet" size={18} color={role === 'diaspora' ? '#0f172a' : '#0f172a'} />
+                            <Ionicons name="planet" size={18} color={'#0f172a'} />
                         </View>
                         <Text style={styles.roleTitle}>Diaspora</Text>
                         <Text style={styles.roleMeta}>Fund & track builds</Text>
@@ -88,11 +110,15 @@ export default function LoginScreen() {
                     </Pressable>
                 </View>
 
-                {error ? <Text style={styles.error}>{error}</Text> : null}
-
-                <Pressable style={styles.button} onPress={onLogin}>
-                    <Ionicons name="log-in" size={18} color="#fff" />
-                    <Text style={styles.buttonText}>Enter dashboard</Text>
+                <Pressable style={[styles.button, loading && { opacity: 0.7 }]} onPress={onLogin} disabled={loading}>
+                    {loading ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <>
+                            <Ionicons name="log-in" size={18} color="#fff" />
+                            <Text style={styles.buttonText}>Enter dashboard</Text>
+                        </>
+                    )}
                 </Pressable>
 
                 <Pressable onPress={() => router.push('/signup')} style={styles.secondary}>
@@ -103,6 +129,7 @@ export default function LoginScreen() {
     );
 }
 
+// ... (Styles remain exactly the same as you provided) ...
 const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: '#f1f5f9', padding: 20 },
     header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10, marginBottom: 18 },

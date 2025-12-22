@@ -1,4 +1,3 @@
-// app/signup.tsx
 import React, { useState } from 'react';
 import {
     View,
@@ -9,28 +8,62 @@ import {
     SafeAreaView,
     KeyboardAvoidingView,
     Platform,
-    ScrollView
+    ScrollView,
+    ActivityIndicator,
+    Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../lib/supabase'; // <--- Import Supabase
 
 export default function SignupScreen() {
     const router = useRouter();
+
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
     const [role, setRole] = useState<'client' | 'provider' | null>(null);
+
+    // UI States
+    const [loading, setLoading] = useState(false);
     const [focused, setFocused] = useState<string | null>(null);
 
     const onSignup = async () => {
-        if (!name || !email || !password) return setError('Complete all fields to continue.');
-        if (!role) return setError('Select your role so we can tailor onboarding.');
+        if (!name || !email || !password) return Alert.alert('Missing Fields', 'Please complete all fields.');
+        if (!role) return Alert.alert('Role Required', 'Please select if you are a Client or a Provider.');
 
-        await AsyncStorage.setItem('loggedIn', 'true');
+        setLoading(true);
 
-        router.replace(role === 'client' ? '/diaspora' : '/provider');
+        try {
+            // 1. Create User in Supabase Auth
+            const { data, error } = await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                    // We save the Name and Role inside the user's metadata
+                    data: {
+                        full_name: name,
+                        role: role,
+                    },
+                },
+            });
+
+            if (error) throw error;
+
+            // 2. Handle Success
+            // Note: If you have "Email Confirmations" enabled in Supabase, 
+            // the user won't be logged in yet. Check your Supabase settings!
+            if (data.session) {
+                router.replace(role === 'client' ? '/diaspora' : '/provider');
+            } else {
+                Alert.alert('Check your inbox', 'Please verify your email to continue.');
+            }
+
+        } catch (err: any) {
+            Alert.alert('Signup Failed', err.message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -63,6 +96,7 @@ export default function SignupScreen() {
                             <Ionicons name="key" size={22} color="#001F3F" />
                         </View>
 
+                        {/* Name Input */}
                         <Text style={styles.label}>Full name</Text>
                         <TextInput
                             style={[styles.input, focused === 'name' && styles.inputFocused]}
@@ -74,6 +108,7 @@ export default function SignupScreen() {
                             onBlur={() => setFocused(null)}
                         />
 
+                        {/* Email Input */}
                         <Text style={styles.label}>Email</Text>
                         <TextInput
                             style={[styles.input, focused === 'email' && styles.inputFocused]}
@@ -87,6 +122,7 @@ export default function SignupScreen() {
                             onBlur={() => setFocused(null)}
                         />
 
+                        {/* Password Input */}
                         <Text style={styles.label}>Password</Text>
                         <TextInput
                             style={[styles.input, focused === 'password' && styles.inputFocused]}
@@ -99,6 +135,7 @@ export default function SignupScreen() {
                             onBlur={() => setFocused(null)}
                         />
 
+                        {/* Role Selection */}
                         <Text style={[styles.label, { marginTop: 16 }]}>I am joining as</Text>
                         <View style={styles.roleRow}>
                             <Pressable
@@ -123,11 +160,20 @@ export default function SignupScreen() {
                             </Pressable>
                         </View>
 
-                        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-                        <Pressable style={styles.button} onPress={onSignup}>
-                            <Ionicons name="person-add" size={18} color="#fff" />
-                            <Text style={styles.buttonText}>Sign Up Securely</Text>
+                        {/* Submit Button */}
+                        <Pressable
+                            style={[styles.button, loading && { opacity: 0.7 }]}
+                            onPress={onSignup}
+                            disabled={loading}
+                        >
+                            {loading ? (
+                                <ActivityIndicator color="#fff" />
+                            ) : (
+                                <>
+                                    <Ionicons name="person-add" size={18} color="#fff" />
+                                    <Text style={styles.buttonText}>Sign Up Securely</Text>
+                                </>
+                            )}
                         </Pressable>
 
                         <Pressable onPress={() => router.push('/login')} style={styles.secondary}>
@@ -140,6 +186,7 @@ export default function SignupScreen() {
     );
 }
 
+// ... Styles remain exactly the same as you provided ...
 const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: '#ECEFF3' },
     scroll: { padding: 20, paddingBottom: 32 },

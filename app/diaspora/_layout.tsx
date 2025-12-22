@@ -1,15 +1,35 @@
-// Location: app/diaspora/_layout.tsx
-import { Stack } from 'expo-router';
+import { Stack, useRouter, Slot } from 'expo-router';
+import { useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native'; // Import these
+import { useAuth } from '@/context/AuthContext';
 
 export default function DiasporaLayout() {
-    return (
-        <Stack>
-            <Stack.Screen name="index" options={{ title: 'Diaspora Home' }} />
-            <Stack.Screen name="new" options={{ title: 'New Project' }} />
-            <Stack.Screen name="provider/[id]" options={{ headerShown: false }} />
+    // Assuming your useAuth returns an 'isLoading' or 'loading' property
+    const { isAuthenticated, loading } = useAuth();
+    const router = useRouter();
 
-            {/* ADD THIS LINE: */}
-            <Stack.Screen name="projects" options={{ title: 'My Projects' }} />
+    useEffect(() => {
+        if (!loading && !isAuthenticated) {
+            router.replace('/login');
+        }
+    }, [isAuthenticated, loading]);
+
+    // Show a spinner while Supabase connects
+    if (loading) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#0EA5E9" />
+            </View>
+        );
+    }
+
+    return (
+        <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="new" options={{ title: 'New Project', headerShown: true }} />
+            <Stack.Screen name="project/[id]" />
+            <Stack.Screen name="projects" options={{ title: 'My Projects', headerShown: true }} />
+            <Stack.Screen name="timeline" />
         </Stack>
     );
 }
