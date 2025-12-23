@@ -1,26 +1,33 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, SafeAreaView, ActivityIndicator, Alert } from 'react-native';
+import {
+    View, Text, TextInput, TouchableOpacity, StyleSheet,
+    ActivityIndicator, Alert, ImageBackground, Dimensions,
+    KeyboardAvoidingView, Platform, ScrollView
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase'; // <--- Import Supabase
-import { useAuth } from '../context/AuthContext'; // <--- Import Auth Hook
+import { supabase } from '@/lib/supabase';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+
+const { width, height } = Dimensions.get('window');
 
 export default function LoginScreen() {
     const router = useRouter();
-    const { login } = useAuth(); // We will use this to update app state
-
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
-    const [role, setRole] = useState<'diaspora' | 'provider' | null>(null);
+
+    // If auto-detection fails, user can manually switch tab
+    const [activeTab, setActiveTab] = useState<'diaspora' | 'provider'>('diaspora');
 
     const onLogin = async () => {
         if (!email || !password) return Alert.alert('Error', 'Please enter email and password.');
-        if (!role) return Alert.alert('Error', 'Please select a role (Diaspora or Provider).');
 
         setLoading(true);
+
         try {
-            // 1. REAL SUPABASE LOGIN
+            // 1. Sign In
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
@@ -28,14 +35,25 @@ export default function LoginScreen() {
 
             if (error) throw error;
 
-            // 2. Update Context (Optional, depending on how your AuthProvider is set up)
-            // If your AuthProvider listens to Supabase auth state changes automatically, 
-            // you might not need to call login() manually.
-            // But if you are using the boilerplate I gave you:
-            login();
+            // 2. Smart Redirect Logic
+            const savedRole = data.user?.user_metadata?.role;
 
-            // 3. Route based on Role
-            router.replace(role === 'diaspora' ? '/diaspora' : '/provider');
+            // If the database knows your role, OBEY the database
+            if (savedRole === 'provider') {
+                router.replace('/provider');
+            } else if (savedRole === 'client') {
+                router.replace('/diaspora');
+            } else {
+                // 3. Fallback: If role is missing (old account), use the Manual Tab
+                if (activeTab === 'provider') {
+                    // Optional: Update their metadata so it works next time
+                    await supabase.auth.updateUser({ data: { role: 'provider' }});
+                    router.replace('/provider');
+                } else {
+                    await supabase.auth.updateUser({ data: { role: 'client' }});
+                    router.replace('/diaspora');
+                }
+            }
 
         } catch (err: any) {
             Alert.alert('Login Failed', err.message);
@@ -45,157 +63,135 @@ export default function LoginScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.screen}>
-            <View style={styles.header}>
-                <View style={styles.brandBadge}>
-                    <Ionicons name="shield-checkmark" size={18} color="#fff" />
-                </View>
-                <View>
-                    <Text style={styles.appTitle}>Diaspora Bridge</Text>
-                    <Text style={styles.appSubtitle}>Secure entry to your projects</Text>
-                </View>
-            </View>
+        <ImageBackground
+            source={{ uri: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop' }}
+            style={styles.background}
+        >
+            <LinearGradient
+                colors={['rgba(15, 23, 42, 0.6)', 'rgba(15, 23, 42, 0.9)']}
+                style={styles.gradient}
+            >
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+                    <ScrollView contentContainerStyle={styles.scrollContent}>
 
-            <View style={styles.card}>
-                <View style={styles.cardHeader}>
-                    <View>
-                        <Text style={styles.title}>Welcome back</Text>
-                        <Text style={styles.subtitle}>Bank-grade sign in with real-time updates</Text>
-                    </View>
-                    <Ionicons name="lock-closed" size={22} color="#0f172a" />
-                </View>
-
-                <Text style={styles.label}>Email</Text>
-                <TextInput
-                    style={styles.input}
-                    placeholder="you@example.com"
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    placeholderTextColor="#9ca3af"
-                />
-
-                <Text style={styles.label}>Password</Text>
-                <TextInput
-                    style={styles.input}
-                    placeholder="••••••••"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                    placeholderTextColor="#9ca3af"
-                />
-
-                <Text style={[styles.label, { marginTop: 14 }]}>I am signing in as</Text>
-                <View style={styles.roleRow}>
-                    <Pressable
-                        style={[styles.roleCard, role === 'diaspora' && styles.roleCardActive]}
-                        onPress={() => setRole('diaspora')}
-                    >
-                        <View style={styles.roleIconCircle}>
-                            <Ionicons name="planet" size={18} color={'#0f172a'} />
+                        {/* BRANDING */}
+                        <View style={styles.header}>
+                            <View style={styles.logoCircle}>
+                                <Ionicons name="business" size={32} color="#0EA5E9" />
+                            </View>
+                            <Text style={styles.brandName}>Diaspora<Text style={{color: '#0EA5E9'}}>Bridge</Text></Text>
+                            <Text style={styles.tagline}>Build home, from anywhere.</Text>
                         </View>
-                        <Text style={styles.roleTitle}>Diaspora</Text>
-                        <Text style={styles.roleMeta}>Fund & track builds</Text>
-                    </Pressable>
-                    <Pressable
-                        style={[styles.roleCard, role === 'provider' && styles.roleCardActive]}
-                        onPress={() => setRole('provider')}
-                    >
-                        <View style={[styles.roleIconCircle, { backgroundColor: '#e0f2f1' }]}>
-                            <Ionicons name="construct" size={18} color="#0f172a" />
+
+                        {/* GLASS CARD */}
+                        <View style={styles.card}>
+                            {/* PORTAL SWITCHER (Visual only, helps user intent) */}
+                            <View style={styles.tabContainer}>
+                                <TouchableOpacity
+                                    style={[styles.tab, activeTab === 'diaspora' && styles.activeTab]}
+                                    onPress={() => setActiveTab('diaspora')}
+                                >
+                                    <Text style={[styles.tabText, activeTab === 'diaspora' && styles.activeTabText]}>Client Portal</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.tab, activeTab === 'provider' && styles.activeTab]}
+                                    onPress={() => setActiveTab('provider')}
+                                >
+                                    <Text style={[styles.tabText, activeTab === 'provider' && styles.activeTabText]}>Provider Login</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            <View style={styles.inputContainer}>
+                                <Text style={styles.inputLabel}>Email</Text>
+                                <View style={styles.inputWrapper}>
+                                    <Ionicons name="mail-outline" size={20} color="#94A3B8" style={{marginLeft: 12}} />
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="name@example.com"
+                                        placeholderTextColor="#94A3B8"
+                                        autoCapitalize="none"
+                                        value={email}
+                                        onChangeText={setEmail}
+                                    />
+                                </View>
+                            </View>
+
+                            <View style={styles.inputContainer}>
+                                <Text style={styles.inputLabel}>Password</Text>
+                                <View style={styles.inputWrapper}>
+                                    <Ionicons name="lock-closed-outline" size={20} color="#94A3B8" style={{marginLeft: 12}} />
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="••••••••"
+                                        placeholderTextColor="#94A3B8"
+                                        secureTextEntry
+                                        value={password}
+                                        onChangeText={setPassword}
+                                    />
+                                </View>
+                            </View>
+
+                            <TouchableOpacity
+                                style={styles.loginBtn}
+                                onPress={onLogin}
+                                disabled={loading}
+                            >
+                                {loading ? (
+                                    <ActivityIndicator color="#fff" />
+                                ) : (
+                                    <Text style={styles.loginBtnText}>
+                                        {activeTab === 'diaspora' ? 'Enter Dashboard' : 'Access Work Hub'}
+                                    </Text>
+                                )}
+                            </TouchableOpacity>
+
+                            <TouchableOpacity onPress={() => router.push('/signup')} style={{ marginTop: 20 }}>
+                                <Text style={styles.footerText}>New here? <Text style={styles.link}>Create Account</Text></Text>
+                            </TouchableOpacity>
                         </View>
-                        <Text style={styles.roleTitle}>Provider</Text>
-                        <Text style={styles.roleMeta}>Deliver and report</Text>
-                    </Pressable>
-                </View>
 
-                <Pressable style={[styles.button, loading && { opacity: 0.7 }]} onPress={onLogin} disabled={loading}>
-                    {loading ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
-                        <>
-                            <Ionicons name="log-in" size={18} color="#fff" />
-                            <Text style={styles.buttonText}>Enter dashboard</Text>
-                        </>
-                    )}
-                </Pressable>
-
-                <Pressable onPress={() => router.push('/signup')} style={styles.secondary}>
-                    <Text style={styles.secondaryText}>New here? Create an account</Text>
-                </Pressable>
-            </View>
-        </SafeAreaView>
+                    </ScrollView>
+                </KeyboardAvoidingView>
+            </LinearGradient>
+        </ImageBackground>
     );
 }
 
-// ... (Styles remain exactly the same as you provided) ...
 const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: '#f1f5f9', padding: 20 },
-    header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10, marginBottom: 18 },
-    brandBadge: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#0f172a', alignItems: 'center', justifyContent: 'center' },
-    appTitle: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
-    appSubtitle: { color: '#475569', fontSize: 13 },
+    background: { flex: 1, width: width, height: height },
+    gradient: { flex: 1, justifyContent: 'center' },
+    scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 20 },
+
+    header: { alignItems: 'center', marginBottom: 40 },
+    logoCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+    brandName: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -1 },
+    tagline: { color: '#94A3B8', fontSize: 16, marginTop: 5 },
 
     card: {
-        backgroundColor: '#fff',
-        borderRadius: 18,
-        padding: 20,
-        gap: 10,
-        shadowColor: '#0f172a',
-        shadowOpacity: 0.08,
-        shadowOffset: { width: 0, height: 12 },
-        shadowRadius: 20,
-        elevation: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        borderRadius: 24,
+        padding: 24,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 20 },
+        shadowOpacity: 0.3,
+        shadowRadius: 30,
+        elevation: 10
     },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-    title: { fontSize: 22, fontWeight: '800', color: '#0f172a' },
-    subtitle: { color: '#6b7280', marginTop: 2 },
-    label: { fontSize: 13, fontWeight: '600', color: '#0f172a', marginTop: 6 },
-    input: {
-        borderWidth: 1,
-        borderColor: '#e2e8f0',
-        borderRadius: 14,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        backgroundColor: '#f8fafc',
-        fontSize: 15,
-        color: '#0f172a',
-    },
-    roleRow: { flexDirection: 'row', gap: 12, marginTop: 6 },
-    roleCard: {
-        flex: 1,
-        borderWidth: 1,
-        borderColor: '#e2e8f0',
-        borderRadius: 14,
-        padding: 12,
-        backgroundColor: '#f8fafc',
-        gap: 6,
-    },
-    roleCardActive: {
-        borderColor: '#0f172a',
-        backgroundColor: '#e2e8f0',
-        shadowColor: '#0f172a',
-        shadowOpacity: 0.08,
-        shadowOffset: { width: 0, height: 10 },
-        shadowRadius: 16,
-        elevation: 3,
-    },
-    roleIconCircle: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#e0f2fe', alignItems: 'center', justifyContent: 'center' },
-    roleTitle: { fontWeight: '700', color: '#0f172a', fontSize: 15 },
-    roleMeta: { color: '#475569', fontSize: 12 },
-    button: {
-        marginTop: 10,
-        backgroundColor: '#0f172a',
-        borderRadius: 14,
-        paddingVertical: 14,
-        alignItems: 'center',
-        flexDirection: 'row',
-        justifyContent: 'center',
-        gap: 8,
-    },
-    buttonText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-    secondary: { paddingVertical: 10, alignItems: 'center' },
-    secondaryText: { color: '#0f172a', fontWeight: '600' },
-    error: { color: '#dc2626', marginTop: 8, fontWeight: '600' },
+
+    tabContainer: { flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 12, padding: 4, marginBottom: 25 },
+    tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
+    activeTab: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+    tabText: { fontWeight: '600', color: '#64748B', fontSize: 13 },
+    activeTabText: { color: '#0F172A', fontWeight: '700' },
+
+    inputContainer: { marginBottom: 16 },
+    inputLabel: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6, textTransform: 'uppercase' },
+    inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, height: 50 },
+    input: { flex: 1, height: '100%', paddingHorizontal: 12, fontSize: 16, color: '#0F172A' },
+
+    loginBtn: { height: 54, backgroundColor: '#0F172A', borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 10, shadowColor: '#0EA5E9', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 4 }, shadowRadius: 10 },
+    loginBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+
+    footerText: { textAlign: 'center', color: '#64748B', fontSize: 14 },
+    link: { color: '#0EA5E9', fontWeight: '700' }
 });

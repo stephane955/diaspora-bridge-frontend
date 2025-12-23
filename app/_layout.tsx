@@ -9,37 +9,55 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { GlobalProvider } from '@/context/GlobalContext';
 import { LanguageProvider } from '@/context/LanguageContext';
 
-// 1. Create a "Protector" component inside the layout
 function InitialLayout() {
-    const { isAuthenticated, loading } = useAuth();
+    const { isAuthenticated, user, loading } = useAuth();
     const segments = useSegments();
     const router = useRouter();
 
     useEffect(() => {
         if (loading) return;
 
-        // Check if the user is in an "auth" group or a "public" screen
-        const inAuthGroup = segments[0] === 'diaspora' || segments[0] === 'provider';
+        // 1. Identify where the user currently is
+        const inProviderGroup = segments[0] === 'provider';
+        const inClientGroup = segments[0] === 'diaspora';
+        const inAuthGroup = inProviderGroup || inClientGroup;
 
-        if (isAuthenticated && !inAuthGroup) {
-            // If logged in but on login/signup, go to dashboard
-            // Note: You might need logic here to decide between diaspora/provider
-            router.replace('/diaspora');
+        if (isAuthenticated && user) {
+            // 2. Identify who the user IS
+            const role = user.user_metadata?.role;
+            console.log("User Role detected:", role); // Check your terminal logs!
+
+            if (role === 'provider') {
+                // If you are a Provider but NOT in the Provider Dashboard...
+                if (!inProviderGroup) {
+                    // Force redirect to Provider Hub
+                    router.replace('/provider');
+                }
+            } else {
+                // If you are a Client (or undefined role) but NOT in Client Dashboard...
+                if (!inClientGroup) {
+                    // Force redirect to Client Dashboard
+                    router.replace('/diaspora');
+                }
+            }
         } else if (!isAuthenticated && inAuthGroup) {
-            // If logged out but trying to access dashboard, force login
+            // 3. If not logged in but trying to see dashboards -> Login
             router.replace('/login');
         }
-    }, [isAuthenticated, loading, segments]);
+    }, [isAuthenticated, loading, segments, user]);
 
     return (
         <Stack>
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="login" options={{ headerShown: false }} />
             <Stack.Screen name="signup" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+
+            {/* Protect these routes */}
             <Stack.Screen name="diaspora" options={{ headerShown: false }} />
             <Stack.Screen name="provider" options={{ headerShown: false }} />
+
+            <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Info' }} />
         </Stack>
     );
 }
@@ -52,11 +70,12 @@ export default function RootLayout() {
             <LanguageProvider>
                 <AuthProvider>
                     <GlobalProvider>
-                        {/* 2. Use the Protector component here */}
+
                         <InitialLayout />
                     </GlobalProvider>
                 </AuthProvider>
             </LanguageProvider>
+
             <StatusBar style="auto" />
         </ThemeProvider>
     );

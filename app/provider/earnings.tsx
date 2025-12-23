@@ -1,137 +1,160 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/context/AuthContext';
-import NavigationBar from '@/components/NavigationBar';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, RefreshControl } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router'; // Added router
-import { mediumFeedback } from '@/utils/haptics';
+import { LinearGradient } from 'expo-linear-gradient'; //
+import { supabase } from '@/lib/supabase'; //
+import { useAuth } from '@/context/AuthContext'; //
 
-export default function ProviderEarnings() {
+export default function EarningsScreen() {
+    const router = useRouter();
     const { user } = useAuth();
-    const router = useRouter(); // Initialize router
-    const [transactions, setTransactions] = useState<any[]>([]);
+    const [balance, setBalance] = useState(0);
+    const [history, setHistory] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchEarnings();
-    }, []);
+    const fetchData = async () => {
+        if (!user) return;
+        setLoading(true);
 
-    const fetchEarnings = async () => {
-        const { data } = await supabase
+        // 1. Calculate TOTAL EARNINGS (Approved project expenses)
+        const { data: income } = await supabase
             .from('project_expenses')
-            .select(`
-                id, amount, category, description, status, created_at,
-                projects!inner(provider_id, title)
-            `)
-            .eq('projects.provider_id', user?.id)
+            .select('*')
+            .eq('provider_id', user.id)
+            .eq('status', 'approved')
             .order('created_at', { ascending: false });
 
-        if (data) setTransactions(data);
+        // 2. Calculate TOTAL WITHDRAWALS
+        const { data: payouts } = await supabase
+            .from('withdrawals')
+            .select('*')
+            .eq('provider_id', user.id)
+            .order('created_at', { ascending: false });
+
+        const totalIncome = income?.reduce((sum, item) => sum + item.amount, 0) || 0;
+        const totalWithdrawn = payouts?.reduce((sum, item) => sum + item.amount, 0) || 0;
+
+        // Current Wallet Balance
+        setBalance(totalIncome - totalWithdrawn);
+
+        // 3. Merge Lists for History
+        const incomeList = income?.map(i => ({ ...i, type: 'credit' })) || [];
+        const payoutList = payouts?.map(p => ({ ...p, type: 'debit' })) || [];
+
+        // Combine and Sort by Date
+        const combined = [...incomeList, ...payoutList].sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+        setHistory(combined);
         setLoading(false);
     };
 
-    const totalEarned = transactions
-        .filter(t => t.status === 'approved')
-        .reduce((sum, t) => sum + t.amount, 0);
+    useEffect(() => { fetchData(); }, [user]);
 
-    const pendingAmount = transactions
-        .filter(t => t.status === 'pending')
-        .reduce((sum, t) => sum + t.amount, 0);
+    const handleWithdraw = () => {
+        if (balance <= 0) {
+            Alert.alert("Low Balance", "You have no funds available to withdraw.");
+            return;
+        }
+        router.push('/provider/withdraw');
+    };
 
     return (
         <View style={styles.container}>
-            <NavigationBar title="My Earnings" showBack={true} />
+            {/* Header Card */}
+            <LinearGradient colors={['#0F172A', '#1E293B']} style={styles.header}>
+                <View style={styles.navRow}>
+                    <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                        <Ionicons name="arrow-back" size={24} color="#fff" />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>My Wallet</Text>
+                    <View style={{ width: 24 }} />
+                </View>
 
-            <View style={styles.headerCard}>
-                <View style={styles.stat}>
-                    <Text style={styles.statLabel}>Available (CFA)</Text>
-                    <Text style={styles.statValue}>{totalEarned.toLocaleString()}</Text>
+                <View style={styles.balanceContainer}>
+                    <Text style={styles.balanceLabel}>Available Balance</Text>
+                    <Text style={styles.balanceAmount}>{balance.toLocaleString()} CFA</Text>
                 </View>
-                <View style={styles.divider} />
-                <View style={styles.stat}>
-                    <Text style={styles.statLabel}>Pending (CFA)</Text>
-                    <Text style={[styles.statValue, { color: '#F59E0B' }]}>
-                        {pendingAmount.toLocaleString()}
-                    </Text>
-                </View>
+
+                <TouchableOpacity style={styles.withdrawBtn} onPress={handleWithdraw}>
+                    <Text style={styles.withdrawText}>Withdraw Funds</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#0F172A" />
+                </TouchableOpacity>
+            </LinearGradient>
+
+            <View style={styles.historySection}>
+                <Text style={styles.historyTitle}>Transaction History</Text>
             </View>
 
-            {/* NEW: Withdrawal Action Button */}
-            <TouchableOpacity
-                style={styles.withdrawBtn}
-                onPress={() => {
-                    mediumFeedback();
-                    router.push('/provider/withdraw');
-                }}
-            >
-                <Ionicons name="cash-outline" size={20} color="#fff" />
-                <Text style={styles.withdrawText}>Withdraw Funds</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.sectionTitle}>Payment History</Text>
-
-            {loading ? <ActivityIndicator size="small" color="#0EA5E9" /> : (
-                <FlatList
-                    data={transactions}
-                    keyExtractor={(item) => item.id.toString()}
-                    renderItem={({ item }) => (
-                        <View style={styles.txnItem}>
-                            <View style={[styles.statusIcon, { backgroundColor: item.status === 'approved' ? '#F0FDF4' : '#FFFBEB' }]}>
-                                <Ionicons
-                                    name={item.status === 'approved' ? "checkmark" : "time"}
-                                    size={18}
-                                    color={item.status === 'approved' ? "#16A34A" : "#D97706"}
-                                />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.txnTitle}>{item.projects.title}</Text>
-                                <Text style={styles.txnSub}>{item.category} • {new Date(item.created_at).toLocaleDateString()}</Text>
-                            </View>
-                            <Text style={[styles.txnAmount, item.status === 'approved' ? styles.green : styles.orange]}>
-                                {item.status === 'approved' ? '+' : ''}{item.amount.toLocaleString()}
+            <FlatList
+                data={history}
+                keyExtractor={(item) => item.id.toString() + item.type}
+                contentContainerStyle={styles.listContent}
+                refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchData} />}
+                ListEmptyComponent={
+                    <View style={styles.emptyBox}>
+                        <Text style={styles.emptyText}>No transactions yet.</Text>
+                    </View>
+                }
+                renderItem={({ item }) => (
+                    <View style={styles.txnItem}>
+                        <View style={[styles.iconBox, item.type === 'debit' ? styles.debitIcon : styles.creditIcon]}>
+                            <Ionicons
+                                name={item.type === 'debit' ? "arrow-up" : "arrow-down"}
+                                size={18}
+                                color={item.type === 'debit' ? "#EF4444" : "#16A34A"}
+                            />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.txnTitle}>
+                                {item.type === 'debit' ? 'Payout Request' : (item.description || 'Project Payment')}
+                            </Text>
+                            <Text style={styles.txnDate}>
+                                {new Date(item.created_at).toLocaleDateString()}
                             </Text>
                         </View>
-                    )}
-                />
-            )}
+                        <Text style={[styles.txnAmount, item.type === 'debit' ? styles.debitText : styles.creditText]}>
+                            {item.type === 'debit' ? '-' : '+'}{item.amount.toLocaleString()}
+                        </Text>
+                    </View>
+                )}
+            />
         </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
-    headerCard: { flexDirection: 'row', backgroundColor: '#0F172A', margin: 20, padding: 25, borderRadius: 24, alignItems: 'center' },
-    stat: { flex: 1, alignItems: 'center' },
-    divider: { width: 1, height: 40, backgroundColor: 'rgba(255,255,255,0.1)' },
-    statLabel: { color: '#94A3B8', fontSize: 12, marginBottom: 5 },
-    statValue: { color: '#fff', fontSize: 20, fontWeight: '800' },
+    header: { padding: 24, paddingTop: 60, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
+    navRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
+    headerTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
+    backBtn: { padding: 8, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12 },
 
-    // NEW Styles for Withdrawal Button
-    withdrawBtn: {
-        backgroundColor: '#0EA5E9',
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        padding: 16,
-        borderRadius: 16,
-        marginHorizontal: 20,
-        marginBottom: 25,
-        elevation: 4,
-        shadowColor: '#0EA5E9',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 5
-    },
-    withdrawText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+    balanceContainer: { alignItems: 'center', marginBottom: 30 },
+    balanceLabel: { color: '#94A3B8', fontSize: 14, fontWeight: '600', textTransform: 'uppercase' },
+    balanceAmount: { color: '#fff', fontSize: 40, fontWeight: '800', marginTop: 8 },
 
-    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginLeft: 20, marginBottom: 15 },
-    txnItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, marginHorizontal: 20, marginBottom: 10, borderRadius: 16 },
-    statusIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-    txnTitle: { fontWeight: '700', color: '#1E293B', fontSize: 14 },
-    txnSub: { color: '#64748B', fontSize: 12, marginTop: 2 },
-    txnAmount: { fontWeight: '800', fontSize: 14 },
-    green: { color: '#16A34A' },
-    orange: { color: '#D97706' }
+    withdrawBtn: { backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 16, gap: 10 },
+    withdrawText: { color: '#0F172A', fontWeight: '800', fontSize: 16 },
+
+    historySection: { padding: 20, paddingBottom: 10 },
+    historyTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+
+    listContent: { paddingHorizontal: 20 },
+    txnItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 12 },
+    iconBox: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+    creditIcon: { backgroundColor: '#DCFCE7' },
+    debitIcon: { backgroundColor: '#FEE2E2' },
+
+    txnTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+    txnDate: { color: '#64748B', fontSize: 12, marginTop: 2 },
+
+    txnAmount: { fontSize: 16, fontWeight: '700' },
+    creditText: { color: '#16A34A' },
+    debitText: { color: '#EF4444' },
+
+    emptyBox: { alignItems: 'center', marginTop: 40 },
+    emptyText: { color: '#94A3B8' }
 });
