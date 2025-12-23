@@ -1,11 +1,20 @@
-// app/provider/_layout.tsx
-import { Stack } from 'expo-router';
+import { Tabs } from 'expo-router';
+import React from 'react';
 
 export default function ProviderLayout() {
     return (
-        <Stack>
-            <Stack.Screen name="index" options={{ title: 'My Requests' }} />
-            {/* later: earnings, project details, etc. */}
-        </Stack>
+        <Tabs
+            screenOptions={{
+                headerShown: false,
+                tabBarStyle: { display: 'none' }, // Hides the system bar
+            }}
+        >
+            {/* These names MUST match your file names exactly */}
+            <Tabs.Screen name="index" />
+            <Tabs.Screen name="active" />
+            <Tabs.Screen name="earnings" />
+            <Tabs.Screen name="requests" />
+            <Tabs.Screen name="withdraw" />
+        </Tabs>
     );
 }
