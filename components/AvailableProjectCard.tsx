@@ -58,14 +58,8 @@ export default function AvailableProjectCard({ project, onAccept }: any) {
                         disabled={isAccepted}
                     >
                         {isAccepted ? (
-                            <LottieView
-                                ref={animationRef}
-                                // Ensure this file exists in your assets
-                                source={require('@/assets/animations/success-check.json')}
-                                style={styles.lottie}
-                                loop={false}
-                                autoPlay={false} // Trigger manually via ref
-                            />
+                            // Simple icon fallback so the app doesn't crash
+                            <Ionicons name="checkmark-circle" size={45} color="#10B981" />
                         ) : (
                             <Text style={styles.oppBtnText}>Accept Project</Text>
                         )}

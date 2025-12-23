@@ -57,7 +57,7 @@ export default function NewProject() {
                     city: city,
                     budget: parseFloat(budget) || 0,
                     description: description,
-                    status: 'Active',
+                    status: 'Pending',
                     image_url: imageUrl,
                 });
 
