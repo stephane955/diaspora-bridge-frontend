@@ -10,6 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import NavigationBar from '@/components/NavigationBar';
+import { useLanguage } from '@/context/LanguageContext';
 
 // 1. DEFINE YOUR OFFICIAL CITY LIST HERE
 const CITIES = [
@@ -21,6 +22,7 @@ const CITIES = [
 export default function NewProjectScreen() {
     const router = useRouter();
     const { user } = useAuth();
+    const { t } = useLanguage();
 
     const [title, setTitle] = useState('');
     const [budget, setBudget] = useState('');
@@ -47,12 +49,18 @@ export default function NewProjectScreen() {
 
     // Inside app/diaspora/new.tsx
 
+    // --- REPLACE THIS WHOLE FUNCTION ---
     const handleCreate = async () => {
+        console.log("1. Post Job button pressed");
+
         // 1. Prevent double clicks
         if (loading) return;
 
+        // 2. Validation
         if (!title || !city || !budget || !description) {
-            return Alert.alert("Missing Info", "Please fill in all fields.");
+            console.log("Validation failed");
+            Alert.alert("Missing Info", "Please fill in all fields.");
+            return;
         }
 
         setLoading(true);
@@ -60,8 +68,9 @@ export default function NewProjectScreen() {
         try {
             let imageUrl = null;
 
-            // Image Upload
+            // 3. Image Upload
             if (image) {
+                console.log("Uploading image...");
                 const fileName = `${Date.now()}.jpg`;
                 const formData = new FormData();
                 formData.append('file', {
@@ -70,14 +79,22 @@ export default function NewProjectScreen() {
                     type: 'image/jpeg',
                 } as any);
 
-                const { data } = await supabase.storage.from('project-images').upload(fileName, formData);
+                const { data, error: uploadError } = await supabase.storage.from('project-images').upload(fileName, formData);
+
+                if (uploadError) {
+                    console.error("Upload Error:", uploadError);
+                    // We continue even if image fails, or you can throw error
+                }
+
                 if (data) {
                     const { data: publicUrl } = supabase.storage.from('project-images').getPublicUrl(fileName);
                     imageUrl = publicUrl.publicUrl;
+                    console.log("Image URL:", imageUrl);
                 }
             }
 
-            // Create Project
+            // 4. Create Project
+            console.log("Inserting project into DB...");
             const { error: insertError } = await supabase
                 .from('projects')
                 .insert({
@@ -85,34 +102,44 @@ export default function NewProjectScreen() {
                     title,
                     city,
                     description,
-                    budget: parseInt(budget),
+                    budget: parseInt(budget) || 0,
                     image_url: imageUrl,
-                    status: 'Pending',
+                    status: 'pending', // Use lowercase 'pending' to match your other logic
                     created_at: new Date(),
                 });
 
-            if (insertError) throw insertError;
+            if (insertError) {
+                console.error("Supabase Insert Error:", insertError);
+                throw insertError;
+            }
 
-            // --- THE FIX IS HERE ---
-
-            // 2. STOP the spinner immediately so the button comes back
+            console.log("3. Success! Showing Alert...");
             setLoading(false);
 
-            // 3. Show Success Alert -> Then Navigate to Dashboard
-            Alert.alert("Success", "Project posted!", [
-                {
-                    text: "OK",
-                    onPress: () => {
-                        // This forces the app to go to the Dashboard
-                        router.replace('/diaspora');
+            // 5. Success Alert & Navigation
+            // WE USE HARDCODED STRINGS HERE TO RULE OUT TRANSLATION BUGS
+            Alert.alert(
+                "Success",
+                "Project posted successfully!",
+                [
+                    {
+                        text: "OK",
+                        onPress: () => {
+                            console.log("4. Navigating to Dashboard...");
+                            if (router.canGoBack()) {
+                                router.back();
+                            } else {
+                                router.replace('/diaspora');
+                            }
+                        }
                     }
-                }
-            ]);
+                ]
+            );
 
         } catch (e: any) {
-            // 4. Stop spinner on error too
+            console.error("Catch Error:", e);
             setLoading(false);
-            Alert.alert("Error", e.message);
+            Alert.alert("Error", e.message || "Could not post project.");
         }
     };
 
@@ -123,7 +150,7 @@ export default function NewProjectScreen() {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Select City</Text>
+                            <Text style={styles.modalTitle}>{t('selectCityTitle')}</Text>
                             <TouchableOpacity onPress={() => setShowCityModal(false)}>
                                 <Ionicons name="close" size={24} color="#64748B" />
                             </TouchableOpacity>
@@ -147,7 +174,7 @@ export default function NewProjectScreen() {
                 </View>
             </Modal>
 
-            <NavigationBar title="New Project" showBack={true} />
+            <NavigationBar title={t('newProjectTitle')} showBack={true} />
 
             <ScrollView contentContainerStyle={styles.content}>
 
@@ -157,15 +184,15 @@ export default function NewProjectScreen() {
                     ) : (
                         <View style={styles.placeholder}>
                             <Ionicons name="camera" size={32} color="#94A3B8" />
-                            <Text style={styles.pickerText}>Add Cover Photo</Text>
+                            <Text style={styles.pickerText}>{t('addCoverPhoto')}</Text>
                         </View>
                     )}
                 </TouchableOpacity>
 
-                <Text style={styles.label}>Project Title</Text>
+                <Text style={styles.label}>{t('projectTitleLabel')}</Text>
                 <TextInput
                     style={styles.input}
-                    placeholder="e.g. Villa Construction"
+                    placeholder={t('projectTitlePlaceholder')}
                     placeholderTextColor="#CBD5E1"
                     value={title}
                     onChangeText={setTitle}
@@ -173,24 +200,24 @@ export default function NewProjectScreen() {
 
                 <View style={styles.row}>
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.label}>City / Location</Text>
+                        <Text style={styles.label}>{t('cityLocationLabel')}</Text>
                         {/* CHANGED: This is now a button that opens the modal */}
                         <TouchableOpacity
                             style={[styles.input, styles.dropdownBtn]}
                             onPress={() => setShowCityModal(true)}
                         >
                             <Text style={{ color: city ? '#0F172A' : '#CBD5E1', fontSize: 16 }}>
-                                {city || "Select City"}
+                                {city || t('selectCityPlaceholder')}
                             </Text>
                             <Ionicons name="chevron-down" size={20} color="#64748B" />
                         </TouchableOpacity>
                     </View>
                     <View style={{ width: 12 }} />
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.label}>Budget (CFA)</Text>
+                        <Text style={styles.label}>{t('budgetLabel')}</Text>
                         <TextInput
                             style={styles.input}
-                            placeholder="5,000,000"
+                            placeholder={t('budgetPlaceholder')}
                             placeholderTextColor="#CBD5E1"
                             keyboardType="numeric"
                             value={budget}
@@ -199,10 +226,10 @@ export default function NewProjectScreen() {
                     </View>
                 </View>
 
-                <Text style={styles.label}>Description</Text>
+                <Text style={styles.label}>{t('descriptionLabel')}</Text>
                 <TextInput
                     style={[styles.input, styles.textArea]}
-                    placeholder="Describe the work needed..."
+                    placeholder={t('descriptionPlaceholder')}
                     placeholderTextColor="#CBD5E1"
                     multiline
                     numberOfLines={4}
@@ -216,7 +243,7 @@ export default function NewProjectScreen() {
                     onPress={handleCreate}
                     disabled={loading}
                 >
-                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Post Job</Text>}
+                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{t('postJob')}</Text>}
                 </TouchableOpacity>
 
             </ScrollView>

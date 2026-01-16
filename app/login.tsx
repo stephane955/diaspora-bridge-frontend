@@ -8,7 +8,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import * as Linking from 'expo-linking';
 
 const { width, height } = Dimensions.get('window');
 
@@ -59,6 +59,29 @@ export default function LoginScreen() {
             Alert.alert('Login Failed', err.message);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleResetPassword = async () => {
+        if (!email) {
+            Alert.alert("Required", "Please enter your email address first.");
+            return;
+        }
+
+        // This creates the correct link for your current environment
+        const redirectUrl = Linking.createURL('reset-password');
+        console.log("WHITELIST THIS IN SUPABASE:", redirectUrl);
+
+        setLoading(true);
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: redirectUrl,
+        });
+        setLoading(false);
+
+        if (error) {
+            Alert.alert("Error", error.message);
+        } else {
+            Alert.alert("Check Email", "Password reset link sent to " + email);
         }
     };
 
@@ -132,6 +155,15 @@ export default function LoginScreen() {
                             </View>
 
                             <TouchableOpacity
+                                onPress={handleResetPassword}
+                                style={styles.forgotBtn}
+                            >
+                                <Text style={styles.forgotText}>
+                                    Forgot Password?
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
                                 style={styles.loginBtn}
                                 onPress={onLogin}
                                 disabled={loading}
@@ -193,5 +225,15 @@ const styles = StyleSheet.create({
     loginBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
     footerText: { textAlign: 'center', color: '#64748B', fontSize: 14 },
-    link: { color: '#0EA5E9', fontWeight: '700' }
+    link: { color: '#0EA5E9', fontWeight: '700' },
+    forgotBtn: {
+        alignSelf: 'flex-end',
+        marginBottom: 24,
+        marginTop: 8
+    },
+    forgotText: {
+        color: '#64748B',
+        fontSize: 14,
+        fontWeight: '600'
+    },
 });

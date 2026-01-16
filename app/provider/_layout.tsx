@@ -38,6 +38,7 @@ export default function ProviderLayout() {
             <Tabs.Screen name="request-payout" options={{ href: null }} />
             <Tabs.Screen name="post_update" options={{ href: null }} />
             <Tabs.Screen name="withdraw" options={{ href: null }} />
+            <Tabs.Screen name="profile" options={{ href: null }} />
         </Tabs>
     );
 }

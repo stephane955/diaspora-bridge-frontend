@@ -25,7 +25,7 @@ export default function ActiveSites() {
             .from('projects')
             .select('*')
             .eq('provider_id', user.id)
-            .eq('status', 'In Progress')
+            .in('status', ['in_progress', 'In Progress'])
             .order('updated_at', { ascending: false });
 
         if (data) setProjects(data);

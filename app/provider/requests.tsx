@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'; //
 import { useAuth } from '@/context/AuthContext'; //
 import { mediumFeedback, successFeedback } from '@/utils/haptics'; //
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function RequestsScreen() {
     const { user } = useAuth();
@@ -12,6 +13,15 @@ export default function RequestsScreen() {
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<string | null>(null);
+    const [hiddenJobs, setHiddenJobs] = useState<string[]>([]);
+
+    useEffect(() => {
+        const loadHidden = async () => {
+            const saved = await AsyncStorage.getItem('hidden_jobs');
+            if (saved) setHiddenJobs(JSON.parse(saved));
+        };
+        loadHidden();
+    }, []);
 
     // 1. Fetch REAL projects that are waiting for a provider
     const fetchRequests = useCallback(async () => {
@@ -27,9 +37,12 @@ export default function RequestsScreen() {
             .order('created_at', { ascending: false });
 
         if (error) console.error(error);
-        if (data) setRequests(data);
+        if (data) {
+            const filtered = data.filter(item => !hiddenJobs.includes(item.id.toString()));
+            setRequests(filtered);
+        }
         setLoading(false);
-    }, [user]);
+    }, [user, hiddenJobs]);
 
     useEffect(() => {
         fetchRequests();
@@ -66,6 +79,14 @@ export default function RequestsScreen() {
         } finally {
             setProcessingId(null);
         }
+    };
+
+    const hideJob = async (projectId: string) => {
+        const next = Array.from(new Set([...hiddenJobs, projectId.toString()]));
+        setHiddenJobs(next);
+        await AsyncStorage.setItem('hidden_jobs', JSON.stringify(next));
+        setRequests(prev => prev.filter(r => r.id.toString() !== projectId.toString()));
+        Alert.alert("Hidden", "Project removed from your feed.");
     };
 
     const renderItem = ({ item }: { item: any }) => (
@@ -128,8 +149,8 @@ export default function RequestsScreen() {
                     )}
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.declineBtn} onPress={() => Alert.alert("Hidden", "Project removed from your feed.")}>
-                    <Text style={styles.declineText}>Hide</Text>
+                <TouchableOpacity style={styles.declineBtn} onPress={() => hideJob(item.id)}>
+                    <Text style={styles.declineText}>Not Interested</Text>
                 </TouchableOpacity>
             </View>
         </View>

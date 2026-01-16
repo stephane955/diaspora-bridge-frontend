@@ -10,54 +10,43 @@ import { GlobalProvider } from '@/context/GlobalContext';
 import { LanguageProvider } from '@/context/LanguageContext';
 
 function InitialLayout() {
-    const { isAuthenticated, user, loading } = useAuth();
+    const { session } = useAuth();
     const segments = useSegments();
     const router = useRouter();
 
     useEffect(() => {
-        if (loading) return;
+        const inPublicGroup = segments[0] === 'login' || segments[0] === 'signup' || segments[0] === 'index';
 
-        // 1. Identify where the user currently is
-        const inProviderGroup = segments[0] === 'provider';
-        const inClientGroup = segments[0] === 'diaspora';
-        const inAuthGroup = inProviderGroup || inClientGroup;
-
-        if (isAuthenticated && user) {
-            // 2. Identify who the user IS
-            const role = user.user_metadata?.role;
-            console.log("User Role detected:", role); // Check your terminal logs!
-
-            if (role === 'provider') {
-                // If you are a Provider but NOT in the Provider Dashboard...
-                if (!inProviderGroup) {
-                    // Force redirect to Provider Hub
-                    router.replace('/provider');
-                }
-            } else {
-                // If you are a Client (or undefined role) but NOT in Client Dashboard...
-                if (!inClientGroup) {
-                    // Force redirect to Client Dashboard
-                    router.replace('/diaspora');
-                }
-            }
-        } else if (!isAuthenticated && inAuthGroup) {
-            // 3. If not logged in but trying to see dashboards -> Login
+        if (!session && !inPublicGroup) {
             router.replace('/login');
+            return;
         }
-    }, [isAuthenticated, loading, segments, user]);
+
+        if (session && inPublicGroup) {
+            const role = session.user?.user_metadata?.role;
+            if (role === 'provider') {
+                router.replace('/provider');
+            } else {
+                router.replace('/diaspora');
+            }
+        }
+    }, [router, segments, session]);
 
     return (
         <Stack>
+            {/* Public Routes */}
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="login" options={{ headerShown: false }} />
             <Stack.Screen name="signup" options={{ headerShown: false }} />
 
-            {/* Protect these routes */}
+            {/* Protected Routes */}
             <Stack.Screen name="diaspora" options={{ headerShown: false }} />
             <Stack.Screen name="provider" options={{ headerShown: false }} />
 
+            {/* Shared/Modal Routes */}
             <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Info' }} />
+            <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         </Stack>
     );
 }
@@ -70,12 +59,10 @@ export default function RootLayout() {
             <LanguageProvider>
                 <AuthProvider>
                     <GlobalProvider>
-
                         <InitialLayout />
                     </GlobalProvider>
                 </AuthProvider>
             </LanguageProvider>
-
             <StatusBar style="auto" />
         </ThemeProvider>
     );
