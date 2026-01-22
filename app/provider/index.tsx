@@ -34,21 +34,24 @@ export default function ProviderDashboard() {
                 .eq('id', user.id)
                 .maybeSingle();
 
-            const cityValue = profile?.city || user.user_metadata?.city || t('unknownLocation');
-            setProfileName(profile?.full_name || user.user_metadata?.full_name || t('providerFallback'));
+            // FIX: Cast to 'any' to stop TypeScript from complaining about unknown properties
+            const meta = user.user_metadata as any;
+
+            const cityValue = profile?.city || meta?.city || t('unknownLocation');
+            setProfileName(profile?.full_name || meta?.full_name || t('providerFallback'));
             setMyCity(cityValue);
 
             const { data: hiddenData } = await supabase
                 .from('hidden_projects')
                 .select('project_id')
-                .eq('user_id', user.id);
+                .eq('provider_id', user.id);
 
             const hiddenIds = (hiddenData || []).map((row: any) => row.project_id);
 
             const { data: active } = await supabase
                 .from('projects')
                 .select('*')
-                .eq('provider_id', user.id)
+                .eq('assigned_provider_id', user.id)
                 .in('status', ['in_progress', 'In Progress', 'active', 'Active']);
 
             if (active) setActiveJobs(active);
@@ -80,10 +83,11 @@ export default function ProviderDashboard() {
         if (!user) return;
         const { error } = await supabase
             .from('hidden_projects')
-            .insert({ user_id: user.id, project_id: projectId });
+            .insert({ provider_id: user.id, project_id: projectId });
 
         if (error) {
-            Alert.alert(t('errorTitle'), error.message);
+            // Fallback string in case 'errorTitle' key is missing in translation file
+            Alert.alert(t('errorTitle') || "Error", error.message);
             return;
         }
 
@@ -195,7 +199,7 @@ export default function ProviderDashboard() {
                     activeTab === 'jobs' ? (
                         <TouchableOpacity
                             style={styles.card}
-                            onPress={() => router.push(`/provider/project/${item.id}`)}
+                            onPress={() => router.push(`/provider/job/${item.id}`)}
                         >
                             <Text style={styles.cardTitle}>{item.title}</Text>
                             <Text style={styles.cardSub}>{item.city} • {item.budget?.toLocaleString()} CFA</Text>
@@ -206,7 +210,7 @@ export default function ProviderDashboard() {
                         </TouchableOpacity>
                     ) : (
                         <View style={styles.card}>
-                            <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/provider/project/${item.id}`)}>
+                            <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/provider/job/${item.id}`)}>
                                 <Text style={styles.cardTitle}>{item.title}</Text>
                                 <Text style={styles.cardSub}>{item.city} • {item.budget?.toLocaleString()} CFA</Text>
                             </TouchableOpacity>

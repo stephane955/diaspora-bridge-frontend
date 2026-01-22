@@ -20,8 +20,9 @@ export default function ResetPasswordScreen() {
             const { error } = await supabase.auth.exchangeCodeForSession(url);
             if (error) throw error;
             setRecoveryReady(true);
-        } catch (err: any) {
-            Alert.alert('Link Error', err.message || 'Could not restore session from reset link.');
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Could not restore session from reset link.';
+            Alert.alert('Link Error', message);
         } finally {
             setLoading(false);
         }

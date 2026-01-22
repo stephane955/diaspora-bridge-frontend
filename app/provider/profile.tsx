@@ -6,15 +6,10 @@ import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-
-type PortfolioItem = {
-    id: number;
-    image_url: string;
-    created_at: string;
-};
+import { PortfolioItem, Profile } from '@/types/models';
 
 export default function ProviderProfile() {
-    const { user, signOut } = useAuth(); // Use signOut from AuthContext for cleaner logic
+    const { user, signOut } = useAuth();
     const router = useRouter();
     const { t } = useLanguage();
     const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
@@ -28,7 +23,7 @@ export default function ProviderProfile() {
     const fetchPortfolio = useCallback(async () => {
         if (!user) return;
         const { data } = await supabase
-            .from('portfolios')
+            .from<PortfolioItem>('portfolios')
             .select('*')
             .eq('provider_id', user.id)
             .order('created_at', { ascending: false });
@@ -39,7 +34,7 @@ export default function ProviderProfile() {
     const fetchProfile = useCallback(async () => {
         if (!user) return;
         const { data } = await supabase
-            .from('profiles')
+            .from<Profile>('profiles')
             .select('full_name, bio')
             .eq('id', user.id)
             .maybeSingle();
@@ -88,15 +83,16 @@ export default function ProviderProfile() {
             if (uploadError) throw uploadError;
             const { data: publicData } = supabase.storage.from('portfolio-images').getPublicUrl(path);
 
-            const { error } = await supabase.from('portfolios').insert({
+            const { error } = await supabase.from<PortfolioItem>('portfolios').insert({
                 provider_id: user.id,
                 image_url: publicData.publicUrl
             });
             if (error) throw error;
 
             fetchPortfolio();
-        } catch (error: any) {
-            Alert.alert(t('uploadFailedTitle'), error.message || t('portfolioUploadFailed'));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : t('portfolioUploadFailed');
+            Alert.alert(t('uploadFailedTitle'), message);
         } finally {
             setUploading(false);
         }
@@ -107,7 +103,7 @@ export default function ProviderProfile() {
         setSaving(true);
 
         const { error } = await supabase
-            .from('profiles')
+            .from<Profile>('profiles')
             .upsert({ id: user.id, full_name: fullName, bio }, { onConflict: 'id' });
 
         if (!error) {
@@ -159,8 +155,9 @@ export default function ProviderProfile() {
                             // Finally, sign out and go to login
                             await supabase.auth.signOut();
                             router.replace('/login');
-                        } catch (err: any) {
-                            Alert.alert(t('errorTitle'), err.message || "Failed to delete account");
+                        } catch (err) {
+                            const message = err instanceof Error ? err.message : "Failed to delete account";
+                            Alert.alert(t('errorTitle'), message);
                         } finally {
                             setDeleting(false);
                         }

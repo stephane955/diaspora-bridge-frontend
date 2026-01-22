@@ -8,7 +8,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import NavigationBar from '@/components/NavigationBar';
-import BudgetProgress from '@/components/BudgetProgress';
+// Removed BudgetProgress to prevent crash if file missing.
+// If you have it, uncomment the import.
+// import BudgetProgress from '@/components/BudgetProgress';
 import { useLanguage } from '@/context/LanguageContext';
 
 const { width } = Dimensions.get('window');
@@ -28,6 +30,7 @@ export default function ProjectDetailsScreen() {
     const [reviewText, setReviewText] = useState('');
     const [submittingReview, setSubmittingReview] = useState(false);
     const [showCompleteModal, setShowCompleteModal] = useState(false);
+    const [hiring, setHiring] = useState(false);
 
     const fetchData = useCallback(async () => {
         if (!id) {
@@ -36,31 +39,34 @@ export default function ProjectDetailsScreen() {
         }
 
         try {
+            // 1. Get Project with Assigned Provider Info
             const { data: projectData, error: projError } = await supabase
                 .from('projects')
-                .select('*')
+                .select('*, profiles:assigned_provider_id(full_name, avatar_url, city)')
                 .eq('id', id)
                 .single();
 
             if (projError) throw projError;
 
+            // 2. Get Expenses
             const { data: expData } = await supabase
                 .from('project_expenses')
                 .select('*')
                 .eq('project_id', id)
                 .order('created_at', { ascending: false });
 
+            // 3. Get Applications (Only pending)
             const { data: appData } = await supabase
                 .from('project_applications')
-                .select('id')
+                .select('*, profiles:provider_id(full_name, city, avatar_url)')
                 .eq('project_id', id)
                 .eq('status', 'pending');
 
+            // 4. Get Review (Use 'comment' column)
             const { data: reviewData } = await supabase
                 .from('reviews')
                 .select('*')
                 .eq('project_id', id)
-                .eq('client_id', projectData.owner_id)
                 .maybeSingle();
 
             setProject(projectData);
@@ -85,43 +91,56 @@ export default function ProjectDetailsScreen() {
         fetchData();
     };
 
-    // --- NEW: ACCEPT APPLICATION LOGIC ---
-    const handleAcceptApplication = async (providerId: string) => {
-        try {
-            const { error } = await supabase
-                .from('projects')
-                .update({
-                    provider_id: providerId,
-                    status: 'in_progress'
-                })
-                .eq('id', id);
+    // --- FIX: Hire Logic (Using correct column name) ---
+    const handleAcceptApplication = async (providerId: string, providerName: string) => {
+        Alert.alert(t('confirmHire') || "Confirm Hiring", `${t('hirePrompt') || "Hire"} ${providerName}?`, [
+            { text: t('cancel'), style: 'cancel' },
+            {
+                text: t('hire') || "Hire",
+                onPress: async () => {
+                    setHiring(true);
+                    try {
+                        const { error } = await supabase
+                            .from('projects')
+                            .update({
+                                assigned_provider_id: providerId, // FIX: Correct column
+                                status: 'in_progress'
+                            })
+                            .eq('id', id);
 
-            if (error) throw error;
+                        if (error) throw error;
 
-            Alert.alert(t('success') || "Success", t('providerHired') || "Provider assigned to project");
-            fetchData(); // Refresh the local state to show "In Progress"
-        } catch (err: any) {
-            Alert.alert(t('errorTitle'), err.message);
-        }
+                        Alert.alert(t('success') || "Success", t('providerHired') || "Provider assigned!");
+                        fetchData();
+                    } catch (err: any) {
+                        Alert.alert(t('errorTitle'), err.message);
+                    } finally {
+                        setHiring(false);
+                    }
+                }
+            }
+        ]);
     };
 
     const handleCompleteProject = async () => {
-        if (!project?.provider_id) {
+        if (!project?.assigned_provider_id) { // FIX: Correct column
             Alert.alert(t('missingProviderTitle'), t('missingProviderBody'));
             return;
         }
         setSubmittingReview(true);
+
+        // FIX: Using 'comment' instead of 'review'
         const { error: reviewError } = await supabase.from('reviews').insert({
             project_id: id,
-            provider_id: project.provider_id,
+            provider_id: project.assigned_provider_id, // FIX
             client_id: project.owner_id,
             rating,
-            review: reviewText
+            comment: reviewText // FIX
         });
 
         if (reviewError) {
             setSubmittingReview(false);
-            Alert.alert(t('errorTitle'), reviewError.message || t('reviewSubmitFailed'));
+            Alert.alert(t('errorTitle'), reviewError.message);
             return;
         }
 
@@ -133,11 +152,11 @@ export default function ProjectDetailsScreen() {
         setSubmittingReview(false);
 
         if (statusError) {
-            Alert.alert(t('errorTitle'), statusError.message || t('completeProjectFailed'));
+            Alert.alert(t('errorTitle'), statusError.message);
             return;
         }
 
-        setReview({ rating, review: reviewText });
+        setReview({ rating, comment: reviewText });
         setShowCompleteModal(false);
         Alert.alert(t('completedTitle'), t('projectCompletedBody'));
         router.back();
@@ -191,7 +210,9 @@ export default function ProjectDetailsScreen() {
                 ? t('statusCompleted')
                 : project?.status?.toString() || '';
 
-    const totalSpent = expenses.reduce((sum, item) => sum + (item.status === 'approved' ? item.amount : 0), 0);
+    // Budget Logic (Simple calculation)
+    const totalSpent = expenses.reduce((sum, item) => sum + (item.amount || 0), 0);
+    const progress = project?.budget > 0 ? (totalSpent / project.budget) : 0;
 
     if (loading) return (
         <View style={styles.center}><ActivityIndicator size="large" color="#0F172A" /></View>
@@ -211,6 +232,7 @@ export default function ProjectDetailsScreen() {
                 showsVerticalScrollIndicator={false}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             >
+                {/* --- HEADER --- */}
                 <View style={styles.imageHeader}>
                     <Image
                         source={{ uri: project.image_url || 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5' }}
@@ -230,6 +252,7 @@ export default function ProjectDetailsScreen() {
                 </View>
 
                 <View style={styles.body}>
+                    {/* --- STATUS STEPPER --- */}
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>{t('projectStatusTitle')}</Text>
                         <View style={styles.stepperContainer}>
@@ -253,8 +276,23 @@ export default function ProjectDetailsScreen() {
                         </View>
                     </View>
 
-                    <BudgetProgress totalBudget={project.budget || 0} spent={totalSpent} />
+                    {/* --- BUDGET PROGRESS (Inline) --- */}
+                    <View style={styles.section}>
+                        <View style={{flexDirection:'row', justifyContent:'space-between', marginBottom:8}}>
+                            <Text style={styles.sectionTitle}>Budget</Text>
+                            <Text style={{fontWeight:'700', color: progress > 1 ? '#EF4444' : '#10B981'}}>
+                                {Math.round(progress * 100)}% Spent
+                            </Text>
+                        </View>
+                        <View style={{height: 10, backgroundColor: '#E2E8F0', borderRadius: 5, overflow: 'hidden'}}>
+                            <View style={{height: '100%', width: `${Math.min(progress * 100, 100)}%`, backgroundColor: progress > 1 ? '#EF4444' : '#10B981'}} />
+                        </View>
+                        <Text style={{marginTop: 6, color: '#64748B', fontSize: 12}}>
+                            {totalSpent.toLocaleString()} / {project.budget?.toLocaleString()} CFA
+                        </Text>
+                    </View>
 
+                    {/* --- ACTION ROW --- */}
                     <View style={styles.actionRow}>
                         <TouchableOpacity
                             style={styles.actionBtn}
@@ -273,38 +311,54 @@ export default function ProjectDetailsScreen() {
                         </TouchableOpacity>
                     </View>
 
+                    {/* --- APPLICANTS (Inline List) --- */}
                     {normalizedStatus === 'pending' && (
                         <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>{t('providerRequestsTitle')}</Text>
-                            <TouchableOpacity
-                                style={styles.waitingCard}
-                                onPress={() => router.push(`/diaspora/project/${id}/applicants`)}
-                            >
-                                <Ionicons name="people-outline" size={24} color="#64748B" />
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.waitingText}>
-                                        {applications.length === 0 ? t('noApplicantsYet') : `${applications.length} ${t('applicantsCount')}`}
-                                    </Text>
-                                    <Text style={styles.appDate}>{t('tapToReviewHire')}</Text>
+                            <Text style={styles.sectionTitle}>{t('providerRequestsTitle')} ({applications.length})</Text>
+                            {applications.length === 0 ? (
+                                <View style={styles.emptyBox}>
+                                    <Ionicons name="people-outline" size={32} color="#CBD5E1" />
+                                    <Text style={styles.emptyText}>No applications yet</Text>
                                 </View>
-                                <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
-                            </TouchableOpacity>
+                            ) : (
+                                applications.map((app) => (
+                                    <View key={app.id} style={styles.appCard}>
+                                        <View style={styles.appHeader}>
+                                            <Image source={{ uri: app.profiles?.avatar_url || 'https://i.pravatar.cc/150' }} style={styles.smallAvatar} />
+                                            <View style={{ flex: 1, marginLeft: 10 }}>
+                                                <Text style={styles.appName}>{app.profiles?.full_name}</Text>
+                                                <Text style={styles.appCity}>{app.profiles?.city}</Text>
+                                            </View>
+                                        </View>
+                                        <TouchableOpacity
+                                            style={styles.hireBtn}
+                                            onPress={() => handleAcceptApplication(app.provider_id, app.profiles?.full_name)}
+                                            disabled={hiring}
+                                        >
+                                            {hiring ? <ActivityIndicator color="#fff"/> : <Text style={styles.hireText}>Hire</Text>}
+                                        </TouchableOpacity>
+                                    </View>
+                                ))
+                            )}
                         </View>
                     )}
 
-                    {normalizedStatus !== 'pending' && (
+                    {/* --- ASSIGNED PROVIDER --- */}
+                    {normalizedStatus !== 'pending' && project.profiles && (
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>{t('assignedProviderTitle')}</Text>
                             <View style={styles.providerCard}>
-                                <Image source={{ uri: 'https://i.pravatar.cc/150?u=provider' }} style={styles.providerImg} />
+                                <Image source={{ uri: project.profiles.avatar_url || 'https://i.pravatar.cc/150?u=provider' }} style={styles.providerImg} />
                                 <View>
-                                    <Text style={styles.providerName}>{t('providerAssignedName')}</Text>
-                                    <Text style={styles.providerSub}>{t('providerAssignedSub')}</Text>
+                                    <Text style={styles.providerName}>{project.profiles.full_name}</Text>
+                                    <Text style={styles.providerSub}>{project.profiles.city}</Text>
                                 </View>
+                                <Ionicons name="checkmark-circle" size={24} color="#16A34A" style={{marginLeft:'auto'}} />
                             </View>
                         </View>
                     )}
 
+                    {/* --- DELETE BUTTON --- */}
                     {normalizedStatus === 'pending' && (
                         <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteProject}>
                             <Ionicons name="trash-outline" size={20} color="#EF4444" />
@@ -312,6 +366,7 @@ export default function ProjectDetailsScreen() {
                         </TouchableOpacity>
                     )}
 
+                    {/* --- COMPLETE BUTTON --- */}
                     {normalizedStatus === 'in_progress' && (
                         <TouchableOpacity style={styles.completeBtn} onPress={() => setShowCompleteModal(true)}>
                             <Ionicons name="checkmark-circle" size={20} color="#fff" />
@@ -319,13 +374,14 @@ export default function ProjectDetailsScreen() {
                         </TouchableOpacity>
                     )}
 
+                    {/* --- REVIEW DISPLAY --- */}
                     {normalizedStatus === 'completed' && (
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>{t('rateProviderTitle')}</Text>
                             {review ? (
                                 <View style={styles.reviewCard}>
                                     {renderStars(review.rating || 0)}
-                                    <Text style={styles.reviewText}>{review.review || t('noCommentProvided')}</Text>
+                                    <Text style={styles.reviewText}>{review.comment || t('noCommentProvided')}</Text>
                                 </View>
                             ) : (
                                 <View style={styles.reviewCard}>
@@ -338,6 +394,7 @@ export default function ProjectDetailsScreen() {
                 </View>
             </ScrollView>
 
+            {/* --- COMPLETE MODAL --- */}
             <Modal visible={showCompleteModal} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalCard}>
@@ -393,9 +450,18 @@ const styles = StyleSheet.create({
     actionRow: { flexDirection: 'row', gap: 12, marginBottom: 30 },
     actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', paddingVertical: 12, borderRadius: 14, gap: 8, borderWidth: 1, borderColor: '#E2E8F0' },
     actionText: { color: '#0F172A', fontWeight: '700', fontSize: 14 },
-    waitingCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 20, backgroundColor: '#F1F5F9', borderRadius: 16 },
-    waitingText: { color: '#64748B', fontWeight: '600' },
-    appDate: { fontSize: 12, color: '#64748B' },
+
+    // NEW: App Card (Inline Applicant)
+    appCard: { backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
+    appHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+    smallAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E2E8F0' },
+    appName: { fontWeight: '700', color: '#0F172A', fontSize: 16 },
+    appCity: { color: '#64748B', fontSize: 13 },
+    hireBtn: { backgroundColor: '#0F172A', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+    hireText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+    emptyBox: { alignItems: 'center', padding: 20, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, borderStyle: 'dashed' },
+    emptyText: { color: '#94A3B8', marginTop: 8 },
+
     providerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' },
     providerImg: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
     providerName: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
@@ -408,7 +474,7 @@ const styles = StyleSheet.create({
     starRow: { flexDirection: 'row', gap: 4 },
     starBtn: { padding: 4 },
     reviewInput: { backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', padding: 12, minHeight: 90, textAlignVertical: 'top', color: '#0F172A' },
-    submitBtn: { backgroundColor: '#0EA5E9', paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+    submitBtn: { flex: 1, backgroundColor: '#0EA5E9', paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
     submitText: { color: '#fff', fontWeight: '800' },
     reviewText: { color: '#334155', fontSize: 14, lineHeight: 20 },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },

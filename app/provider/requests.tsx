@@ -6,11 +6,12 @@ import { useAuth } from '@/context/AuthContext'; //
 import { mediumFeedback, successFeedback } from '@/utils/haptics'; //
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Project } from '@/types/models';
 
 export default function RequestsScreen() {
     const { user } = useAuth();
     const router = useRouter();
-    const [requests, setRequests] = useState<any[]>([]);
+    const [requests, setRequests] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [hiddenJobs, setHiddenJobs] = useState<string[]>([]);
@@ -30,7 +31,7 @@ export default function RequestsScreen() {
 
         // Get projects that have NO provider yet (pending)
         const { data, error } = await supabase
-            .from('projects')
+            .from<Project>('projects')
             .select('*')
             .is('provider_id', null)
             .eq('status', 'Pending') // Ensure your DB uses 'Pending' or 'pending_assignment'
@@ -74,8 +75,9 @@ export default function RequestsScreen() {
             // Navigate to Active Sites
             router.push('/provider/active');
 
-        } catch (err: any) {
-            Alert.alert("Error", "Could not accept project.");
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "Could not accept project.";
+            Alert.alert("Error", message);
         } finally {
             setProcessingId(null);
         }
@@ -89,7 +91,7 @@ export default function RequestsScreen() {
         Alert.alert("Hidden", "Project removed from your feed.");
     };
 
-    const renderItem = ({ item }: { item: any }) => (
+    const renderItem = ({ item }: { item: Project }) => (
         <View style={styles.ticketContainer}>
             {/* LEFT SIDE: Project Details */}
             <View style={styles.ticketMain}>

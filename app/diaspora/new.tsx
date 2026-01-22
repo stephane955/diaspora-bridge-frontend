@@ -73,11 +73,8 @@ export default function NewProjectScreen() {
                 console.log("Uploading image...");
                 const fileName = `${Date.now()}.jpg`;
                 const formData = new FormData();
-                formData.append('file', {
-                    uri: image,
-                    name: fileName,
-                    type: 'image/jpeg',
-                } as any);
+                const file = { uri: image, name: fileName, type: 'image/jpeg' };
+                formData.append('file', file as unknown as Blob);
 
                 const { data, error: uploadError } = await supabase.storage.from('project-images').upload(fileName, formData);
 
@@ -136,10 +133,11 @@ export default function NewProjectScreen() {
                 ]
             );
 
-        } catch (e: any) {
-            console.error("Catch Error:", e);
+        } catch (e) {
+            const message = e instanceof Error ? e.message : "Could not post project.";
+            console.error("Catch Error:", message);
             setLoading(false);
-            Alert.alert("Error", e.message || "Could not post project.");
+            Alert.alert("Error", message);
         }
     };
 

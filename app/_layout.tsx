@@ -1,8 +1,9 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
+import { View, ActivityIndicator } from 'react-native';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -10,18 +11,33 @@ import { GlobalProvider } from '@/context/GlobalContext';
 import { LanguageProvider } from '@/context/LanguageContext';
 
 function InitialLayout() {
-    const { session } = useAuth();
+    const { session, loading } = useAuth();
     const segments = useSegments();
     const router = useRouter();
+    const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
-        const inPublicGroup = segments[0] === 'login' || segments[0] === 'signup' || segments[0] === 'index';
+        setIsMounted(true);
+    }, []);
 
+    useEffect(() => {
+        if (!isMounted || loading) return;
+
+        // FIX: Check if we are on the root path (Landing Page)
+        // segments is [] when on the Landing Page ('/')
+        const inPublicGroup =
+            segments.length === 0 ||
+            segments[0] === 'index' ||
+            segments[0] === 'login' ||
+            segments[0] === 'signup';
+
+        // 1. If NOT logged in and trying to access a private page -> Send to Login
         if (!session && !inPublicGroup) {
             router.replace('/login');
             return;
         }
 
+        // 2. If logged in and on a public page -> Send to Dashboard
         if (session && inPublicGroup) {
             const role = session.user?.user_metadata?.role;
             if (role === 'provider') {
@@ -30,7 +46,15 @@ function InitialLayout() {
                 router.replace('/diaspora');
             }
         }
-    }, [router, segments, session]);
+    }, [router, segments, session, isMounted, loading]);
+
+    if (!isMounted || loading) {
+        return (
+            <View style={{ flex: 1, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator color="#0EA5E9" />
+            </View>
+        );
+    }
 
     return (
         <Stack>

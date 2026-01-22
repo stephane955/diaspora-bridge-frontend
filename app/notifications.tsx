@@ -1,24 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import NavigationBar from '@/components/NavigationBar';
+import { Notification } from '@/types/models';
 
 export default function NotificationsScreen() {
     const { user } = useAuth();
     const { t } = useLanguage();
     const router = useRouter();
-    const [notifications, setNotifications] = useState<any[]>([]);
+    const [notifications, setNotifications] = useState<Notification[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
     const fetchNotifications = useCallback(async () => {
         if (!user) return;
         const { data } = await supabase
-            .from('notifications')
+            .from<Notification>('notifications')
             .select('*')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false });
@@ -32,19 +33,19 @@ export default function NotificationsScreen() {
         fetchNotifications();
     }, [fetchNotifications]);
 
-    const resolveRoute = (item: any) => {
-        if (item.route) return item.route;
+    const resolveRoute = (item: Notification): Href => {
+        if (item.link) return item.link as Href;
         if ((item.type === 'message' || item.type === 'chat') && (item.project_id || item.chat_id)) {
-            return `/chat/${item.project_id || item.chat_id}`;
+            return `/chat/${item.project_id || item.chat_id}` as Href;
         }
-        if (item.project_id) return `/diaspora/project/${item.project_id}`;
+        if (item.project_id) return `/diaspora/project/${item.project_id}` as Href;
         return '/diaspora';
     };
 
-    const handlePress = async (item: any) => {
+    const handlePress = async (item: Notification) => {
         if (!item.is_read) {
             await supabase
-                .from('notifications')
+                .from<Notification>('notifications')
                 .update({ is_read: true })
                 .eq('id', item.id);
             setNotifications(prev => prev.map(n => (n.id === item.id ? { ...n, is_read: true } : n)));

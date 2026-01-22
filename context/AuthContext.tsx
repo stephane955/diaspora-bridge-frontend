@@ -8,6 +8,7 @@ type AuthContextType = {
     user: User | null;
     session: Session | null;
     isAuthenticated: boolean;
+    loading: boolean;
     login: () => void;
     logout: () => Promise<void>; // Changed to Promise
     signOut: () => Promise<void>;
@@ -66,7 +67,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, session, isAuthenticated: !!user, login, logout, signOut: logout }}>
+        <AuthContext.Provider value={{ user, session, isAuthenticated: !!user, loading, login, logout, signOut: logout }}>
             {!loading && children}
         </AuthContext.Provider>
     );

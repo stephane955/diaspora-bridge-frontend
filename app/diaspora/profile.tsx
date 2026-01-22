@@ -99,8 +99,9 @@ export default function ClientProfileScreen() {
                             // After DB deletion, sign out the user session
                             await signOut();
                             router.replace('/login');
-                        } catch (err: any) {
-                            Alert.alert(t('errorTitle') || "Error", err.message || "Failed to delete account");
+                        } catch (err) {
+                            const message = err instanceof Error ? err.message : "Failed to delete account";
+                            Alert.alert(t('errorTitle') || "Error", message);
                         } finally {
                             setDeleting(false);
                         }

@@ -2,15 +2,18 @@ import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, usePathname } from 'expo-router';
+import { Href, useRouter, usePathname } from 'expo-router';
 import { mediumFeedback } from '@/utils/haptics';
+import { theme } from '@/constants/theme';
+
+type IconName = keyof typeof Ionicons.glyphMap;
 
 export default function ProviderNavigation() {
     const router = useRouter();
     const pathname = usePathname();
 
     // Routes updated to match your verified file structure
-    const tabs = [
+    const tabs: { id: string; icon: IconName; label: string; route: Href }[] = [
         { id: 'hub', icon: 'grid', label: 'Hub', route: '/provider' },
         { id: 'jobs', icon: 'hammer', label: 'Sites', route: '/provider/active' },
         { id: 'wallet', icon: 'cash', label: 'Cash', route: '/provider/earnings' },
@@ -23,22 +26,22 @@ export default function ProviderNavigation() {
                 {tabs.map((tab) => {
                     const isActive = pathname === tab.route;
                     // Ternary icon naming to avoid stray string concatenation errors
-                    const iconName = isActive ? tab.icon : `${tab.icon}-outline`;
+                    const iconName = (isActive ? tab.icon : `${tab.icon}-outline`) as IconName;
 
                     return (
                         <TouchableOpacity
                             key={tab.id}
                             onPress={() => {
                                 mediumFeedback();
-                                router.push(tab.route as any);
+                                router.push(tab.route);
                             }}
                             style={[styles.tab, isActive && styles.activeTab]}
                             activeOpacity={0.7}
                         >
                             <Ionicons
-                                name={iconName as any}
+                                name={iconName}
                                 size={22}
-                                color={isActive ? '#fff' : '#94A3B8'}
+                                color={isActive ? '#fff' : theme.colors.textSubtle}
                             />
                             {isActive ? (
                                 <Text style={styles.labelText}>{tab.label}</Text>
@@ -68,7 +71,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 8,
         justifyContent: 'space-around',
         alignItems: 'center',
-        backgroundColor: 'rgba(15, 23, 42, 0.92)',
+        backgroundColor: theme.colors.glassDark,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.15)',
         // Shadow for premium feel
@@ -86,7 +89,7 @@ const styles = StyleSheet.create({
         borderRadius: 24
     },
     activeTab: {
-        backgroundColor: '#0EA5E9'
+        backgroundColor: theme.colors.active
     },
     labelText: {
         color: '#fff',

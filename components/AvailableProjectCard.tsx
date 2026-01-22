@@ -4,8 +4,15 @@ import { Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native'; //
 import { successFeedback } from '@/utils/haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Project } from '@/types/models';
 
-export default function AvailableProjectCard({ project, onAccept }: any) {
+export default function AvailableProjectCard({
+    project,
+    onAccept,
+}: {
+    project: Project;
+    onAccept?: (project: Project) => void;
+}) {
     const [isAccepted, setIsAccepted] = useState(false);
     const animationRef = useRef<LottieView>(null); //
 

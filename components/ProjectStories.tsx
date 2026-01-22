@@ -5,10 +5,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { lightFeedback } from '@/utils/haptics';
+import { ProjectUpdate } from '@/types/models';
 
 export default function ProjectStories() {
     const router = useRouter();
-    const [stories, setStories] = useState<any[]>([]);
+    const [stories, setStories] = useState<ProjectUpdate[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {

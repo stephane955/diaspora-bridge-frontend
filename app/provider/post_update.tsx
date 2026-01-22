@@ -83,8 +83,9 @@ export default function PostUpdateScreen() {
             Alert.alert('Success', 'Update posted! The client can now see it.');
             router.back();
 
-        } catch (error: any) {
-            Alert.alert('Upload Failed', error.message);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Upload failed.';
+            Alert.alert('Upload Failed', message);
         } finally {
             setLoading(false);
         }

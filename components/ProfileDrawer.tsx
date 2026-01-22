@@ -12,6 +12,8 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 
+type IconName = keyof typeof Ionicons.glyphMap;
+
 type Props = {
     visible: boolean;
     onClose: () => void;
@@ -95,15 +97,15 @@ export default function ProfileDrawer({
                     </View>
 
                     <View style={styles.menu}>
-                        {[
+                        {([
                             { icon: 'person-circle', label: 'Profile' },
                             { icon: 'chatbubbles', label: 'Messages' },
                             { icon: 'card', label: 'Financials' },
                             { icon: 'images', label: 'Gallery' },
                             { icon: 'settings', label: 'Settings' },
-                        ].map(item => (
+                        ] as { icon: IconName; label: string }[]).map(item => (
                             <Pressable key={item.label} style={styles.menuItem}>
-                                <Ionicons name={item.icon as any} size={18} color="#0f172a" />
+                                <Ionicons name={item.icon} size={18} color="#0f172a" />
                                 <Text style={styles.menuText}>{item.label}</Text>
                                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
                             </Pressable>

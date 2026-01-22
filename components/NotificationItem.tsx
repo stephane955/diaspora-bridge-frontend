@@ -1,8 +1,18 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Notification } from '@/types/models';
+import { mediumFeedback } from '@/utils/haptics';
 
-export default function NotificationItem({ item }: { item: any }) {
+type IconName = keyof typeof Ionicons.glyphMap;
+
+export default function NotificationItem({
+    item,
+    onPress,
+}: {
+    item: Notification;
+    onPress?: () => void;
+}) {
     const getIcon = () => {
         switch(item.type) {
             case 'assignment': return { name: 'person-add', color: '#0EA5E9', bg: '#F0F9FF' };
@@ -14,9 +24,16 @@ export default function NotificationItem({ item }: { item: any }) {
     const iconData = getIcon();
 
     return (
-        <TouchableOpacity style={[styles.container, !item.is_read && styles.unread]}>
+        <TouchableOpacity
+            style={[styles.container, !item.is_read && styles.unread]}
+            onPress={() => {
+                mediumFeedback();
+                onPress?.();
+            }}
+            activeOpacity={0.7}
+        >
             <View style={[styles.iconCircle, { backgroundColor: iconData.bg }]}>
-                <Ionicons name={iconData.name as any} size={20} color={iconData.color} />
+                <Ionicons name={iconData.name as IconName} size={20} color={iconData.color} />
             </View>
             <View style={{ flex: 1 }}>
                 <Text style={styles.title}>{item.title}</Text>

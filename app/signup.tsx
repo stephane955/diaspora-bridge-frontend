@@ -1,112 +1,242 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import {
+    View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
+    Alert, KeyboardAvoidingView, Platform, ScrollView, ImageBackground, Dimensions
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { useLanguage } from '@/context/LanguageContext';
+
+const { width, height } = Dimensions.get('window');
+
+// Available Cities (Cameroon)
+const CITIES = [
+    "Douala", "Yaoundé", "Bamenda", "Bafoussam",
+    "Garoua", "Maroua", "Ngaoundéré", "Kumba"
+];
 
 export default function SignupScreen() {
     const router = useRouter();
+    const { t } = useLanguage();
+
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [fullName, setFullName] = useState('');
-    const [city, setCity] = useState(''); // NEW: City Field
+    const [city, setCity] = useState('');
     const [role, setRole] = useState<'client' | 'provider'>('client');
     const [loading, setLoading] = useState(false);
+    const [showCityPicker, setShowCityPicker] = useState(false);
+
+    const handleClose = () => {
+        router.replace('/');
+    };
 
     const onSignup = async () => {
-        if (!email || !password || !fullName || !city) return Alert.alert('Error', 'Please fill all fields.');
+        // 1. Basic Validation
+        if (!email || !password || !confirmPassword || !fullName) {
+            return Alert.alert('Error', t('missingFields'));
+        }
+
+        // 2. Logic Check: Only Providers MUST have a city
+        if (role === 'provider' && !city) {
+            return Alert.alert('Missing Info', 'Providers must select a base city.');
+        }
+
+        // 3. Password Match
+        if (password !== confirmPassword) {
+            return Alert.alert('Error', t('passwordsDoNotMatch'));
+        }
+
         setLoading(true);
+
+        // 4. Send correct data based on role
+        const metadata = {
+            full_name: fullName,
+            role: role,
+            city: role === 'provider' ? city : null, // Clients get NULL city
+        };
 
         const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: {
-                data: {
-                    full_name: fullName,
-                    city: city, // Saving city to profile
-                    role: role,
-                },
+                data: metadata,
             },
         });
-
         setLoading(false);
 
         if (error) {
-            Alert.alert('Signup Failed', error.message);
+            Alert.alert(t('signupFailed'), error.message);
         } else {
-            if (role === 'provider') {
-                router.replace('/provider');
-            } else {
-                router.replace('/diaspora');
-            }
+            if (role === 'provider') router.replace('/provider');
+            else router.replace('/diaspora');
         }
     };
 
     return (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
-            <ScrollView contentContainerStyle={styles.content}>
-                <View style={styles.header}>
-                    <Text style={styles.title}>Create Account</Text>
-                    <Text style={styles.subtitle}>Join DiasporaBridge today.</Text>
-                </View>
+        <ImageBackground
+            source={{ uri: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?q=80&w=2831&auto=format&fit=crop' }}
+            style={styles.bg}
+        >
+            <LinearGradient colors={['rgba(15,23,42,0.6)', 'rgba(15,23,42,0.95)']} style={styles.gradient}>
 
-                {/* ROLE SELECTOR */}
-                <Text style={styles.label}>I am a...</Text>
-                <View style={styles.roleContainer}>
-                    <TouchableOpacity style={[styles.roleBtn, role === 'client' && styles.roleActive]} onPress={() => setRole('client')}>
-                        <Ionicons name="earth" size={24} color={role === 'client' ? '#fff' : '#64748B'} />
-                        <Text style={[styles.roleText, role === 'client' && styles.textActive]}>Client</Text>
+                <SafeAreaView style={styles.safeHeader}>
+                    <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
+                        <Ionicons name="close" size={24} color="#fff" />
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.roleBtn, role === 'provider' && styles.roleActive]} onPress={() => setRole('provider')}>
-                        <Ionicons name="hammer" size={24} color={role === 'provider' ? '#fff' : '#64748B'} />
-                        <Text style={[styles.roleText, role === 'provider' && styles.textActive]}>Provider</Text>
-                    </TouchableOpacity>
-                </View>
+                </SafeAreaView>
 
-                <View style={styles.form}>
-                    <Text style={styles.label}>Full Name</Text>
-                    <TextInput style={styles.input} placeholder="John Doe" value={fullName} onChangeText={setFullName} placeholderTextColor="#94A3B8" />
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+                    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-                    <Text style={styles.label}>Base City</Text>
-                    <TextInput style={styles.input} placeholder="e.g. Douala" value={city} onChangeText={setCity} placeholderTextColor="#94A3B8" />
+                        <View style={styles.headerText}>
+                            <Text style={styles.title}>{t('createAccount')}</Text>
+                            <Text style={styles.subtitle}>{t('joinNetwork')}</Text>
+                        </View>
 
-                    <Text style={styles.label}>Email Address</Text>
-                    <TextInput style={styles.input} placeholder="you@example.com" autoCapitalize="none" value={email} onChangeText={setEmail} placeholderTextColor="#94A3B8" />
+                        <BlurView intensity={30} tint="dark" style={styles.glassCard}>
 
-                    <Text style={styles.label}>Password</Text>
-                    <TextInput style={styles.input} placeholder="At least 6 characters" secureTextEntry value={password} onChangeText={setPassword} placeholderTextColor="#94A3B8" />
+                            {/* Role Switcher */}
+                            <View style={styles.roleContainer}>
+                                <TouchableOpacity
+                                    style={[styles.roleBtn, role === 'client' && styles.roleActive]}
+                                    onPress={() => setRole('client')}
+                                >
+                                    <Text style={[styles.roleText, role === 'client' && styles.textActive]}>{t('roleClient')}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.roleBtn, role === 'provider' && styles.roleActive]}
+                                    onPress={() => setRole('provider')}
+                                >
+                                    <Text style={[styles.roleText, role === 'provider' && styles.textActive]}>{t('roleProvider')}</Text>
+                                </TouchableOpacity>
+                            </View>
 
-                    <TouchableOpacity style={styles.signupBtn} onPress={onSignup} disabled={loading}>
-                        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create Account</Text>}
-                    </TouchableOpacity>
-                </View>
+                            <View style={styles.inputGroup}>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder={t('fullNamePlaceholder')}
+                                    placeholderTextColor="#94A3B8"
+                                    value={fullName}
+                                    onChangeText={setFullName}
+                                />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder={t('emailPlaceholder')}
+                                    placeholderTextColor="#94A3B8"
+                                    autoCapitalize="none"
+                                    value={email}
+                                    onChangeText={setEmail}
+                                />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder={t('passwordPlaceholder')}
+                                    placeholderTextColor="#94A3B8"
+                                    secureTextEntry
+                                    value={password}
+                                    onChangeText={setPassword}
+                                />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder={t('confirmPasswordPlaceholder')}
+                                    placeholderTextColor="#94A3B8"
+                                    secureTextEntry
+                                    value={confirmPassword}
+                                    onChangeText={setConfirmPassword}
+                                />
 
-                <View style={styles.footer}>
-                    <Text style={styles.footerText}>Already have an account?</Text>
-                    <TouchableOpacity onPress={() => router.push('/login')}><Text style={styles.linkText}>Sign In</Text></TouchableOpacity>
-                </View>
-            </ScrollView>
-        </KeyboardAvoidingView>
+                                {/* LOGIC CHANGE:
+                                    Only show City Dropdown if role === 'provider'
+                                */}
+                                {role === 'provider' && (
+                                    <>
+                                        <TouchableOpacity
+                                            style={[styles.input, { justifyContent: 'center' }]}
+                                            onPress={() => setShowCityPicker(!showCityPicker)}
+                                        >
+                                            <Text style={{ color: city ? '#fff' : '#94A3B8' }}>{city || t('selectCity')}</Text>
+                                            <Ionicons name="chevron-down" size={16} color="#94A3B8" style={{ position: 'absolute', right: 15 }} />
+                                        </TouchableOpacity>
+
+                                        {showCityPicker && (
+                                            <View style={styles.cityList}>
+                                                {CITIES.map((c) => (
+                                                    <TouchableOpacity key={c} onPress={() => { setCity(c); setShowCityPicker(false); }} style={styles.cityItem}>
+                                                        <Text style={styles.cityText}>{c}</Text>
+                                                    </TouchableOpacity>
+                                                ))}
+                                            </View>
+                                        )}
+                                    </>
+                                )}
+                            </View>
+
+                            <TouchableOpacity style={styles.signupBtn} onPress={onSignup} disabled={loading}>
+                                {loading ? <ActivityIndicator color="#0F172A" /> : <Text style={styles.signupText}>{t('getStarted')}</Text>}
+                            </TouchableOpacity>
+
+                            <TouchableOpacity onPress={() => router.push('/login')} style={{ marginTop: 20 }}>
+                                <Text style={styles.footerLink}>
+                                    {t('alreadyHaveAccount')} <Text style={{color: '#38BDF8', fontWeight: '700'}}>{t('login')}</Text>
+                                </Text>
+                            </TouchableOpacity>
+                        </BlurView>
+
+                    </ScrollView>
+                </KeyboardAvoidingView>
+            </LinearGradient>
+        </ImageBackground>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#fff' },
-    content: { padding: 24, justifyContent: 'center', minHeight: '100%' },
-    header: { marginBottom: 30 },
-    title: { fontSize: 28, fontWeight: '800', color: '#0F172A' },
-    subtitle: { fontSize: 16, color: '#64748B', marginTop: 4 },
-    label: { fontSize: 14, fontWeight: '700', color: '#334155', marginBottom: 8, marginTop: 16 },
-    roleContainer: { flexDirection: 'row', gap: 12, marginBottom: 10 },
-    roleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
-    roleActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
-    roleText: { fontSize: 16, fontWeight: '600', color: '#64748B' },
-    textActive: { color: '#fff' },
-    form: { marginTop: 10 },
-    input: { height: 50, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, fontSize: 16, color: '#0F172A', backgroundColor: '#fff' },
-    signupBtn: { height: 56, backgroundColor: '#0EA5E9', borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 30 },
-    btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-    footer: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 40 },
-    footerText: { color: '#64748B' },
-    linkText: { color: '#0F172A', fontWeight: '700' }
+    bg: { flex: 1, width: width, height: height },
+    gradient: { flex: 1 },
+    safeHeader: { paddingHorizontal: 20, paddingTop: 10 },
+
+    closeBtn: {
+        width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.15)',
+        alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)'
+    },
+
+    scrollContent: { padding: 24, paddingBottom: 50, justifyContent: 'center', minHeight: '85%' },
+
+    headerText: { marginBottom: 30 },
+    title: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+    subtitle: { fontSize: 16, color: '#94A3B8', marginTop: 6 },
+
+    glassCard: {
+        borderRadius: 24, padding: 24, overflow: 'hidden',
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(15, 23, 42, 0.6)'
+    },
+
+    roleContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.3)', padding: 4, borderRadius: 14, marginBottom: 20 },
+    roleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
+    roleActive: { backgroundColor: 'rgba(255,255,255,0.15)' },
+    roleText: { color: '#94A3B8', fontWeight: '600' },
+    textActive: { color: '#fff', fontWeight: '700' },
+
+    inputGroup: { gap: 12 },
+    input: {
+        height: 52, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 12, paddingHorizontal: 16,
+        color: '#fff', fontSize: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)'
+    },
+
+    cityList: { backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, padding: 8, marginTop: -8 },
+    cityItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+    cityText: { color: '#E2E8F0' },
+
+    signupBtn: {
+        backgroundColor: '#fff', height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+        marginTop: 24, shadowColor: '#000', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 4 }
+    },
+    signupText: { color: '#0F172A', fontWeight: '800', fontSize: 16 },
+
+    footerLink: { textAlign: 'center', color: '#94A3B8', fontSize: 14 },
 });

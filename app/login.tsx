@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context'; //
 import * as Linking from 'expo-linking';
 
 const { width, height } = Dimensions.get('window');
@@ -17,9 +18,12 @@ export default function LoginScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
-
-    // If auto-detection fails, user can manually switch tab
     const [activeTab, setActiveTab] = useState<'diaspora' | 'provider'>('diaspora');
+
+
+    const handleClose = () => {
+        router.replace('/');
+    };
 
     const onLogin = async () => {
         if (!email || !password) return Alert.alert('Error', 'Please enter email and password.');
@@ -27,7 +31,6 @@ export default function LoginScreen() {
         setLoading(true);
 
         try {
-            // 1. Sign In
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
@@ -35,18 +38,14 @@ export default function LoginScreen() {
 
             if (error) throw error;
 
-            // 2. Smart Redirect Logic
             const savedRole = data.user?.user_metadata?.role;
 
-            // If the database knows your role, OBEY the database
             if (savedRole === 'provider') {
                 router.replace('/provider');
             } else if (savedRole === 'client') {
                 router.replace('/diaspora');
             } else {
-                // 3. Fallback: If role is missing (old account), use the Manual Tab
                 if (activeTab === 'provider') {
-                    // Optional: Update their metadata so it works next time
                     await supabase.auth.updateUser({ data: { role: 'provider' }});
                     router.replace('/provider');
                 } else {
@@ -55,8 +54,9 @@ export default function LoginScreen() {
                 }
             }
 
-        } catch (err: any) {
-            Alert.alert('Login Failed', err.message);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Login failed.';
+            Alert.alert('Login Failed', message);
         } finally {
             setLoading(false);
         }
@@ -67,11 +67,7 @@ export default function LoginScreen() {
             Alert.alert("Required", "Please enter your email address first.");
             return;
         }
-
-        // This creates the correct link for your current environment
         const redirectUrl = Linking.createURL('reset-password');
-        console.log("WHITELIST THIS IN SUPABASE:", redirectUrl);
-
         setLoading(true);
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
             redirectTo: redirectUrl,
@@ -94,6 +90,15 @@ export default function LoginScreen() {
                 colors={['rgba(15, 23, 42, 0.6)', 'rgba(15, 23, 42, 0.9)']}
                 style={styles.gradient}
             >
+                {/* --- CLOSE BUTTON (Best Practice) --- */}
+                <TouchableOpacity
+                    style={styles.closeBtn}
+                    onPress={handleClose}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="close" size={24} color="#fff" />
+                </TouchableOpacity>
+
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
                     <ScrollView contentContainerStyle={styles.scrollContent}>
 
@@ -108,7 +113,7 @@ export default function LoginScreen() {
 
                         {/* GLASS CARD */}
                         <View style={styles.card}>
-                            {/* PORTAL SWITCHER (Visual only, helps user intent) */}
+                            {/* PORTAL SWITCHER */}
                             <View style={styles.tabContainer}>
                                 <TouchableOpacity
                                     style={[styles.tab, activeTab === 'diaspora' && styles.activeTab]}
@@ -124,6 +129,7 @@ export default function LoginScreen() {
                                 </TouchableOpacity>
                             </View>
 
+                            {/* Inputs */}
                             <View style={styles.inputContainer}>
                                 <Text style={styles.inputLabel}>Email</Text>
                                 <View style={styles.inputWrapper}>
@@ -158,9 +164,7 @@ export default function LoginScreen() {
                                 onPress={handleResetPassword}
                                 style={styles.forgotBtn}
                             >
-                                <Text style={styles.forgotText}>
-                                    Forgot Password?
-                                </Text>
+                                <Text style={styles.forgotText}>Forgot Password?</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
@@ -194,6 +198,22 @@ const styles = StyleSheet.create({
     gradient: { flex: 1, justifyContent: 'center' },
     scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 20 },
 
+    // CLOSE BUTTON STYLE
+    closeBtn: {
+        position: 'absolute',
+        top: 60,
+        left: 20,
+        zIndex: 50,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(0,0,0,0.3)', // Darker background for visibility
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
     header: { alignItems: 'center', marginBottom: 40 },
     logoCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
     brandName: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -1 },
@@ -226,14 +246,6 @@ const styles = StyleSheet.create({
 
     footerText: { textAlign: 'center', color: '#64748B', fontSize: 14 },
     link: { color: '#0EA5E9', fontWeight: '700' },
-    forgotBtn: {
-        alignSelf: 'flex-end',
-        marginBottom: 24,
-        marginTop: 8
-    },
-    forgotText: {
-        color: '#64748B',
-        fontSize: 14,
-        fontWeight: '600'
-    },
+    forgotBtn: { alignSelf: 'flex-end', marginBottom: 24, marginTop: 8 },
+    forgotText: { color: '#64748B', fontSize: 14, fontWeight: '600' },
 });
