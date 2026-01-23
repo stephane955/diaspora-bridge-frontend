@@ -1,45 +1,76 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
+import { View, ActivityIndicator } from 'react-native';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { GlobalProvider } from '@/context/GlobalContext';
 import { LanguageProvider } from '@/context/LanguageContext';
 
-// 1. Create a "Protector" component inside the layout
 function InitialLayout() {
-    const { isAuthenticated, loading } = useAuth();
+    const { session, loading } = useAuth();
     const segments = useSegments();
     const router = useRouter();
+    const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
-        if (loading) return;
+        setIsMounted(true);
+    }, []);
 
-        // Check if the user is in an "auth" group or a "public" screen
-        const inAuthGroup = segments[0] === 'diaspora' || segments[0] === 'provider';
+    useEffect(() => {
+        if (!isMounted || loading) return;
 
-        if (isAuthenticated && !inAuthGroup) {
-            // If logged in but on login/signup, go to dashboard
-            // Note: You might need logic here to decide between diaspora/provider
-            router.replace('/diaspora');
-        } else if (!isAuthenticated && inAuthGroup) {
-            // If logged out but trying to access dashboard, force login
+        // FIX: Check if we are on the root path (Landing Page)
+        // segments is [] when on the Landing Page ('/')
+        const inPublicGroup =
+            segments.length === 0 ||
+            segments[0] === 'index' ||
+            segments[0] === 'login' ||
+            segments[0] === 'signup';
+
+        // 1. If NOT logged in and trying to access a private page -> Send to Login
+        if (!session && !inPublicGroup) {
             router.replace('/login');
+            return;
         }
-    }, [isAuthenticated, loading, segments]);
+
+        // 2. If logged in and on a public page -> Send to Dashboard
+        if (session && inPublicGroup) {
+            const role = session.user?.user_metadata?.role;
+            if (role === 'provider') {
+                router.replace('/provider');
+            } else {
+                router.replace('/diaspora');
+            }
+        }
+    }, [router, segments, session, isMounted, loading]);
+
+    if (!isMounted || loading) {
+        return (
+            <View style={{ flex: 1, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator color="#0EA5E9" />
+            </View>
+        );
+    }
 
     return (
         <Stack>
+            {/* Public Routes */}
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="login" options={{ headerShown: false }} />
             <Stack.Screen name="signup" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+
+            {/* Protected Routes */}
             <Stack.Screen name="diaspora" options={{ headerShown: false }} />
             <Stack.Screen name="provider" options={{ headerShown: false }} />
+
+            {/* Shared/Modal Routes */}
+            <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Info' }} />
+            <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         </Stack>
     );
 }
@@ -52,7 +83,6 @@ export default function RootLayout() {
             <LanguageProvider>
                 <AuthProvider>
                     <GlobalProvider>
-                        {/* 2. Use the Protector component here */}
                         <InitialLayout />
                     </GlobalProvider>
                 </AuthProvider>

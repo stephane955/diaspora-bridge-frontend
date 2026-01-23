@@ -4,6 +4,15 @@ import { useAuth } from './AuthContext';
 
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
+type EventRow = {
+    id: string | number;
+    title: string;
+    created_at: string;
+    status: 'approved' | 'pending_approval';
+    description: string;
+    image_url: string | null;
+};
+
 // 1. Define the shape of a "Timeline Event"
 type TimelineEvent = {
     id: string;
@@ -36,10 +45,10 @@ export const GlobalProvider = ({ children }: { children: React.ReactNode }) => {
     // --- FETCH DATA ---
     const fetchEvents = async () => {
         try {
-            const { data, error } = await supabase
-                .from('events')
-                .select('*')
-                .order('created_at', { ascending: false });
+        const { data, error } = await supabase
+            .from<EventRow>('events')
+            .select('*')
+            .order('created_at', { ascending: false });
 
             if (error) throw error;
 
@@ -72,7 +81,7 @@ export const GlobalProvider = ({ children }: { children: React.ReactNode }) => {
             .on(
                 'postgres_changes',
                 { event: 'INSERT', schema: 'public', table: 'events' },
-                (payload: RealtimePostgresChangesPayload<any>) => {
+                (payload: RealtimePostgresChangesPayload<EventRow>) => {
                     console.log('New event received!', payload);
                     fetchEvents(); // Refresh list when new item arrives
                 }

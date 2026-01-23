@@ -5,13 +5,24 @@ import { supabase } from '@/lib/supabase'; //
 import { useAuth } from '@/context/AuthContext'; //
 import { mediumFeedback, successFeedback } from '@/utils/haptics'; //
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Project } from '@/types/models';
 
 export default function RequestsScreen() {
     const { user } = useAuth();
     const router = useRouter();
-    const [requests, setRequests] = useState<any[]>([]);
+    const [requests, setRequests] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<string | null>(null);
+    const [hiddenJobs, setHiddenJobs] = useState<string[]>([]);
+
+    useEffect(() => {
+        const loadHidden = async () => {
+            const saved = await AsyncStorage.getItem('hidden_jobs');
+            if (saved) setHiddenJobs(JSON.parse(saved));
+        };
+        loadHidden();
+    }, []);
 
     // 1. Fetch REAL projects that are waiting for a provider
     const fetchRequests = useCallback(async () => {
@@ -20,16 +31,19 @@ export default function RequestsScreen() {
 
         // Get projects that have NO provider yet (pending)
         const { data, error } = await supabase
-            .from('projects')
+            .from<Project>('projects')
             .select('*')
             .is('provider_id', null)
             .eq('status', 'Pending') // Ensure your DB uses 'Pending' or 'pending_assignment'
             .order('created_at', { ascending: false });
 
         if (error) console.error(error);
-        if (data) setRequests(data);
+        if (data) {
+            const filtered = data.filter(item => !hiddenJobs.includes(item.id.toString()));
+            setRequests(filtered);
+        }
         setLoading(false);
-    }, [user]);
+    }, [user, hiddenJobs]);
 
     useEffect(() => {
         fetchRequests();
@@ -61,14 +75,23 @@ export default function RequestsScreen() {
             // Navigate to Active Sites
             router.push('/provider/active');
 
-        } catch (err: any) {
-            Alert.alert("Error", "Could not accept project.");
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "Could not accept project.";
+            Alert.alert("Error", message);
         } finally {
             setProcessingId(null);
         }
     };
 
-    const renderItem = ({ item }: { item: any }) => (
+    const hideJob = async (projectId: string) => {
+        const next = Array.from(new Set([...hiddenJobs, projectId.toString()]));
+        setHiddenJobs(next);
+        await AsyncStorage.setItem('hidden_jobs', JSON.stringify(next));
+        setRequests(prev => prev.filter(r => r.id.toString() !== projectId.toString()));
+        Alert.alert("Hidden", "Project removed from your feed.");
+    };
+
+    const renderItem = ({ item }: { item: Project }) => (
         <View style={styles.ticketContainer}>
             {/* LEFT SIDE: Project Details */}
             <View style={styles.ticketMain}>
@@ -128,8 +151,8 @@ export default function RequestsScreen() {
                     )}
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.declineBtn} onPress={() => Alert.alert("Hidden", "Project removed from your feed.")}>
-                    <Text style={styles.declineText}>Hide</Text>
+                <TouchableOpacity style={styles.declineBtn} onPress={() => hideJob(item.id)}>
+                    <Text style={styles.declineText}>Not Interested</Text>
                 </TouchableOpacity>
             </View>
         </View>

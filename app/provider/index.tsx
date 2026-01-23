@@ -1,154 +1,299 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, FlatList } from 'react-native';
-import { useState, useCallback } from 'react';
-import { useRouter, useFocusEffect } from 'expo-router';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+    View, Text, StyleSheet, FlatList, TouchableOpacity, Image,
+    RefreshControl, StatusBar, Alert, Modal
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import NavigationBar from '@/components/NavigationBar';
-import AvailableProjectCard from '@/components/AvailableProjectCard';
-import ProviderNavigation from '@/components/ProviderNavigation';
-import { mediumFeedback } from '@/utils/haptics';
-import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-
-const { width } = Dimensions.get('window');
+import { useLanguage } from '@/context/LanguageContext';
 
 export default function ProviderDashboard() {
     const router = useRouter();
-    const { user } = useAuth();
-    const [myJobs, setMyJobs] = useState<any[]>([]);
-    const [availableProjects, setAvailableProjects] = useState<any[]>([]);
-    const [stats, setStats] = useState({ earned: 0, pending: 0 });
+    const { user, signOut } = useAuth();
+    const { t } = useLanguage();
+
+    const [activeJobs, setActiveJobs] = useState<any[]>([]);
+    const [leads, setLeads] = useState<any[]>([]);
+    const [myCity, setMyCity] = useState('');
+    const [filterCity, setFilterCity] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [activeTab, setActiveTab] = useState<'jobs' | 'requests'>('jobs');
+    const [profileName, setProfileName] = useState('');
+    const [menuOpen, setMenuOpen] = useState(false);
 
     const fetchData = useCallback(async () => {
         if (!user) return;
-        const [jobsRes, marketRes, expenseRes] = await Promise.all([
-            supabase.from('projects').select('*').eq('provider_id', user.id),
-            supabase.from('projects').select('*').is('provider_id', null).eq('status', 'pending_assignment').limit(5),
-            supabase.from('project_expenses').select('amount, status').in('project_id',
-                (await supabase.from('projects').select('id').eq('provider_id', user.id)).data?.map(p => p.id) || []
-            )
-        ]);
+        setRefreshing(true);
 
-        if (jobsRes.data) setMyJobs(jobsRes.data);
-        if (marketRes.data) setAvailableProjects(marketRes.data);
+        try {
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('full_name, city')
+                .eq('id', user.id)
+                .maybeSingle();
 
-        const earned = expenseRes.data?.filter(e => e.status === 'approved').reduce((s, e) => s + e.amount, 0) || 0;
-        const pending = expenseRes.data?.filter(e => e.status === 'pending').reduce((s, e) => s + e.amount, 0) || 0;
-        setStats({ earned, pending });
-    }, [user]);
+            // FIX: Cast to 'any' to stop TypeScript from complaining about unknown properties
+            const meta = user.user_metadata as any;
 
-    useFocusEffect(useCallback(() => { fetchData(); }, [fetchData]));
+            const cityValue = profile?.city || meta?.city || t('unknownLocation');
+            setProfileName(profile?.full_name || meta?.full_name || t('providerFallback'));
+            setMyCity(cityValue);
+
+            const { data: hiddenData } = await supabase
+                .from('hidden_projects')
+                .select('project_id')
+                .eq('provider_id', user.id);
+
+            const hiddenIds = (hiddenData || []).map((row: any) => row.project_id);
+
+            const { data: active } = await supabase
+                .from('projects')
+                .select('*')
+                .eq('assigned_provider_id', user.id)
+                .in('status', ['in_progress', 'In Progress', 'active', 'Active']);
+
+            if (active) setActiveJobs(active);
+
+            let query = supabase
+                .from('projects')
+                .select('*')
+                .in('status', ['pending', 'Pending']);
+
+            if (filterCity && cityValue) {
+                query = query.ilike('city', cityValue);
+            }
+
+            const { data: pending } = await query.order('created_at', { ascending: false });
+            if (pending) {
+                const filtered = pending.filter((item: any) => !hiddenIds.includes(item.id));
+                setLeads(filtered);
+            }
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setRefreshing(false);
+        }
+    }, [filterCity, myCity, t, user]);
+
+    useEffect(() => { fetchData(); }, [fetchData]);
+
+    const handleHideRequest = async (projectId: number) => {
+        if (!user) return;
+        const { error } = await supabase
+            .from('hidden_projects')
+            .insert({ provider_id: user.id, project_id: projectId });
+
+        if (error) {
+            // Fallback string in case 'errorTitle' key is missing in translation file
+            Alert.alert(t('errorTitle') || "Error", error.message);
+            return;
+        }
+
+        setLeads(prev => prev.filter(item => item.id !== projectId));
+    };
+
+    const handleSignOut = async () => {
+        await signOut();
+        router.replace('/login');
+    };
+
+    const handleDeleteAccount = () => {
+        if (!user) return;
+        Alert.alert(
+            t('deleteAccountTitle') || "Delete Account",
+            t('deleteAccountConfirm') || "This action is permanent. Your profile and related data will be deleted. Are you sure?",
+            [
+                { text: t('cancel') || "Cancel", style: 'cancel' },
+                {
+                    text: t('delete') || t('deleteAction') || "Delete",
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const { error } = await supabase.from('profiles').delete().eq('id', user.id);
+                            if (error) throw error;
+                            await signOut();
+                            router.replace('/login');
+                        } catch (err: any) {
+                            Alert.alert(t('errorTitle') || "Error", err.message || "Failed to delete account");
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const listData = activeTab === 'jobs' ? activeJobs : leads;
+    const emptyText = activeTab === 'jobs'
+        ? t('noActiveJobs')
+        : t('noRequests');
 
     return (
         <View style={styles.container}>
-            <NavigationBar title="Work Hub" subtitle="Manage your builds" showBack={false} />
-
-            <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 140 }}
-            >
-                {/* REFINED FINTECH CARD */}
-                <View style={styles.fintechCard}>
-                    <Text style={styles.cardLabel}>AVAILABLE TO WITHDRAW</Text>
-                    <Text style={styles.cardAmount}>{stats.earned.toLocaleString()} <Text style={styles.currency}>CFA</Text></Text>
-
-                    <View style={styles.statsRow}>
-                        <View style={styles.statItem}>
-                            <View style={[styles.dot, { backgroundColor: '#F59E0B' }]} />
-                            <Text style={styles.statLabel}>Pending: {stats.pending.toLocaleString()} CFA</Text>
-                        </View>
-                    </View>
-
-                    <TouchableOpacity
-                        style={styles.primaryAction}
-                        onPress={() => { mediumFeedback(); router.push('/provider/earnings'); }}
-                    >
-                        <Text style={styles.primaryActionText}>Finance Center</Text>
-                        <Ionicons name="wallet-outline" size={18} color="#fff" />
+            <StatusBar barStyle="dark-content" />
+            <View style={styles.header}>
+                <Text style={styles.headerTitle}>{t('providerDashboardTitle')}</Text>
+                <View style={styles.headerActions}>
+                    <TouchableOpacity style={styles.iconBtn} onPress={() => { setRefreshing(true); fetchData(); }}>
+                        <Ionicons name="refresh" size={20} color="#0F172A" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/provider/profile')}>
+                        <Ionicons name="person-circle" size={22} color="#0F172A" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.iconBtn} onPress={() => setMenuOpen(true)}>
+                        <Ionicons name="menu" size={22} color="#0F172A" />
                     </TouchableOpacity>
                 </View>
+            </View>
 
-                {/* MESSAGES SECTION */}
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Active Chats</Text>
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 20, marginBottom: 10 }}>
-                    {myJobs.map(job => (
-                        <TouchableOpacity key={job.id} style={styles.chatCircle} onPress={() => router.push(`/chat/${job.id}`)}>
-                            <Image source={{ uri: job.image_url }} style={styles.chatAvatar} />
-                            <View style={styles.onlineIndicator} />
-                        </TouchableOpacity>
-                    ))}
-                </ScrollView>
-
-                {/* ACTIVE JOBS */}
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>My Sites</Text>
-                    <Text style={styles.badge}>{myJobs.length}</Text>
-                </View>
-                <FlatList
-                    horizontal
-                    data={myJobs}
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ paddingLeft: 20 }}
-                    renderItem={({ item }) => (
-                        <TouchableOpacity
-                            style={styles.glassJobCard}
-                            onPress={() => router.push(`/diaspora/project/${item.id}`)}
-                        >
-                            <Image source={{ uri: item.image_url }} style={styles.jobCover} />
-                            <BlurView intensity={90} tint="dark" style={styles.jobOverlay}>
-                                <Text style={styles.jobTitle} numberOfLines={1}>{item.title}</Text>
-                                <Text style={styles.jobSub}>{item.city}</Text>
-                            </BlurView>
-                        </TouchableOpacity>
-                    )}
-                />
-
-                {/* MARKETPLACE: HIGH CONTRAST */}
-                <View style={[styles.sectionHeader, { marginTop: 30 }]}>
-                    <Text style={styles.sectionTitle}>Available Work</Text>
-                </View>
-                <View style={{ paddingHorizontal: 20 }}>
-                    {availableProjects.map(item => (
-                        <View key={item.id} style={styles.marketWrapper}>
-                            <AvailableProjectCard
-                                project={item}
-                                onAccept={() => { mediumFeedback(); fetchData(); }}
-                            />
+            <FlatList
+                data={listData}
+                keyExtractor={item => item.id.toString()}
+                contentContainerStyle={{ paddingBottom: 120 }}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} />}
+                ListHeaderComponent={
+                    <View style={styles.listHeader}>
+                        <View style={styles.profileRow}>
+                            <View>
+                                <Text style={styles.welcomeLabel}>{t('welcomeBack')}</Text>
+                                <Text style={styles.userName}>{profileName}</Text>
+                                <Text style={styles.cityText}>{myCity}</Text>
+                            </View>
+                            <Image source={{ uri: 'https://i.pravatar.cc/150?u=pro' }} style={styles.profileImg} />
                         </View>
-                    ))}
-                </View>
-            </ScrollView>
 
-            {/* THE FIX: Labelled Navigation ensures you know what you're clicking */}
-            <ProviderNavigation />
+                        <View style={styles.tabsRow}>
+                            <TouchableOpacity
+                                style={[styles.tab, activeTab === 'jobs' && styles.tabActive]}
+                                onPress={() => setActiveTab('jobs')}
+                            >
+                                <Text style={[styles.tabText, activeTab === 'jobs' && styles.tabTextActive]}>{t('myJobsTab')}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.tab, activeTab === 'requests' && styles.tabActive]}
+                                onPress={() => setActiveTab('requests')}
+                            >
+                                <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>{t('requestsTab')}</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {activeTab === 'requests' && (
+                            <View style={styles.filterRow}>
+                                <TouchableOpacity onPress={() => setFilterCity(!filterCity)} style={styles.filterPill}>
+                                    <Ionicons name="filter" size={12} color={filterCity ? '#fff' : '#0F172A'} />
+                                    <Text style={[styles.filterText, filterCity && { color: '#fff' }]}>
+                                        {filterCity ? `${t('inCity')} ${myCity}` : t('allCities')}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+                    </View>
+                }
+                ListEmptyComponent={
+                    <View style={styles.emptyBox}>
+                        <Text style={styles.emptyText}>{emptyText}</Text>
+                    </View>
+                }
+                renderItem={({ item }) => (
+                    activeTab === 'jobs' ? (
+                        <TouchableOpacity
+                            style={styles.card}
+                            onPress={() => router.push(`/provider/job/${item.id}`)}
+                        >
+                            <Text style={styles.cardTitle}>{item.title}</Text>
+                            <Text style={styles.cardSub}>{item.city} • {item.budget?.toLocaleString()} CFA</Text>
+                            <View style={styles.cardFooter}>
+                                <Text style={styles.cardStatus}>{t('inProgressStatus')}</Text>
+                                <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+                            </View>
+                        </TouchableOpacity>
+                    ) : (
+                        <View style={styles.card}>
+                            <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/provider/job/${item.id}`)}>
+                                <Text style={styles.cardTitle}>{item.title}</Text>
+                                <Text style={styles.cardSub}>{item.city} • {item.budget?.toLocaleString()} CFA</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.refuseBtn} onPress={() => handleHideRequest(item.id)}>
+                                <Text style={styles.refuseText}>{t('notInterested')}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )
+                )}
+            />
+
+            <Modal visible={menuOpen} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle}>{t('accountMenuTitle')}</Text>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { setMenuOpen(false); router.push('/provider/profile'); }}>
+                            <Ionicons name="settings" size={18} color="#0F172A" />
+                            <Text style={styles.modalText}>{t('accountSettings')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { setMenuOpen(false); router.push('/modal'); }}>
+                            <Ionicons name="help-circle" size={18} color="#0F172A" />
+                            <Text style={styles.modalText}>{t('support')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.modalItem, styles.modalDanger]} onPress={() => { setMenuOpen(false); handleSignOut(); }}>
+                            <Ionicons name="log-out" size={18} color="#EF4444" />
+                            <Text style={styles.modalDangerText}>{t('signOut')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.modalItem, styles.modalDanger]} onPress={() => { setMenuOpen(false); handleDeleteAccount(); }}>
+                            <Ionicons name="trash" size={18} color="#EF4444" />
+                            <Text style={styles.modalDangerText}>{t('deleteAccountAction') || "Delete Account"}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.modalClose} onPress={() => setMenuOpen(false)}>
+                            <Text style={styles.modalCloseText}>{t('close')}</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#fff' },
-    fintechCard: { margin: 20, padding: 25, backgroundColor: '#0F172A', borderRadius: 32, elevation: 8 },
-    cardLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-    cardAmount: { color: '#fff', fontSize: 32, fontWeight: '900', marginVertical: 10 },
-    currency: { fontSize: 16, color: '#38BDF8' },
-    statsRow: { flexDirection: 'row', marginBottom: 20 },
-    statItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    dot: { width: 8, height: 8, borderRadius: 4 },
-    statLabel: { color: '#CBD5E1', fontSize: 13, fontWeight: '600' },
-    primaryAction: { backgroundColor: '#38BDF8', padding: 16, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 },
-    primaryActionText: { color: '#fff', fontWeight: '800', fontSize: 15 },
-    sectionHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginVertical: 15, gap: 10 },
-    sectionTitle: { fontSize: 22, fontWeight: '900', color: '#0F172A' },
-    badge: { backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, overflow: 'hidden', color: '#64748B', fontWeight: '800' },
-    chatCircle: { marginRight: 15, width: 64, height: 64 },
-    chatAvatar: { width: 64, height: 64, borderRadius: 32, borderWidth: 2, borderColor: '#38BDF8' },
-    onlineIndicator: { position: 'absolute', bottom: 2, right: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: '#10B981', borderWidth: 2, borderColor: '#fff' },
-    glassJobCard: { width: width * 0.75, height: 190, marginRight: 15, borderRadius: 30, overflow: 'hidden' },
-    jobCover: { width: '100%', height: '100%' },
-    jobOverlay: { position: 'absolute', bottom: 0, width: '100%', padding: 20 },
-    jobTitle: { color: '#fff', fontSize: 18, fontWeight: '800' },
-    jobSub: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
-    marketWrapper: { marginBottom: 20 }
+    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    header: { paddingTop: 50, paddingHorizontal: 20, paddingBottom: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E2E8F0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
+    headerActions: { flexDirection: 'row', gap: 10 },
+    iconBtn: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+
+    listHeader: { padding: 20, paddingTop: 16 },
+    profileRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    welcomeLabel: { fontSize: 14, color: '#64748B' },
+    userName: { fontSize: 22, color: '#0F172A', fontWeight: '800' },
+    cityText: { fontSize: 12, color: '#94A3B8', marginTop: 4 },
+    profileImg: { width: 44, height: 44, borderRadius: 22 },
+
+    tabsRow: { flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 16, padding: 4 },
+    tab: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
+    tabActive: { backgroundColor: '#0F172A' },
+    tabText: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+    tabTextActive: { color: '#fff' },
+
+    filterRow: { marginTop: 16, alignItems: 'flex-start' },
+    filterPill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#0F172A', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+    filterText: { fontSize: 12, fontWeight: '600', color: '#fff' },
+
+    emptyBox: { alignItems: 'center', marginTop: 20 },
+    emptyText: { color: '#94A3B8' },
+
+    card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginHorizontal: 20, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+    cardTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+    cardSub: { fontSize: 12, color: '#64748B', marginTop: 4 },
+    cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
+    cardStatus: { fontSize: 12, fontWeight: '700', color: '#16A34A' },
+    refuseBtn: { marginTop: 12, alignSelf: 'flex-start', backgroundColor: '#FEF2F2', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: '#FEE2E2' },
+    refuseText: { color: '#EF4444', fontWeight: '700', fontSize: 11 },
+
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
+    modalCard: { backgroundColor: '#fff', padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, gap: 12 },
+    modalTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+    modalItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
+    modalText: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+    modalDanger: { borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 16 },
+    modalDangerText: { fontSize: 14, fontWeight: '700', color: '#EF4444' },
+    modalClose: { alignItems: 'center', paddingTop: 4 },
+    modalCloseText: { color: '#64748B', fontWeight: '700' }
 });

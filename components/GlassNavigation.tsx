@@ -2,17 +2,18 @@ import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, usePathname } from 'expo-router';
+import { Href, useRouter, usePathname } from 'expo-router';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
+import { theme } from '@/constants/theme';
 
 export default function GlassNavigation() {
     const router = useRouter();
     const pathname = usePathname();
 
-    const handlePress = (route: string) => {
+    const handlePress = (route: Href) => {
         mediumFeedback();
         if (pathname !== route) {
-            router.push(route as any);
+            router.push(route);
         }
     };
 
@@ -33,11 +34,11 @@ export default function GlassNavigation() {
                     />
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={() => handlePress('/diaspora/wallet')} style={styles.tab}>
+                <TouchableOpacity onPress={() => handlePress('/wallet')} style={styles.tab}>
                     <Ionicons
                         name={pathname.includes('wallet') ? "wallet" : "wallet-outline"}
                         size={24}
-                        color={pathname.includes('wallet') ? "#0EA5E9" : "#64748B"}
+                        color={pathname.includes('wallet') ? theme.colors.active : theme.colors.textMuted}
                     />
                 </TouchableOpacity>
 
@@ -52,7 +53,7 @@ export default function GlassNavigation() {
                     <Ionicons
                         name={pathname.includes('inbox') ? "chatbubble" : "chatbubble-outline"}
                         size={24}
-                        color={pathname.includes('inbox') ? "#0EA5E9" : "#64748B"}
+                        color={pathname.includes('inbox') ? theme.colors.active : theme.colors.textMuted}
                     />
                 </TouchableOpacity>
 
@@ -60,7 +61,7 @@ export default function GlassNavigation() {
                     <Ionicons
                         name={pathname.includes('profile') ? "person" : "person-outline"}
                         size={24}
-                        color={pathname.includes('profile') ? "#0EA5E9" : "#64748B"}
+                        color={pathname.includes('profile') ? theme.colors.active : theme.colors.textMuted}
                     />
                 </TouchableOpacity>
 
@@ -71,8 +72,19 @@ export default function GlassNavigation() {
 
 const styles = StyleSheet.create({
     container: { position: 'absolute', bottom: 30, left: 20, right: 20, alignItems: 'center' },
-    glass: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', height: 70, borderRadius: 35, paddingHorizontal: 10, overflow: 'visible', borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)' },
+    glass: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        height: 70,
+        borderRadius: 35,
+        paddingHorizontal: 10,
+        overflow: 'visible',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.5)'
+    },
     tab: { flex: 1, height: '100%', justifyContent: 'center', alignItems: 'center' },
     actionWrapper: { width: 60, height: 0, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
-    actionBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center', top: -25, elevation: 10 }
+    actionBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.primary, justifyContent: 'center', alignItems: 'center', top: -25, elevation: 10 }
 });

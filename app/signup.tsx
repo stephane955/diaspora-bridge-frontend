@@ -1,274 +1,242 @@
 import React, { useState } from 'react';
 import {
-    View,
-    Text,
-    TextInput,
-    Pressable,
-    StyleSheet,
-    SafeAreaView,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    ActivityIndicator,
-    Alert
+    View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
+    Alert, KeyboardAvoidingView, Platform, ScrollView, ImageBackground, Dimensions
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase'; // <--- Import Supabase
+import { supabase } from '@/lib/supabase';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { useLanguage } from '@/context/LanguageContext';
+
+const { width, height } = Dimensions.get('window');
+
+// Available Cities (Cameroon)
+const CITIES = [
+    "Douala", "Yaoundé", "Bamenda", "Bafoussam",
+    "Garoua", "Maroua", "Ngaoundéré", "Kumba"
+];
 
 export default function SignupScreen() {
     const router = useRouter();
+    const { t } = useLanguage();
 
-    const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [role, setRole] = useState<'client' | 'provider' | null>(null);
-
-    // UI States
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [fullName, setFullName] = useState('');
+    const [city, setCity] = useState('');
+    const [role, setRole] = useState<'client' | 'provider'>('client');
     const [loading, setLoading] = useState(false);
-    const [focused, setFocused] = useState<string | null>(null);
+    const [showCityPicker, setShowCityPicker] = useState(false);
+
+    const handleClose = () => {
+        router.replace('/');
+    };
 
     const onSignup = async () => {
-        if (!name || !email || !password) return Alert.alert('Missing Fields', 'Please complete all fields.');
-        if (!role) return Alert.alert('Role Required', 'Please select if you are a Client or a Provider.');
+        // 1. Basic Validation
+        if (!email || !password || !confirmPassword || !fullName) {
+            return Alert.alert('Error', t('missingFields'));
+        }
+
+        // 2. Logic Check: Only Providers MUST have a city
+        if (role === 'provider' && !city) {
+            return Alert.alert('Missing Info', 'Providers must select a base city.');
+        }
+
+        // 3. Password Match
+        if (password !== confirmPassword) {
+            return Alert.alert('Error', t('passwordsDoNotMatch'));
+        }
 
         setLoading(true);
 
-        try {
-            // 1. Create User in Supabase Auth
-            const { data, error } = await supabase.auth.signUp({
-                email,
-                password,
-                options: {
-                    // We save the Name and Role inside the user's metadata
-                    data: {
-                        full_name: name,
-                        role: role,
-                    },
-                },
-            });
+        // 4. Send correct data based on role
+        const metadata = {
+            full_name: fullName,
+            role: role,
+            city: role === 'provider' ? city : null, // Clients get NULL city
+        };
 
-            if (error) throw error;
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: metadata,
+            },
+        });
+        setLoading(false);
 
-            // 2. Handle Success
-            // Note: If you have "Email Confirmations" enabled in Supabase, 
-            // the user won't be logged in yet. Check your Supabase settings!
-            if (data.session) {
-                router.replace(role === 'client' ? '/diaspora' : '/provider');
-            } else {
-                Alert.alert('Check your inbox', 'Please verify your email to continue.');
-            }
-
-        } catch (err: any) {
-            Alert.alert('Signup Failed', err.message);
-        } finally {
-            setLoading(false);
+        if (error) {
+            Alert.alert(t('signupFailed'), error.message);
+        } else {
+            if (role === 'provider') router.replace('/provider');
+            else router.replace('/diaspora');
         }
     };
 
     return (
-        <SafeAreaView style={styles.screen}>
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                style={{ flex: 1 }}
-            >
-                <ScrollView
-                    contentContainerStyle={styles.scroll}
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
-                >
-                    <View style={styles.header}>
-                        <View style={styles.brandBadge}>
-                            <Ionicons name="shield-checkmark" size={18} color="#fff" />
-                        </View>
-                        <View>
-                            <Text style={styles.heroTitle}>Welcome to Diaspora Bridge</Text>
-                            <Text style={styles.heroSubtitle}>Secure, transparent, premium builds</Text>
-                        </View>
-                    </View>
+        <ImageBackground
+            source={{ uri: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?q=80&w=2831&auto=format&fit=crop' }}
+            style={styles.bg}
+        >
+            <LinearGradient colors={['rgba(15,23,42,0.6)', 'rgba(15,23,42,0.95)']} style={styles.gradient}>
 
-                    <View style={styles.card}>
-                        <View style={styles.cardHeader}>
-                            <View>
-                                <Text style={styles.title}>Create your account</Text>
-                                <Text style={styles.subtitle}>American Express calm with construction grit</Text>
+                <SafeAreaView style={styles.safeHeader}>
+                    <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
+                        <Ionicons name="close" size={24} color="#fff" />
+                    </TouchableOpacity>
+                </SafeAreaView>
+
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+                    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+
+                        <View style={styles.headerText}>
+                            <Text style={styles.title}>{t('createAccount')}</Text>
+                            <Text style={styles.subtitle}>{t('joinNetwork')}</Text>
+                        </View>
+
+                        <BlurView intensity={30} tint="dark" style={styles.glassCard}>
+
+                            {/* Role Switcher */}
+                            <View style={styles.roleContainer}>
+                                <TouchableOpacity
+                                    style={[styles.roleBtn, role === 'client' && styles.roleActive]}
+                                    onPress={() => setRole('client')}
+                                >
+                                    <Text style={[styles.roleText, role === 'client' && styles.textActive]}>{t('roleClient')}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.roleBtn, role === 'provider' && styles.roleActive]}
+                                    onPress={() => setRole('provider')}
+                                >
+                                    <Text style={[styles.roleText, role === 'provider' && styles.textActive]}>{t('roleProvider')}</Text>
+                                </TouchableOpacity>
                             </View>
-                            <Ionicons name="key" size={22} color="#001F3F" />
-                        </View>
 
-                        {/* Name Input */}
-                        <Text style={styles.label}>Full name</Text>
-                        <TextInput
-                            style={[styles.input, focused === 'name' && styles.inputFocused]}
-                            placeholder="Amaka N."
-                            value={name}
-                            onChangeText={setName}
-                            placeholderTextColor="#8a8f9b"
-                            onFocus={() => setFocused('name')}
-                            onBlur={() => setFocused(null)}
-                        />
+                            <View style={styles.inputGroup}>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder={t('fullNamePlaceholder')}
+                                    placeholderTextColor="#94A3B8"
+                                    value={fullName}
+                                    onChangeText={setFullName}
+                                />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder={t('emailPlaceholder')}
+                                    placeholderTextColor="#94A3B8"
+                                    autoCapitalize="none"
+                                    value={email}
+                                    onChangeText={setEmail}
+                                />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder={t('passwordPlaceholder')}
+                                    placeholderTextColor="#94A3B8"
+                                    secureTextEntry
+                                    value={password}
+                                    onChangeText={setPassword}
+                                />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder={t('confirmPasswordPlaceholder')}
+                                    placeholderTextColor="#94A3B8"
+                                    secureTextEntry
+                                    value={confirmPassword}
+                                    onChangeText={setConfirmPassword}
+                                />
 
-                        {/* Email Input */}
-                        <Text style={styles.label}>Email</Text>
-                        <TextInput
-                            style={[styles.input, focused === 'email' && styles.inputFocused]}
-                            placeholder="you@example.com"
-                            value={email}
-                            onChangeText={setEmail}
-                            autoCapitalize="none"
-                            keyboardType="email-address"
-                            placeholderTextColor="#8a8f9b"
-                            onFocus={() => setFocused('email')}
-                            onBlur={() => setFocused(null)}
-                        />
+                                {/* LOGIC CHANGE:
+                                    Only show City Dropdown if role === 'provider'
+                                */}
+                                {role === 'provider' && (
+                                    <>
+                                        <TouchableOpacity
+                                            style={[styles.input, { justifyContent: 'center' }]}
+                                            onPress={() => setShowCityPicker(!showCityPicker)}
+                                        >
+                                            <Text style={{ color: city ? '#fff' : '#94A3B8' }}>{city || t('selectCity')}</Text>
+                                            <Ionicons name="chevron-down" size={16} color="#94A3B8" style={{ position: 'absolute', right: 15 }} />
+                                        </TouchableOpacity>
 
-                        {/* Password Input */}
-                        <Text style={styles.label}>Password</Text>
-                        <TextInput
-                            style={[styles.input, focused === 'password' && styles.inputFocused]}
-                            placeholder="Create a strong password"
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry
-                            placeholderTextColor="#8a8f9b"
-                            onFocus={() => setFocused('password')}
-                            onBlur={() => setFocused(null)}
-                        />
+                                        {showCityPicker && (
+                                            <View style={styles.cityList}>
+                                                {CITIES.map((c) => (
+                                                    <TouchableOpacity key={c} onPress={() => { setCity(c); setShowCityPicker(false); }} style={styles.cityItem}>
+                                                        <Text style={styles.cityText}>{c}</Text>
+                                                    </TouchableOpacity>
+                                                ))}
+                                            </View>
+                                        )}
+                                    </>
+                                )}
+                            </View>
 
-                        {/* Role Selection */}
-                        <Text style={[styles.label, { marginTop: 16 }]}>I am joining as</Text>
-                        <View style={styles.roleRow}>
-                            <Pressable
-                                style={[styles.identityCard, role === 'client' && styles.identityActive]}
-                                onPress={() => setRole('client')}
-                            >
-                                <View style={styles.identityIconWrap}>
-                                    <Ionicons name="briefcase" size={20} color="#001F3F" />
-                                </View>
-                                <Text style={styles.identityTitle}>Client</Text>
-                                <Text style={styles.identityMeta}>Fund, track, approve</Text>
-                            </Pressable>
-                            <Pressable
-                                style={[styles.identityCard, role === 'provider' && styles.identityActive]}
-                                onPress={() => setRole('provider')}
-                            >
-                                <View style={styles.identityIconWrap}>
-                                    <Ionicons name="hammer" size={20} color="#001F3F" />
-                                </View>
-                                <Text style={styles.identityTitle}>Provider</Text>
-                                <Text style={styles.identityMeta}>Build and report</Text>
-                            </Pressable>
-                        </View>
+                            <TouchableOpacity style={styles.signupBtn} onPress={onSignup} disabled={loading}>
+                                {loading ? <ActivityIndicator color="#0F172A" /> : <Text style={styles.signupText}>{t('getStarted')}</Text>}
+                            </TouchableOpacity>
 
-                        {/* Submit Button */}
-                        <Pressable
-                            style={[styles.button, loading && { opacity: 0.7 }]}
-                            onPress={onSignup}
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color="#fff" />
-                            ) : (
-                                <>
-                                    <Ionicons name="person-add" size={18} color="#fff" />
-                                    <Text style={styles.buttonText}>Sign Up Securely</Text>
-                                </>
-                            )}
-                        </Pressable>
+                            <TouchableOpacity onPress={() => router.push('/login')} style={{ marginTop: 20 }}>
+                                <Text style={styles.footerLink}>
+                                    {t('alreadyHaveAccount')} <Text style={{color: '#38BDF8', fontWeight: '700'}}>{t('login')}</Text>
+                                </Text>
+                            </TouchableOpacity>
+                        </BlurView>
 
-                        <Pressable onPress={() => router.push('/login')} style={styles.secondary}>
-                            <Text style={styles.secondaryText}>Already have an account? Log in</Text>
-                        </Pressable>
-                    </View>
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
+                    </ScrollView>
+                </KeyboardAvoidingView>
+            </LinearGradient>
+        </ImageBackground>
     );
 }
 
-// ... Styles remain exactly the same as you provided ...
 const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: '#ECEFF3' },
-    scroll: { padding: 20, paddingBottom: 32 },
-    header: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 6, marginBottom: 16 },
-    brandBadge: { width: 46, height: 46, borderRadius: 15, backgroundColor: '#001F3F', alignItems: 'center', justifyContent: 'center' },
-    heroTitle: { fontSize: 24, fontWeight: '700', color: '#001F3F' },
-    heroSubtitle: { color: '#4B5563', fontSize: 14, fontWeight: '400' },
+    bg: { flex: 1, width: width, height: height },
+    gradient: { flex: 1 },
+    safeHeader: { paddingHorizontal: 20, paddingTop: 10 },
 
-    card: {
-        backgroundColor: '#fff',
-        borderRadius: 20,
-        padding: 20,
-        gap: 12,
-        shadowColor: '#001F3F',
-        shadowOpacity: 0.12,
-        shadowOffset: { width: 0, height: 16 },
-        shadowRadius: 24,
-        elevation: 5,
+    closeBtn: {
+        width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.15)',
+        alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)'
     },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-    title: { fontSize: 22, fontWeight: '700', color: '#001F3F' },
-    subtitle: { color: '#6B7280', marginTop: 2, fontWeight: '400' },
-    label: { fontSize: 13, fontWeight: '700', color: '#001F3F', marginTop: 4 },
+
+    scrollContent: { padding: 24, paddingBottom: 50, justifyContent: 'center', minHeight: '85%' },
+
+    headerText: { marginBottom: 30 },
+    title: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+    subtitle: { fontSize: 16, color: '#94A3B8', marginTop: 6 },
+
+    glassCard: {
+        borderRadius: 24, padding: 24, overflow: 'hidden',
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(15, 23, 42, 0.6)'
+    },
+
+    roleContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.3)', padding: 4, borderRadius: 14, marginBottom: 20 },
+    roleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
+    roleActive: { backgroundColor: 'rgba(255,255,255,0.15)' },
+    roleText: { color: '#94A3B8', fontWeight: '600' },
+    textActive: { color: '#fff', fontWeight: '700' },
+
+    inputGroup: { gap: 12 },
     input: {
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
-        borderRadius: 14,
-        paddingHorizontal: 14,
-        paddingVertical: 13,
-        backgroundColor: '#F5F5F7',
-        fontSize: 15,
-        fontWeight: '400',
-        color: '#0B1222',
+        height: 52, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 12, paddingHorizontal: 16,
+        color: '#fff', fontSize: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)'
     },
-    inputFocused: {
-        borderColor: '#001F3F',
-        shadowColor: '#001F3F',
-        shadowOpacity: 0.08,
-        shadowOffset: { width: 0, height: 6 },
-        shadowRadius: 10,
-        elevation: 3,
+
+    cityList: { backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, padding: 8, marginTop: -8 },
+    cityItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+    cityText: { color: '#E2E8F0' },
+
+    signupBtn: {
+        backgroundColor: '#fff', height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+        marginTop: 24, shadowColor: '#000', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 4 }
     },
-    roleRow: { flexDirection: 'row', gap: 12, marginTop: 10 },
-    identityCard: {
-        flex: 1,
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
-        borderRadius: 18,
-        padding: 14,
-        backgroundColor: '#F8FAFC',
-        gap: 8,
-        shadowColor: 'transparent',
-    },
-    identityActive: {
-        borderColor: '#10B981',
-        backgroundColor: '#ECFDF3',
-        shadowColor: '#10B981',
-        shadowOpacity: 0.25,
-        shadowOffset: { width: 0, height: 14 },
-        shadowRadius: 20,
-        elevation: 5,
-    },
-    identityIconWrap: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
-    identityTitle: { fontWeight: '700', color: '#001F3F', fontSize: 16 },
-    identityMeta: { color: '#4B5563', fontWeight: '400', fontSize: 13 },
-    button: {
-        marginTop: 8,
-        backgroundColor: '#001F3F',
-        borderRadius: 16,
-        paddingVertical: 16,
-        alignItems: 'center',
-        flexDirection: 'row',
-        justifyContent: 'center',
-        gap: 8,
-        shadowColor: '#001F3F',
-        shadowOpacity: 0.3,
-        shadowOffset: { width: 0, height: 12 },
-        shadowRadius: 20,
-        elevation: 5,
-    },
-    buttonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
-    secondary: { paddingVertical: 12, alignItems: 'center' },
-    secondaryText: { color: '#001F3F', fontWeight: '600', fontSize: 14 },
-    error: { color: '#DC2626', marginTop: 10, fontWeight: '700' },
+    signupText: { color: '#0F172A', fontWeight: '800', fontSize: 16 },
+
+    footerLink: { textAlign: 'center', color: '#94A3B8', fontSize: 14 },
 });

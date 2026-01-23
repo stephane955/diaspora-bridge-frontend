@@ -1,59 +1,51 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import NavigationBar from '@/components/NavigationBar';
-import { successFeedback } from '@/utils/haptics';
+import { useAuth } from '@/context/AuthContext';
 
 export default function RequestPayout() {
+    const { projectId } = useLocalSearchParams();
+    const { user } = useAuth();
     const router = useRouter();
     const [amount, setAmount] = useState('');
-    const [category, setCategory] = useState('Materials');
     const [desc, setDesc] = useState('');
 
-    const handleRequest = async () => {
-        // Logic to insert into project_expenses with 'pending' status
-        // and notify the Diaspora Client
-        successFeedback();
-        Alert.alert("Success", "Payout request sent to the client.");
-        router.back();
+    const handleSubmit = async () => {
+        const { error } = await supabase.from('project_expenses').insert({
+            project_id: projectId,
+            provider_id: user?.id,
+            amount: parseInt(amount),
+            description: desc,
+            category: 'Milestone',
+            status: 'pending'
+        });
+
+        if (!error) {
+            Alert.alert("Success", "Request sent to client!");
+            router.back();
+        } else {
+            Alert.alert("Error", "Failed to send request.");
+        }
     };
 
     return (
         <View style={styles.container}>
-            <NavigationBar title="Request Payout" showBack={true} />
-            <View style={styles.form}>
-                <Text style={styles.label}>Amount (CFA)</Text>
-                <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    placeholder="500,000"
-                    value={amount}
-                    onChangeText={setAmount}
-                />
-
-                <Text style={styles.label}>Description</Text>
-                <TextInput
-                    style={[styles.input, { height: 100 }]}
-                    multiline
-                    placeholder="What is this payment for?"
-                    value={desc}
-                    onChangeText={setDesc}
-                />
-
-                <TouchableOpacity style={styles.btn} onPress={handleRequest}>
-                    <Text style={styles.btnText}>Submit for Approval</Text>
-                </TouchableOpacity>
-            </View>
+            <Text style={styles.title}>Request Payment</Text>
+            <Text style={styles.label}>Amount (CFA)</Text>
+            <TextInput style={styles.input} keyboardType="numeric" value={amount} onChangeText={setAmount} placeholder="e.g. 500000" />
+            <Text style={styles.label}>Description</Text>
+            <TextInput style={styles.input} value={desc} onChangeText={setDesc} placeholder="e.g. Foundation completion" />
+            <TouchableOpacity style={styles.btn} onPress={handleSubmit}><Text style={styles.btnText}>Send Request</Text></TouchableOpacity>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
-    form: { padding: 20 },
-    label: { fontWeight: '700', color: '#1E293B', marginBottom: 8, marginTop: 15 },
-    input: { backgroundColor: '#fff', borderRadius: 12, padding: 15, borderWidth: 1, borderColor: '#E2E8F0' },
-    btn: { backgroundColor: '#0F172A', padding: 18, borderRadius: 15, marginTop: 30, alignItems: 'center' },
+    container: { flex: 1, padding: 20, paddingTop: 60, backgroundColor: '#fff' },
+    title: { fontSize: 24, fontWeight: '800', marginBottom: 30 },
+    label: { fontWeight: '700', marginBottom: 8 },
+    input: { borderWidth: 1, borderColor: '#E2E8F0', padding: 16, borderRadius: 12, marginBottom: 20, fontSize: 16 },
+    btn: { backgroundColor: '#0F172A', padding: 18, borderRadius: 14, alignItems: 'center' },
     btnText: { color: '#fff', fontWeight: '700', fontSize: 16 }
 });

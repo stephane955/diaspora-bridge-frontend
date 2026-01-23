@@ -1,238 +1,195 @@
 import React, { useEffect, useState } from 'react';
 import {
-    View, Text, StyleSheet, FlatList, TouchableOpacity, Image,
-    Dimensions, ImageBackground, Platform, ScrollView, Alert
+    View, Text, StyleSheet, TouchableOpacity, ImageBackground, StatusBar, Platform, Dimensions
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-
-import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import Animated, { useSharedValue, useAnimatedStyle, withDelay, withTiming } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLanguage } from '@/context/LanguageContext';
 
 const { width } = Dimensions.get('window');
 
-export default function DiasporaDashboard() {
+// Dropdown Options
+const LANGUAGES = [
+    { code: 'en', flag: '🇺🇸', label: 'English' },
+    { code: 'fr', flag: '🇫🇷', label: 'Français' },
+    { code: 'es', flag: '🇪🇸', label: 'Español' },
+    { code: 'de', flag: '🇩🇪', label: 'Deutsch' },
+    { code: 'it', flag: '🇮🇹', label: 'Italiano' },
+];
+
+export default function LandingScreen() {
     const router = useRouter();
-    const { user } = useAuth();
-    const [projects, setProjects] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { language, setLanguage, t, getFlag } = useLanguage();
+    const [isLangMenuOpen, setLangMenuOpen] = useState(false);
+
+    // Animations
+    const fadeAnim = useSharedValue(0);
+    const slideAnim = useSharedValue(30);
 
     useEffect(() => {
-        const fetchProjects = async () => {
-            if (!user) return;
-            const { data } = await supabase
-                .from('projects')
-                .select('*')
-                .eq('owner_id', user.id)
-                .order('created_at', { ascending: false });
+        fadeAnim.value = withDelay(200, withTiming(1, { duration: 1000 }));
+        slideAnim.value = withDelay(200, withTiming(0, { duration: 800 }));
+    }, []);
 
-            if (data) setProjects(data);
-            setLoading(false);
-        };
+    const animatedStyle = useAnimatedStyle(() => ({
+        opacity: fadeAnim.value,
+        transform: [{ translateY: slideAnim.value }],
+    }));
 
-        fetchProjects();
-
-        const channel = supabase.channel('projects_channel')
-            .on(
-                'postgres_changes' as any, // FIX: Cast to 'any' to solve type error
-                { event: '*', schema: 'public', table: 'projects' },
-                () => { fetchProjects(); }
-            )
-            .subscribe();
-
-        return () => { supabase.removeChannel(channel); };
-    }, [user]);
-
-    // --- LOGOUT LOGIC ---
-    const handleLogout = () => {
-        Alert.alert("Sign Out", "Are you sure you want to log out?", [
-            { text: "Cancel", style: "cancel" },
-            {
-                text: "Log Out",
-                style: "destructive",
-                onPress: async () => {
-                    await supabase.auth.signOut();
-                    router.replace('/');
-                }
-            }
-        ]);
+    const handleSelectLanguage = (code: string) => {
+        setLanguage(code);
+        setLangMenuOpen(false);
     };
-
-    const renderHeader = () => (
-        <View style={styles.headerContainer}>
-            <View style={styles.topRow}>
-                <View>
-                    <Text style={styles.welcomeLabel}>Welcome back,</Text>
-                    <Text style={styles.userName}>{user?.user_metadata?.full_name || 'Client'}</Text>
-                </View>
-
-                {/* LOGOUT BUTTON */}
-                <TouchableOpacity style={styles.profileBtn} onPress={handleLogout}>
-                    <Image
-                        source={{ uri: 'https://i.pravatar.cc/150?u=a042581f4e29026704d' }}
-                        style={styles.profileImg}
-                    />
-                </TouchableOpacity>
-            </View>
-
-            <LinearGradient
-                colors={['#0f172a', '#1e293b']}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                style={styles.portfolioCard}
-            >
-                <View style={[styles.glowBlob, { backgroundColor: '#0EA5E9', top: -50, right: -50 }]} />
-                <View style={[styles.glowBlob, { backgroundColor: '#F97316', bottom: -50, left: -50 }]} />
-
-                <View>
-                    <Text style={styles.cardLabel}>Total Escrow Balance</Text>
-                    <Text style={styles.cardAmount}>2,500,000 CFA</Text>
-                </View>
-
-                <View style={styles.cardFooter}>
-                    <View style={styles.tag}>
-                        <Ionicons name="shield-checkmark" size={12} color="#4ADE80" />
-                        <Text style={styles.tagText}>Secured</Text>
-                    </View>
-                    <Text style={styles.cardDate}>Updated just now</Text>
-                </View>
-            </LinearGradient>
-        </View>
-    );
 
     return (
         <View style={styles.container}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-                {renderHeader()}
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>My Projects</Text>
-                    <TouchableOpacity onPress={() => router.push('/diaspora/new')}>
-                        <Text style={styles.seeAll}>+ New</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {projects.length === 0 ? (
-                    <View style={styles.emptyBox}>
-                        <Text style={styles.emptyText}>No projects yet.</Text>
-                        <Text style={styles.emptySub}>Tap "+ New" to start building.</Text>
-                    </View>
-                ) : (
-                    <FlatList
-                        data={projects}
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        keyExtractor={item => item.id.toString()}
-                        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
-                        // FIX: Logic is now INLINE (No more type errors)
-                        renderItem={({ item }) => (
-                            <TouchableOpacity
-                                activeOpacity={0.9}
-                                style={styles.projectCard}
-                                onPress={() => router.push(`/diaspora/project/${item.id}`)}
-                            >
-                                <ImageBackground
-                                    source={{ uri: item.image_url || 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?q=80&w=1000&auto=format&fit=crop' }}
-                                    style={styles.projectImage}
-                                    imageStyle={{ borderRadius: 20 }}
-                                >
-                                    <LinearGradient
-                                        colors={['transparent', 'rgba(0,0,0,0.8)']}
-                                        style={styles.cardOverlay}
-                                    >
-                                        <View style={styles.statusPill}>
-                                            <View style={styles.activeDot} />
-                                            <Text style={styles.statusText}>{item.status || 'Active'}</Text>
-                                        </View>
-
-                                        <View>
-                                            <Text style={styles.projectTitle}>{item.title}</Text>
-                                            <Text style={styles.projectLoc}>{item.city}</Text>
-                                        </View>
-                                    </LinearGradient>
-                                </ImageBackground>
-                            </TouchableOpacity>
-                        )}
-                    />
-                )}
-
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Recent Activity</Text>
-                </View>
-
-                <View style={styles.feedItem}>
-                    <View style={styles.feedIcon}>
-                        <Ionicons name="notifications" size={16} color="#0EA5E9" />
-                    </View>
-                    <View>
-                        <Text style={styles.feedText}>System connected securely.</Text>
-                        <Text style={styles.feedTime}>Just now</Text>
-                    </View>
-                </View>
-            </ScrollView>
-
-            <TouchableOpacity
-                style={styles.fab}
-                activeOpacity={0.8}
-                onPress={() => router.push('/diaspora/new')}
+            <ImageBackground
+                source={{ uri: 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?q=80&w=2940&auto=format&fit=crop' }}
+                style={styles.bg}
+                resizeMode="cover"
             >
                 <LinearGradient
-                    colors={['#0EA5E9', '#2563EB']}
-                    style={styles.fabGradient}
+                    colors={['rgba(15,23,42,0.3)', 'rgba(15,23,42,0.85)', '#0F172A']}
+                    style={styles.gradient}
                 >
-                    <Ionicons name="add" size={32} color="#fff" />
+                    <SafeAreaView style={styles.safeArea}>
+
+                        {/* --- HEADER --- */}
+                        <View style={styles.header}>
+                            {/* Logo */}
+                            <BlurView intensity={20} tint="light" style={styles.logoBadge}>
+                                <Ionicons name="business" size={20} color="#38BDF8" />
+                                <Text style={styles.brandText}>{t('brandName')}</Text>
+                            </BlurView>
+
+                            {/* Language Dropdown */}
+                            <View style={{ zIndex: 50 }}>
+                                <TouchableOpacity
+                                    style={styles.langBtn}
+                                    onPress={() => setLangMenuOpen(!isLangMenuOpen)}
+                                    activeOpacity={0.8}
+                                >
+                                    <Text style={styles.flag}>{getFlag()}</Text>
+                                    <Ionicons name="chevron-down" size={12} color="#fff" />
+                                </TouchableOpacity>
+
+                                {isLangMenuOpen && (
+                                    <View style={styles.dropdownMenu}>
+                                        <BlurView intensity={90} tint="dark" style={styles.menuBlur}>
+                                            {LANGUAGES.map((lang, index) => (
+                                                <TouchableOpacity
+                                                    key={lang.code}
+                                                    style={[styles.menuItem, index !== LANGUAGES.length - 1 && styles.menuDivider]}
+                                                    onPress={() => handleSelectLanguage(lang.code)}
+                                                >
+                                                    <Text style={{fontSize:16}}>{lang.flag}</Text>
+                                                    <Text style={[styles.menuText, language === lang.code && styles.menuTextActive]}>
+                                                        {lang.code.toUpperCase()}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </BlurView>
+                                    </View>
+                                )}
+                            </View>
+                        </View>
+
+                        {/* --- MAIN CONTENT --- */}
+                        <Animated.View style={[styles.content, animatedStyle]}>
+
+                            <View style={styles.heroText}>
+                                <Text style={styles.headline}>{t('headline')}</Text>
+                                <View style={styles.divider} />
+                                <Text style={styles.subhead}>{t('subhead')}</Text>
+                            </View>
+
+                            {/* Trust Badges */}
+                            <View style={styles.badges}>
+                                <View style={styles.badge}>
+                                    <Ionicons name="shield-checkmark" size={14} color="#4ADE80" />
+                                    <Text style={styles.badgeText}>{t('secure')}</Text>
+                                </View>
+                                <View style={styles.badge}>
+                                    <Ionicons name="globe" size={14} color="#38BDF8" />
+                                    <Text style={styles.badgeText}>Global</Text>
+                                </View>
+                            </View>
+
+                            {/* Buttons */}
+                            <View style={styles.buttons}>
+                                <TouchableOpacity
+                                    style={styles.primaryBtn}
+                                    onPress={() => router.push('/login')}
+                                    activeOpacity={0.9}
+                                >
+                                    <Text style={styles.primaryText}>{t('enterDashboard')}</Text>
+                                    <View style={styles.arrowCircle}>
+                                        <Ionicons name="arrow-forward" size={18} color="#0F172A" />
+                                    </View>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.secondaryBtn}
+                                    onPress={() => router.push('/signup')}
+                                >
+                                    <Text style={styles.secondaryText}>{t('createAccount')}</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            <Text style={styles.footerText}>{t('securedBy')}</Text>
+
+                        </Animated.View>
+
+                    </SafeAreaView>
                 </LinearGradient>
-            </TouchableOpacity>
+            </ImageBackground>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#F8FAFC',
-        ...(Platform.OS === 'web' ? {
-            alignSelf: 'center',
-            width: '100%',
-            maxWidth: 600,
-            borderLeftWidth: 1,
-            borderRightWidth: 1,
-            borderColor: '#E2E8F0',
-            minHeight: '100vh',
-        } : {})
-    },
-    headerContainer: { padding: 20, paddingTop: 60, backgroundColor: '#fff', borderBottomLeftRadius: 30, borderBottomRightRadius: 30, shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.05, shadowRadius: 20, elevation: 5 },
-    topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-    welcomeLabel: { fontSize: 14, color: '#64748B', fontWeight: '500' },
-    userName: { fontSize: 24, color: '#0F172A', fontWeight: '800' },
-    profileBtn: { padding: 2, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 25 },
-    profileImg: { width: 44, height: 44, borderRadius: 22 },
-    portfolioCard: { width: '100%', height: 180, borderRadius: 24, padding: 24, justifyContent: 'space-between', overflow: 'hidden', position: 'relative' },
-    glowBlob: { position: 'absolute', width: 120, height: 120, borderRadius: 60, opacity: 0.4 },
-    cardLabel: { color: '#94A3B8', fontSize: 14, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
-    cardAmount: { color: '#fff', fontSize: 32, fontWeight: '800', marginTop: 4 },
-    cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    tag: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(74, 222, 128, 0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, gap: 4 },
-    tagText: { color: '#4ADE80', fontSize: 12, fontWeight: '700' },
-    cardDate: { color: '#64748B', fontSize: 12 },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 16, paddingHorizontal: 20 },
-    sectionTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-    seeAll: { color: '#0EA5E9', fontWeight: '600', fontSize: 14 },
-    projectCard: { width: 280, height: 180, marginRight: 16, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
-    projectImage: { width: '100%', height: '100%', justifyContent: 'flex-end' },
-    cardOverlay: { height: '100%', justifyContent: 'space-between', padding: 16, borderRadius: 20 },
-    statusPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, backdropFilter: 'blur(10px)' },
-    activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#4ADE80', marginRight: 6 },
-    statusText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-    projectTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
-    projectLoc: { color: '#CBD5E1', fontSize: 13 },
-    emptyBox: { padding: 20, alignItems: 'center', backgroundColor: '#fff', marginHorizontal: 20, borderRadius: 16 },
-    emptyText: { fontWeight: '700', color: '#94A3B8' },
-    emptySub: { fontSize: 12, color: '#94A3B8' },
-    feedItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, marginHorizontal: 20, borderRadius: 16, marginBottom: 10 },
-    feedIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F0F9FF', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-    feedText: { color: '#334155', fontSize: 14, fontWeight: '500' },
-    feedTime: { color: '#94A3B8', fontSize: 12 },
-    fab: { position: 'absolute', bottom: 30, right: 20, shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 8 },
-    fabGradient: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+    container: { flex: 1, backgroundColor: '#0F172A' },
+    bg: { flex: 1, width: '100%', height: '100%' },
+    gradient: { flex: 1 },
+    safeArea: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 24, paddingBottom: 30 },
+
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, zIndex: 100 },
+    logoBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.1)' },
+    brandText: { color: '#fff', fontWeight: '800', fontSize: 12, letterSpacing: 0.5 },
+
+    langBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+    flag: { fontSize: 18 },
+
+    dropdownMenu: { position: 'absolute', top: 45, right: 0, width: 90, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
+    menuBlur: { paddingVertical: 4 },
+    menuItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12 },
+    menuDivider: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
+    menuText: { color: '#94A3B8', fontWeight: '600', fontSize: 13 },
+    menuTextActive: { color: '#fff', fontWeight: '800' },
+
+    content: { gap: 24, zIndex: 1 },
+    heroText: { gap: 12 },
+    headline: { fontSize: 38, fontWeight: '800', color: '#fff', lineHeight: 44, letterSpacing: -0.5 },
+    divider: { width: 40, height: 4, backgroundColor: '#0EA5E9', borderRadius: 2 },
+    subhead: { fontSize: 17, color: '#CBD5E1', lineHeight: 26, maxWidth: '95%' },
+
+    badges: { flexDirection: 'row', gap: 10 },
+    badge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+    badgeText: { color: '#E2E8F0', fontWeight: '600', fontSize: 12 },
+
+    buttons: { gap: 14, marginTop: 10 },
+    primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', paddingVertical: 10, paddingHorizontal: 10, paddingLeft: 20, borderRadius: 40 },
+    primaryText: { color: '#0F172A', fontWeight: '800', fontSize: 16 },
+    arrowCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+
+    secondaryBtn: { alignItems: 'center', paddingVertical: 18, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', backgroundColor: 'rgba(255,255,255,0.05)' },
+    secondaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+
+    footerText: { textAlign: 'center', color: '#64748B', fontSize: 12, fontWeight: '500', marginTop: 10 }
 });

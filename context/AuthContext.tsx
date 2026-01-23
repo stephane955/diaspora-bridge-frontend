@@ -8,8 +8,10 @@ type AuthContextType = {
     user: User | null;
     session: Session | null;
     isAuthenticated: boolean;
+    loading: boolean;
     login: () => void;
     logout: () => Promise<void>; // Changed to Promise
+    signOut: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,14 +23,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const router = useRouter();
 
     useEffect(() => {
-        // 1. Check active session on startup
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
             setUser(session?.user ?? null);
             setLoading(false);
         });
 
-        // 2. Listen for changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             console.log("Auth Event:", event); // Debugging
             setSession(session);
@@ -67,7 +67,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, session, isAuthenticated: !!user, login, logout }}>
+        <AuthContext.Provider value={{ user, session, isAuthenticated: !!user, loading, login, logout, signOut: logout }}>
             {!loading && children}
         </AuthContext.Provider>
     );
