@@ -1,101 +1,205 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import {
+    View, Text, StyleSheet, TouchableOpacity, ImageBackground,
+    FlatList, ActivityIndicator, RefreshControl, StatusBar
+} from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 
 export default function MyProjectsScreen() {
     const router = useRouter();
+    const { user } = useAuth();
+    const { t } = useLanguage();
+
+    const [projects, setProjects] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+
+    // Fetch Real Data
+    const fetchProjects = useCallback(async () => {
+        if (!user) return;
+        try {
+            const { data, error } = await supabase
+                .from('projects')
+                .select('*, provider:profiles!assigned_provider_id(full_name)')
+                .eq('owner_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (!error && data) setProjects(data);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, [user]);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchProjects();
+        }, [fetchProjects])
+    );
+
+    // --- RENDER ITEM (The "State of the Art" Card) ---
+    const renderProjectCard = ({ item }: { item: any }) => {
+        const isActive = item.status === 'in_progress';
+        const hasProvider = !!item.provider;
+
+        return (
+            <TouchableOpacity
+                style={styles.cardContainer}
+                activeOpacity={0.9}
+                onPress={() => router.push(`/diaspora/project/${item.id}`)}
+            >
+                <ImageBackground
+                    source={{ uri: item.image_url || 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&q=80' }}
+                    style={styles.cardImage}
+                    imageStyle={{ borderRadius: 24 }}
+                >
+                    <LinearGradient
+                        colors={['rgba(0,0,0,0.1)', 'rgba(15, 23, 42, 0.9)']}
+                        style={styles.cardOverlay}
+                    >
+                        {/* Header: Status Badge */}
+                        <View style={styles.cardHeader}>
+                            <BlurView intensity={20} tint="light" style={styles.statusBadge}>
+                                <View style={[styles.statusDot, { backgroundColor: isActive ? '#4ADE80' : '#F59E0B' }]} />
+                                <Text style={styles.statusText}>
+                                    {isActive ? "ACTIVE SITE" : "PENDING PROVIDER"}
+                                </Text>
+                            </BlurView>
+                        </View>
+
+                        {/* Footer: Info */}
+                        <View style={styles.cardFooter}>
+                            <Text style={styles.projectTitle} numberOfLines={1}>{item.title}</Text>
+
+                            <View style={styles.locationRow}>
+                                <Ionicons name="location" size={14} color="#CBD5E1" />
+                                <Text style={styles.locationText}>{item.city}</Text>
+                            </View>
+
+                            <View style={styles.divider} />
+
+                            <View style={styles.metaRow}>
+                                <View>
+                                    <Text style={styles.metaLabel}>{t('project.budget')}</Text>
+                                    <Text style={styles.metaValue}>{item.budget?.toLocaleString()} CFA</Text>
+                                </View>
+                                <View style={{ alignItems: 'flex-end' }}>
+                                    <Text style={styles.metaLabel}>Provider</Text>
+                                    <Text style={styles.metaValue}>
+                                        {hasProvider ? item.provider.full_name : "Searching..."}
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+                    </LinearGradient>
+                </ImageBackground>
+            </TouchableOpacity>
+        );
+    };
 
     return (
         <View style={styles.container}>
-            {/* HEADER */}
+            <StatusBar barStyle="dark-content" />
+
+            {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={24} color="#000" />
+                    <Ionicons name="arrow-back" size={24} color="#0F172A" />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>My Projects</Text>
-                <View style={{ width: 40 }} /> {/* Spacer for balance */}
+                <Text style={styles.headerTitle}>{t('tabHome') || "My Projects"}</Text>
+                <View style={{ width: 44 }} />
             </View>
 
-            <ScrollView contentContainerStyle={styles.content}>
+            {loading ? (
+                <View style={styles.center}><ActivityIndicator size="large" color="#0EA5E9" /></View>
+            ) : (
+                <FlatList
+                    data={projects}
+                    keyExtractor={(item) => item.id}
+                    renderItem={renderProjectCard}
+                    contentContainerStyle={styles.listContent}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchProjects(); }} />}
 
-                {/* PROJECT CARD 1 */}
-                <TouchableOpacity
-                    style={styles.card}
-                    activeOpacity={0.9}
-                    onPress={() => router.push('/diaspora/timeline')}
-                >
-                    <View style={styles.cardHeader}>
-                        <View style={styles.statusBadge}>
-                            <Text style={styles.statusText}>IN PROGRESS</Text>
+                    ListHeaderComponent={
+                        <TouchableOpacity
+                            style={styles.createBtn}
+                            onPress={() => router.push('/diaspora/new')}
+                            activeOpacity={0.8}
+                        >
+                            <LinearGradient
+                                colors={['#F0F9FF', '#E0F2FE']}
+                                style={styles.createGradient}
+                            >
+                                <View style={styles.createIcon}>
+                                    <Ionicons name="add" size={28} color="#0284C7" />
+                                </View>
+                                <View>
+                                    <Text style={styles.createTitle}>{t('tabPostJob')}</Text>
+                                    <Text style={styles.createSub}>Find a new provider for your next job</Text>
+                                </View>
+                            </LinearGradient>
+                        </TouchableOpacity>
+                    }
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <Ionicons name="folder-open-outline" size={48} color="#CBD5E1" />
+                            <Text style={styles.emptyText}>{t('clientDashboard.noProjects')}</Text>
                         </View>
-                        <Ionicons name="ellipsis-horizontal" size={20} color="#999" />
-                    </View>
-
-                    <View style={styles.projectInfo}>
-                        <View style={styles.iconBox}>
-                            <Ionicons name="home" size={24} color="#007AFF" />
-                        </View>
-                        <View>
-                            <Text style={styles.projectTitle}>Duplex Foundation</Text>
-                            <Text style={styles.projectLocation}>Bonapriso, Douala</Text>
-                        </View>
-                    </View>
-
-                    <View style={styles.divider} />
-
-                    <View style={styles.cardFooter}>
-                        <View style={styles.footerItem}>
-                            <Text style={styles.label}>Provider</Text>
-                            <Text style={styles.value}>Stephane M.</Text>
-                        </View>
-                        <View style={styles.footerItem}>
-                            <Text style={styles.label}>Next Milestone</Text>
-                            <Text style={styles.value}>Pouring Concrete</Text>
-                        </View>
-                    </View>
-                </TouchableOpacity>
-
-                {/* ADD NEW PROJECT BUTTON (Visual only for now) */}
-                <TouchableOpacity style={styles.addBtn}>
-                    <Ionicons name="add" size={24} color="#ccc" />
-                    <Text style={styles.addText}>Start New Project</Text>
-                </TouchableOpacity>
-
-            </ScrollView>
+                    }
+                />
+            )}
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f8f9fa' },
+    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
     // Header
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 60, paddingHorizontal: 20, paddingBottom: 20, backgroundColor: '#fff' },
-    backBtn: { padding: 8, backgroundColor: '#f0f0f0', borderRadius: 20 },
-    headerTitle: { fontSize: 20, fontWeight: 'bold' },
+    backBtn: { width: 44, height: 44, backgroundColor: '#F1F5F9', borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
 
-    content: { padding: 20 },
+    listContent: { padding: 20, paddingBottom: 100 },
 
-    // Card Styles
-    card: { backgroundColor: '#fff', borderRadius: 20, padding: 20, marginBottom: 20, shadowColor: "#000", shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
+    // Create Button (Modern Dashed Look replaced with Soft Gradient Card)
+    createBtn: { marginBottom: 24, shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 2 },
+    createGradient: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 20, gap: 16, borderWidth: 1, borderColor: '#BAE6FD' },
+    createIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+    createTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+    createSub: { fontSize: 13, color: '#64748B' },
 
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
-    statusBadge: { backgroundColor: '#E3F2FD', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-    statusText: { color: '#007AFF', fontSize: 10, fontWeight: 'bold' },
+    // Project Card
+    cardContainer: { height: 260, marginBottom: 20, borderRadius: 24, shadowColor: "#0F172A", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 8, backgroundColor: '#fff' },
+    cardImage: { width: '100%', height: '100%' },
+    cardOverlay: { flex: 1, borderRadius: 24, padding: 20, justifyContent: 'space-between' },
 
-    projectInfo: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-    iconBox: { width: 50, height: 50, borderRadius: 12, backgroundColor: '#F5F5F7', alignItems: 'center', justifyContent: 'center', marginRight: 15 },
-    projectTitle: { fontSize: 18, fontWeight: 'bold', color: '#000' },
-    projectLocation: { fontSize: 14, color: '#666', marginTop: 2 },
+    cardHeader: { flexDirection: 'row', justifyContent: 'flex-end' },
+    statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 6, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.2)' },
+    statusDot: { width: 8, height: 8, borderRadius: 4 },
+    statusText: { fontSize: 11, fontWeight: '800', color: '#fff' },
 
-    divider: { height: 1, backgroundColor: '#f0f0f0', marginBottom: 15 },
+    cardFooter: { gap: 4 },
+    projectTitle: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+    locationText: { color: '#E2E8F0', fontSize: 14, fontWeight: '600' },
 
-    cardFooter: { flexDirection: 'row', justifyContent: 'space-between' },
-    footerItem: {},
-    label: { fontSize: 11, color: '#999', marginBottom: 4 },
-    value: { fontSize: 14, fontWeight: '600', color: '#333' },
+    divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginBottom: 12 },
 
-    // Add Button
-    addBtn: { borderWidth: 1, borderColor: '#e0e0e0', borderStyle: 'dashed', borderRadius: 20, height: 80, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 },
-    addText: { color: '#999', fontWeight: '600' }
+    metaRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    metaLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 },
+    metaValue: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+    emptyContainer: { alignItems: 'center', marginTop: 40, gap: 10 },
+    emptyText: { color: '#94A3B8', fontSize: 16 }
 });

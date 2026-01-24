@@ -24,44 +24,31 @@ export default function GlassNavigation() {
 
     return (
         <View style={styles.container}>
-            <BlurView intensity={80} tint="light" style={styles.glass}>
+            {/* tint="light" ensures it looks white/bright, not gray */}
+            <BlurView intensity={100} tint="light" style={styles.glass}>
 
+                {/* Home */}
                 <TouchableOpacity onPress={() => handlePress('/diaspora')} style={styles.tab}>
                     <Ionicons
                         name={pathname === '/diaspora' ? "home" : "home-outline"}
-                        size={24}
+                        size={26}
                         color={pathname === '/diaspora' ? "#0EA5E9" : "#64748B"}
                     />
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={() => handlePress('/wallet')} style={styles.tab}>
-                    <Ionicons
-                        name={pathname.includes('wallet') ? "wallet" : "wallet-outline"}
-                        size={24}
-                        color={pathname.includes('wallet') ? theme.colors.active : theme.colors.textMuted}
-                    />
-                </TouchableOpacity>
-
+                {/* Post Job (Center Button) */}
                 <View style={styles.actionWrapper}>
-                    <TouchableOpacity style={styles.actionBtn} onPress={handleMainAction}>
-                        <Ionicons name="add" size={32} color="#fff" />
+                    <TouchableOpacity onPress={handleMainAction} style={styles.actionBtn}>
+                        <Ionicons name="add" size={30} color="#fff" />
                     </TouchableOpacity>
                 </View>
 
-                {/* FIXED: Points to Inbox */}
-                <TouchableOpacity onPress={() => handlePress('/diaspora/inbox')} style={styles.tab}>
-                    <Ionicons
-                        name={pathname.includes('inbox') ? "chatbubble" : "chatbubble-outline"}
-                        size={24}
-                        color={pathname.includes('inbox') ? theme.colors.active : theme.colors.textMuted}
-                    />
-                </TouchableOpacity>
-
+                {/* Profile */}
                 <TouchableOpacity onPress={() => handlePress('/diaspora/profile')} style={styles.tab}>
                     <Ionicons
                         name={pathname.includes('profile') ? "person" : "person-outline"}
-                        size={24}
-                        color={pathname.includes('profile') ? theme.colors.active : theme.colors.textMuted}
+                        size={26}
+                        color={pathname.includes('profile') ? "#0EA5E9" : "#64748B"}
                     />
                 </TouchableOpacity>
 
@@ -71,20 +58,52 @@ export default function GlassNavigation() {
 }
 
 const styles = StyleSheet.create({
-    container: { position: 'absolute', bottom: 30, left: 20, right: 20, alignItems: 'center' },
-    glass: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        width: '100%',
-        height: 70,
-        borderRadius: 35,
-        paddingHorizontal: 10,
-        overflow: 'visible',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.5)'
+    container: {
+        position: 'absolute',
+        bottom: 0, // SIT ON BOTTOM
+        left: 0,
+        right: 0,
     },
-    tab: { flex: 1, height: '100%', justifyContent: 'center', alignItems: 'center' },
-    actionWrapper: { width: 60, height: 0, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
-    actionBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.primary, justifyContent: 'center', alignItems: 'center', top: -25, elevation: 10 }
+    glass: {
+        width: '100%',
+        height: 85, // Taller to handle safe area
+        flexDirection: 'row',
+        justifyContent: 'space-around', // Spread items evenly
+        alignItems: 'center',
+        paddingBottom: 20, // Push content up so it's not hidden by home indicator
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.8)',
+        backgroundColor: 'rgba(255,255,255,0.85)', // Whiter background
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        elevation: 10,
+    },
+    tab: {
+        flex: 1,
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    actionWrapper: {
+        width: 60,
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 20, // Float the button slightly above the bar
+    },
+    actionBtn: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: '#0F172A',
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#0EA5E9',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 10,
+        elevation: 8,
+    },
 });

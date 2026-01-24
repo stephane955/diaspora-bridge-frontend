@@ -1,160 +1,279 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, RefreshControl } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useCallback } from 'react';
+import {
+    View, Text, StyleSheet, ScrollView, TouchableOpacity,
+    RefreshControl, ActivityIndicator, StatusBar, Alert, Modal, Image
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient'; //
-import { supabase } from '@/lib/supabase'; //
-import { useAuth } from '@/context/AuthContext'; //
+import { useFocusEffect } from 'expo-router';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
 
-export default function EarningsScreen() {
-    const router = useRouter();
+// Define Transaction Type
+type Transaction = {
+    id: string;
+    amount: number;
+    description: string;
+    created_at: string;
+    type: 'deposit' | 'withdrawal' | 'escrow_release';
+    projects?: { title: string } | null; // Join result might be null
+};
+
+export default function ProviderEarningsScreen() {
     const { user } = useAuth();
+
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [balance, setBalance] = useState(0);
-    const [history, setHistory] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [showWithdrawModal, setShowWithdrawModal] = useState(false);
 
-    const fetchData = async () => {
+    // --- FETCH DATA ---
+    const fetchEarnings = useCallback(async () => {
         if (!user) return;
-        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('*, projects(title)')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
 
-        // 1. Calculate TOTAL EARNINGS (Approved project expenses)
-        const { data: income } = await supabase
-            .from('project_expenses')
-            .select('*')
-            .eq('provider_id', user.id)
-            .eq('status', 'approved')
-            .order('created_at', { ascending: false });
+            if (error) {
+                console.error("Error fetching transactions:", error.message);
+                return;
+            }
 
-        // 2. Calculate TOTAL WITHDRAWALS
-        const { data: payouts } = await supabase
-            .from('withdrawals')
-            .select('*')
-            .eq('provider_id', user.id)
-            .order('created_at', { ascending: false });
+            if (data) {
+                // Cast data to Transaction type if needed, or rely on inference
+                setTransactions(data as any);
 
-        const totalIncome = income?.reduce((sum, item) => sum + item.amount, 0) || 0;
-        const totalWithdrawn = payouts?.reduce((sum, item) => sum + item.amount, 0) || 0;
+                // Calculate Balance
+                const total = data.reduce((acc, curr) => acc + Number(curr.amount), 0);
+                setBalance(total);
+            }
+        } catch (err) {
+            console.error("Unexpected error:", err);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, [user]);
 
-        // Current Wallet Balance
-        setBalance(totalIncome - totalWithdrawn);
+    // Fixed: Properly handle async call inside useFocusEffect
+    useFocusEffect(
+        useCallback(() => {
+            fetchEarnings();
+        }, [fetchEarnings])
+    );
 
-        // 3. Merge Lists for History
-        const incomeList = income?.map(i => ({ ...i, type: 'credit' })) || [];
-        const payoutList = payouts?.map(p => ({ ...p, type: 'debit' })) || [];
-
-        // Combine and Sort by Date
-        const combined = [...incomeList, ...payoutList].sort(
-            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-
-        setHistory(combined);
-        setLoading(false);
-    };
-
-    useEffect(() => { fetchData(); }, [user]);
-
-    const handleWithdraw = () => {
+    // --- ACTIONS ---
+    const handleWithdraw = async () => {
         if (balance <= 0) {
-            Alert.alert("Low Balance", "You have no funds available to withdraw.");
+            Alert.alert("Error", "Insufficient funds.");
             return;
         }
-        router.push('/provider/withdraw');
+
+        Alert.alert(
+            "Request Payout",
+            `Withdraw ${balance.toLocaleString()} CFA to your registered Mobile Money account?`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Confirm",
+                    onPress: async () => {
+                        try {
+                            const { error } = await supabase.from('transactions').insert({
+                                user_id: user?.id,
+                                amount: -balance,
+                                type: 'withdrawal',
+                                description: 'Payout to Mobile Money',
+                                status: 'pending'
+                            });
+
+                            if (error) {
+                                Alert.alert("Error", error.message);
+                            } else {
+                                Alert.alert("Success", "Payout request initiated. Funds will arrive in 24h.");
+                                setShowWithdrawModal(false);
+                                fetchEarnings();
+                            }
+                        } catch (e: any) {
+                            Alert.alert("Error", e.message || "Transaction failed");
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     return (
         <View style={styles.container}>
-            {/* Header Card */}
-            <LinearGradient colors={['#0F172A', '#1E293B']} style={styles.header}>
-                <View style={styles.navRow}>
-                    <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                        <Ionicons name="arrow-back" size={24} color="#fff" />
+            <StatusBar barStyle="light-content" />
+
+            {/* --- HEADER --- */}
+            <LinearGradient colors={['#0F172A', '#334155']} style={styles.header}>
+                <Text style={styles.headerTitle}>My Earnings</Text>
+
+                <View style={styles.balanceRow}>
+                    <View>
+                        <Text style={styles.balanceLabel}>TOTAL BALANCE</Text>
+                        <Text style={styles.balanceValue}>{balance.toLocaleString()} CFA</Text>
+                    </View>
+                    <TouchableOpacity style={styles.withdrawBtn} onPress={() => setShowWithdrawModal(true)}>
+                        <Text style={styles.withdrawText}>Withdraw</Text>
+                        <Ionicons name="arrow-forward" size={16} color="#0F172A" />
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>My Wallet</Text>
-                    <View style={{ width: 24 }} />
                 </View>
 
-                <View style={styles.balanceContainer}>
-                    <Text style={styles.balanceLabel}>Available Balance</Text>
-                    <Text style={styles.balanceAmount}>{balance.toLocaleString()} CFA</Text>
+                {/* Monthly Chart Visual */}
+                <View style={styles.chartContainer}>
+                    {[40, 70, 30, 80, 50, 90, 60].map((h, i) => (
+                        <View key={i} style={styles.chartBarWrapper}>
+                            <View style={[styles.chartBar, { height: `${h}%`, opacity: i === 6 ? 1 : 0.5 }]} />
+                        </View>
+                    ))}
                 </View>
-
-                <TouchableOpacity style={styles.withdrawBtn} onPress={handleWithdraw}>
-                    <Text style={styles.withdrawText}>Withdraw Funds</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#0F172A" />
-                </TouchableOpacity>
             </LinearGradient>
 
-            <View style={styles.historySection}>
-                <Text style={styles.historyTitle}>Transaction History</Text>
+            {/* --- BODY --- */}
+            <View style={styles.body}>
+                <Text style={styles.sectionTitle}>Transaction History</Text>
+
+                {loading ? (
+                    <ActivityIndicator color="#0F172A" style={{ marginTop: 20 }} />
+                ) : (
+                    <ScrollView
+                        showsVerticalScrollIndicator={false}
+                        contentContainerStyle={{ paddingBottom: 100 }}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchEarnings(); }} />}
+                    >
+                        {transactions.length === 0 ? (
+                            <View style={styles.emptyState}>
+                                <Ionicons name="wallet-outline" size={48} color="#CBD5E1" />
+                                <Text style={styles.emptyText}>No earnings yet.</Text>
+                                <Text style={styles.emptySub}>Complete jobs to get paid.</Text>
+                            </View>
+                        ) : (
+                            transactions.map((t) => {
+                                const isIncome = t.amount > 0;
+                                return (
+                                    <View key={t.id} style={styles.card}>
+                                        <View style={[styles.iconBox, isIncome ? styles.bgGreen : styles.bgRed]}>
+                                            <Ionicons
+                                                name={isIncome ? "arrow-down" : "arrow-up"}
+                                                size={20}
+                                                color={isIncome ? "#16A34A" : "#EF4444"}
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.cardTitle}>
+                                                {t.projects?.title || t.description || "Transaction"}
+                                            </Text>
+                                            <Text style={styles.cardDate}>
+                                                {new Date(t.created_at).toLocaleDateString()}
+                                            </Text>
+                                        </View>
+                                        <Text style={[styles.amount, isIncome ? styles.textGreen : styles.textRed]}>
+                                            {isIncome ? "+" : ""}{Number(t.amount).toLocaleString()}
+                                        </Text>
+                                    </View>
+                                );
+                            })
+                        )}
+                    </ScrollView>
+                )}
             </View>
 
-            <FlatList
-                data={history}
-                keyExtractor={(item) => item.id.toString() + item.type}
-                contentContainerStyle={styles.listContent}
-                refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchData} />}
-                ListEmptyComponent={
-                    <View style={styles.emptyBox}>
-                        <Text style={styles.emptyText}>No transactions yet.</Text>
-                    </View>
-                }
-                renderItem={({ item }) => (
-                    <View style={styles.txnItem}>
-                        <View style={[styles.iconBox, item.type === 'debit' ? styles.debitIcon : styles.creditIcon]}>
-                            <Ionicons
-                                name={item.type === 'debit' ? "arrow-up" : "arrow-down"}
-                                size={18}
-                                color={item.type === 'debit' ? "#EF4444" : "#16A34A"}
+            {/* --- WITHDRAW MODAL --- */}
+            <Modal visible={showWithdrawModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Select Payout Method</Text>
+
+                        <TouchableOpacity style={styles.payoutOption} onPress={handleWithdraw}>
+                            <Image
+                                source={{ uri: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Orange_Money_logo_2016.svg/1200px-Orange_Money_logo_2016.svg.png' }}
+                                style={styles.payoutIcon}
+                                resizeMode="contain"
                             />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.txnTitle}>
-                                {item.type === 'debit' ? 'Payout Request' : (item.description || 'Project Payment')}
-                            </Text>
-                            <Text style={styles.txnDate}>
-                                {new Date(item.created_at).toLocaleDateString()}
-                            </Text>
-                        </View>
-                        <Text style={[styles.txnAmount, item.type === 'debit' ? styles.debitText : styles.creditText]}>
-                            {item.type === 'debit' ? '-' : '+'}{item.amount.toLocaleString()}
-                        </Text>
+                            <View>
+                                <Text style={styles.payoutName}>Orange Money</Text>
+                                <Text style={styles.payoutSub}>Instant Transfer</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.payoutOption} onPress={handleWithdraw}>
+                            <Image
+                                source={{ uri: 'https://upload.wikimedia.org/wikipedia/commons/9/93/MTN_Logo.svg' }}
+                                style={styles.payoutIcon}
+                                resizeMode="contain"
+                            />
+                            <View>
+                                <Text style={styles.payoutName}>MTN Mobile Money</Text>
+                                <Text style={styles.payoutSub}>Instant Transfer</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowWithdrawModal(false)}>
+                            <Text style={styles.cancelText}>Cancel</Text>
+                        </TouchableOpacity>
                     </View>
-                )}
-            />
+                </View>
+            </Modal>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
-    header: { padding: 24, paddingTop: 60, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
-    navRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
-    headerTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
-    backBtn: { padding: 8, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12 },
 
-    balanceContainer: { alignItems: 'center', marginBottom: 30 },
-    balanceLabel: { color: '#94A3B8', fontSize: 14, fontWeight: '600', textTransform: 'uppercase' },
-    balanceAmount: { color: '#fff', fontSize: 40, fontWeight: '800', marginTop: 8 },
+    // Header
+    header: { paddingTop: 70, paddingBottom: 30, paddingHorizontal: 24, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 },
+    headerTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 24, textAlign: 'center' },
 
-    withdrawBtn: { backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 16, gap: 10 },
-    withdrawText: { color: '#0F172A', fontWeight: '800', fontSize: 16 },
+    balanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 30 },
+    balanceLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 4 },
+    balanceValue: { color: '#fff', fontSize: 32, fontWeight: '800' },
 
-    historySection: { padding: 20, paddingBottom: 10 },
-    historyTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+    withdrawBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
+    withdrawText: { color: '#0F172A', fontWeight: '700', fontSize: 14 },
 
-    listContent: { paddingHorizontal: 20 },
-    txnItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 12 },
-    iconBox: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-    creditIcon: { backgroundColor: '#DCFCE7' },
-    debitIcon: { backgroundColor: '#FEE2E2' },
+    // Chart
+    chartContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 60, paddingHorizontal: 10 },
+    chartBarWrapper: { height: '100%', justifyContent: 'flex-end', width: 8 },
+    chartBar: { width: '100%', backgroundColor: '#fff', borderRadius: 4 },
 
-    txnTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-    txnDate: { color: '#64748B', fontSize: 12, marginTop: 2 },
+    // Body
+    body: { flex: 1, padding: 24 },
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
 
-    txnAmount: { fontSize: 16, fontWeight: '700' },
-    creditText: { color: '#16A34A' },
-    debitText: { color: '#EF4444' },
+    card: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 12, gap: 16, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 8 },
+    iconBox: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+    bgGreen: { backgroundColor: '#DCFCE7' },
+    bgRed: { backgroundColor: '#FEF2F2' },
 
-    emptyBox: { alignItems: 'center', marginTop: 40 },
-    emptyText: { color: '#94A3B8' }
+    cardTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+    cardDate: { fontSize: 12, color: '#64748B', marginTop: 2 },
+    amount: { fontSize: 16, fontWeight: '700' },
+    textGreen: { color: '#16A34A' },
+    textRed: { color: '#EF4444' },
+
+    emptyState: { alignItems: 'center', marginTop: 60, gap: 10 },
+    emptyText: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
+    emptySub: { color: '#64748B' },
+
+    // Modal
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
+    modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+    modalTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 24, textAlign: 'center' },
+
+    payoutOption: { flexDirection: 'row', alignItems: 'center', padding: 16, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 16, marginBottom: 12, gap: 16 },
+    payoutIcon: { width: 40, height: 40 },
+    payoutName: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+    payoutSub: { fontSize: 12, color: '#64748B' },
+
+    cancelBtn: { marginTop: 10, padding: 16, alignItems: 'center' },
+    cancelText: { fontWeight: '700', color: '#64748B' }
 });

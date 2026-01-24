@@ -1,48 +1,38 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import {
+    View, Text, StyleSheet, TextInput, TouchableOpacity,
+    Image, ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform
+} from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker'; //
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '@/lib/supabase'; //
-import { useAuth } from '@/context/AuthContext'; //
-import { mediumFeedback, successFeedback } from '@/utils/haptics'; //
+import * as ImagePicker from 'expo-image-picker';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
 
 export default function PostUpdateScreen() {
     const router = useRouter();
+    const { projectId } = useLocalSearchParams(); // Gets ID from the previous screen
     const { user } = useAuth();
 
-    // 1. Grab the projectId passed from the Active Sites screen
-    const params = useLocalSearchParams();
-    const projectId = params.projectId;
-
+    const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [image, setImage] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [projectTitle, setProjectTitle] = useState('');
+    const [uploading, setUploading] = useState(false);
 
-    // 2. Fetch Project Name (so the provider knows what they are posting to)
-    useEffect(() => {
-        if (projectId) {
-            fetchProjectDetails();
-        }
-    }, [projectId]);
-
-    const fetchProjectDetails = async () => {
-        const { data } = await supabase
-            .from('projects')
-            .select('title')
-            .eq('id', projectId)
-            .single();
-        if (data) setProjectTitle(data.title);
-    };
-
+    // 1. Pick Image
     const pickImage = async () => {
-        mediumFeedback();
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
+        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (permissionResult.granted === false) {
+            Alert.alert("Permission Required", "Please allow access to your photos.");
+            return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
             allowsEditing: true,
+            aspect: [4, 3],
             quality: 0.5,
-            base64: true, // Needed for simple upload
+            base64: true, // Needed if you want to upload via base64 later
         });
 
         if (!result.canceled) {
@@ -50,106 +40,123 @@ export default function PostUpdateScreen() {
         }
     };
 
-    const handleUpload = async () => {
-        if (!projectId || !description || !image) {
-            Alert.alert('Missing Info', 'Please add a description and a photo.');
-            return;
-        }
+    // 2. Submit Update
+    const handleSubmit = async () => {
+        if (!title.trim()) return Alert.alert("Missing Title", "Please give this update a title.");
+        if (!description.trim()) return Alert.alert("Missing Description", "Please describe the work done.");
+        if (!user || !projectId) return;
 
-        setLoading(true);
+        setUploading(true);
         try {
-            // A. Upload Image logic would go here
-            // (For now, we'll assume the URI is enough for the prototype or use a placeholder if backend storage isn't ready)
-            // Ideally: Upload to Supabase Storage -> Get Public URL -> Save URL
+            // A. Image Upload (Mock for now, easy to switch to real Storage)
+            // In a real app, you would upload `image` to Supabase Storage here.
+            const mockImageUrl = image ? image : null;
 
-            // For this step, we will save the local URI to the DB so the flow works
-            // (In production, replace this with the Storage code we discussed in Chat)
-
-            // B. Save Update to Database
-            const { error } = await supabase.from('project_updates').insert([
-                {
-                    project_id: projectId,
-                    provider_id: user?.id,
-                    description: description,
-                    // In a real app, this must be a http URL from Supabase Storage
-                    image_url: 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&q=80',
-                    title: 'Work Update' // Default title
-                }
-            ]);
+            // B. Insert into Database
+            const { error } = await supabase.from('project_updates').insert({
+                project_id: projectId,
+                provider_id: user.id,
+                title: title,
+                description: description,
+                image_url: mockImageUrl,
+                update_type: 'general'
+            });
 
             if (error) throw error;
 
-            successFeedback();
-            Alert.alert('Success', 'Update posted! The client can now see it.');
+            Alert.alert("Success", "Update posted successfully!");
             router.back();
 
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Upload failed.';
-            Alert.alert('Upload Failed', message);
+        } catch (e: any) {
+            Alert.alert("Error", e.message);
         } finally {
-            setLoading(false);
+            setUploading(false);
         }
     };
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={{ padding: 20 }}>
-            <Text style={styles.title}>Post Work Update</Text>
-
-            {/* Context Header */}
-            <View style={styles.projectBadge}>
-                <Ionicons name="briefcase" size={16} color="#0EA5E9" />
-                <Text style={styles.projectBadgeText}>
-                    Posting to: <Text style={{fontWeight: '800'}}>{projectTitle || 'Loading...'}</Text>
-                </Text>
+        <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.container}
+        >
+            {/* Header */}
+            <View style={styles.header}>
+                <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+                    <Ionicons name="close" size={24} color="#0F172A" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Post Progress</Text>
+                <View style={{ width: 40 }} />
             </View>
 
-            <Text style={styles.label}>What was done today?</Text>
-            <TextInput
-                style={styles.input}
-                multiline
-                numberOfLines={4}
-                value={description}
-                onChangeText={setDescription}
-                placeholder="e.g., Finished the foundation blocks..."
-            />
+            <ScrollView contentContainerStyle={styles.content}>
 
-            <TouchableOpacity style={styles.imageBtn} onPress={pickImage}>
-                {image ? (
-                    <Image source={{ uri: image }} style={styles.previewImage} />
-                ) : (
-                    <View style={styles.placeholder}>
-                        <Ionicons name="camera" size={40} color="#94A3B8" />
-                        <Text style={styles.placeholderText}>Add Progress Photo</Text>
-                    </View>
-                )}
-            </TouchableOpacity>
+                {/* Image Section */}
+                <Text style={styles.label}>Visual Proof</Text>
+                <TouchableOpacity style={styles.imageBox} onPress={pickImage}>
+                    {image ? (
+                        <>
+                            <Image source={{ uri: image }} style={styles.previewImage} />
+                            <View style={styles.editBadge}>
+                                <Ionicons name="pencil" size={16} color="#fff" />
+                            </View>
+                        </>
+                    ) : (
+                        <View style={styles.placeholder}>
+                            <Ionicons name="camera" size={40} color="#94A3B8" />
+                            <Text style={styles.placeholderText}>Tap to upload photo</Text>
+                        </View>
+                    )}
+                </TouchableOpacity>
 
-            <TouchableOpacity
-                style={[styles.submitBtn, loading && { opacity: 0.5 }]}
-                onPress={handleUpload}
-                disabled={loading}
-            >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Submit Update</Text>}
-            </TouchableOpacity>
-        </ScrollView>
+                {/* Form Fields */}
+                <Text style={styles.label}>Update Title</Text>
+                <TextInput
+                    style={styles.inputSingle}
+                    placeholder="e.g. Foundation Complete"
+                    value={title}
+                    onChangeText={setTitle}
+                />
+
+                <Text style={styles.label}>Description</Text>
+                <TextInput
+                    style={styles.inputMulti}
+                    placeholder="Describe what was completed..."
+                    multiline
+                    textAlignVertical="top"
+                    value={description}
+                    onChangeText={setDescription}
+                />
+            </ScrollView>
+
+            <View style={styles.footer}>
+                <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={uploading}>
+                    {uploading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Post Update</Text>}
+                </TouchableOpacity>
+            </View>
+        </KeyboardAvoidingView>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#fff' },
-    title: { fontSize: 24, fontWeight: '800', marginBottom: 20, marginTop: 40, color: '#0F172A' },
 
-    projectBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F0F9FF', padding: 12, borderRadius: 12, marginBottom: 20 },
-    projectBadgeText: { color: '#0369A1', fontSize: 14 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+    closeBtn: { padding: 8, backgroundColor: '#F1F5F9', borderRadius: 20 },
+    headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
 
-    label: { fontSize: 14, fontWeight: '600', color: '#64748B', marginBottom: 8 },
-    input: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 15, fontSize: 16, textAlignVertical: 'top', backgroundColor: '#F8FAFC', minHeight: 100 },
+    content: { padding: 24 },
+    label: { fontSize: 14, fontWeight: '700', color: '#0F172A', marginBottom: 8, marginTop: 16 },
 
-    imageBtn: { marginTop: 20, height: 200, backgroundColor: '#F8FAFC', borderRadius: 12, overflow: 'hidden', borderStyle: 'dashed', borderWidth: 2, borderColor: '#CBD5E1' },
+    imageBox: { width: '100%', height: 200, borderRadius: 20, backgroundColor: '#F8FAFC', borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed', overflow: 'hidden' },
+    placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
+    placeholderText: { color: '#64748B', fontWeight: '600' },
     previewImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-    placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    placeholderText: { color: '#94A3B8', marginTop: 10, fontWeight: '600' },
+    editBadge: { position: 'absolute', bottom: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 20 },
 
-    submitBtn: { marginTop: 30, backgroundColor: '#0EA5E9', padding: 18, borderRadius: 16, alignItems: 'center', shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
-    submitText: { color: '#fff', fontSize: 16, fontWeight: '700' }
+    inputSingle: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1, borderColor: '#E2E8F0' },
+    inputMulti: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 16, height: 120, fontSize: 16, borderWidth: 1, borderColor: '#E2E8F0' },
+
+    footer: { padding: 24, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+    submitBtn: { backgroundColor: '#0F172A', height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
+    submitText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

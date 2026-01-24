@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { mediumFeedback } from '@/utils/haptics';
+import ProviderNavigation from '@/components/ProviderNavigation'; // <--- ADDED THIS
 
 export default function ActiveSites() {
     const router = useRouter();
@@ -21,6 +22,7 @@ export default function ActiveSites() {
         if (!user) return;
 
         // Fetch projects where I am the provider AND status is 'In Progress'
+        // Note: We check for both casing variations just to be safe
         const { data, error } = await supabase
             .from('projects')
             .select('*')
@@ -42,12 +44,9 @@ export default function ActiveSites() {
 
     return (
         <View style={styles.container}>
+            {/* Header: Title Only (No Back Button) */}
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={24} color="#0F172A" />
-                </TouchableOpacity>
                 <Text style={styles.headerTitle}>Active Contracts</Text>
-                <View style={{ width: 40 }} />
             </View>
 
             {loading ? (
@@ -62,7 +61,7 @@ export default function ActiveSites() {
                         <View style={styles.emptyContainer}>
                             <Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/7486/7486744.png' }} style={styles.emptyImg} />
                             <Text style={styles.emptyTitle}>No Active Contracts</Text>
-                            <Text style={styles.emptySub}>Apply for jobs in the "New Jobs" tab. Once a client hires you, the project will appear here.</Text>
+                            <Text style={styles.emptySub}>Apply for jobs in the "Find Work" tab. Once hired, the project will appear here.</Text>
                         </View>
                     }
                     renderItem={({ item }) => (
@@ -106,6 +105,7 @@ export default function ActiveSites() {
                                         style={[styles.btn, styles.updateBtn]}
                                         onPress={() => {
                                             mediumFeedback();
+                                            // Pass the project ID to the update screen
                                             router.push(`/provider/post_update?projectId=${item.id}`);
                                         }}
                                     >
@@ -117,11 +117,12 @@ export default function ActiveSites() {
                                         style={[styles.btn, styles.payBtn]}
                                         onPress={() => {
                                             mediumFeedback();
-                                            router.push(`/provider/request-payout?projectId=${item.id}`);
+                                            // Future: Request Payout Logic
+                                            router.push(`/provider/earnings`);
                                         }}
                                     >
                                         <Ionicons name="cash-outline" size={18} color="#0F172A" />
-                                        <Text style={[styles.btnText, { color: '#0F172A' }]}>Request Pay</Text>
+                                        <Text style={[styles.btnText, { color: '#0F172A' }]}>Wallet</Text>
                                     </TouchableOpacity>
                                 </View>
                             </View>
@@ -129,6 +130,9 @@ export default function ActiveSites() {
                     )}
                 />
             )}
+
+            {/* Bottom Navigation */}
+            <ProviderNavigation />
         </View>
     );
 }
@@ -137,9 +141,9 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#fff' },
-    backBtn: { padding: 8, borderRadius: 12, backgroundColor: '#F1F5F9' },
-    headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
+    // Updated Header to match Provider Market style
+    header: { paddingTop: 70, paddingHorizontal: 20, paddingBottom: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+    headerTitle: { fontSize: 28, fontWeight: '800', color: '#0F172A' },
 
     listContent: { padding: 20, paddingBottom: 100 },
 

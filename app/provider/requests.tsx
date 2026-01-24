@@ -1,12 +1,16 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, Image } from 'react-native';
+import {
+    View, Text, StyleSheet, FlatList, TouchableOpacity,
+    ActivityIndicator, Alert, Image, StatusBar
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '@/lib/supabase'; //
-import { useAuth } from '@/context/AuthContext'; //
-import { mediumFeedback, successFeedback } from '@/utils/haptics'; //
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
+import { mediumFeedback, successFeedback } from '@/utils/haptics';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Project } from '@/types/models';
+import ProviderNavigation from '@/components/ProviderNavigation';
 
 export default function RequestsScreen() {
     const { user } = useAuth();
@@ -15,6 +19,7 @@ export default function RequestsScreen() {
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [hiddenJobs, setHiddenJobs] = useState<string[]>([]);
+    const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
         const loadHidden = async () => {
@@ -24,30 +29,37 @@ export default function RequestsScreen() {
         loadHidden();
     }, []);
 
-    // 1. Fetch REAL projects that are waiting for a provider
+    // 1. Fetch REAL projects
     const fetchRequests = useCallback(async () => {
         if (!user) return;
         setLoading(true);
 
-        // Get projects that have NO provider yet (pending)
+        // FIX: Removed <Project> generic from .from()
         const { data, error } = await supabase
-            .from<Project>('projects')
+            .from('projects')
             .select('*')
             .is('provider_id', null)
-            .eq('status', 'Pending') // Ensure your DB uses 'Pending' or 'pending_assignment'
+            .eq('status', 'Pending')
             .order('created_at', { ascending: false });
 
         if (error) console.error(error);
         if (data) {
             const filtered = data.filter(item => !hiddenJobs.includes(item.id.toString()));
-            setRequests(filtered);
+            // FIX: Cast data to Project[] here
+            setRequests(filtered as Project[]);
         }
         setLoading(false);
+        setRefreshing(false);
     }, [user, hiddenJobs]);
 
     useEffect(() => {
         fetchRequests();
     }, [fetchRequests]);
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchRequests();
+    };
 
     // 2. Handle "Accept Project"
     const handleAccept = async (projectId: string) => {
@@ -55,29 +67,24 @@ export default function RequestsScreen() {
         setProcessingId(projectId);
 
         try {
-            // Assign the project to THIS provider
             const { error } = await supabase
                 .from('projects')
                 .update({
                     provider_id: user?.id,
-                    status: 'In Progress' // Updates status to active
+                    status: 'In Progress'
                 })
                 .eq('id', projectId);
 
             if (error) throw error;
 
             successFeedback();
-            Alert.alert("Success", "Project accepted! It is now in your Active Sites.");
+            Alert.alert("Success", "Project accepted! check your 'Active Contracts'.");
 
-            // Remove from list immediately
             setRequests(prev => prev.filter(r => r.id !== projectId));
-
-            // Navigate to Active Sites
             router.push('/provider/active');
 
-        } catch (err) {
-            const message = err instanceof Error ? err.message : "Could not accept project.";
-            Alert.alert("Error", message);
+        } catch (err: any) {
+            Alert.alert("Error", err.message);
         } finally {
             setProcessingId(null);
         }
@@ -88,7 +95,6 @@ export default function RequestsScreen() {
         setHiddenJobs(next);
         await AsyncStorage.setItem('hidden_jobs', JSON.stringify(next));
         setRequests(prev => prev.filter(r => r.id.toString() !== projectId.toString()));
-        Alert.alert("Hidden", "Project removed from your feed.");
     };
 
     const renderItem = ({ item }: { item: Project }) => (
@@ -97,29 +103,24 @@ export default function RequestsScreen() {
             <View style={styles.ticketMain}>
                 <View style={styles.ticketHeader}>
                     <View style={styles.tagContainer}>
-                        <Ionicons name="time" size={12} color="#D32F2F" />
-                        <Text style={styles.urgencyText}>New Request</Text>
+                        <Ionicons name="flash" size={10} color="#D97706" />
+                        <Text style={styles.urgencyText}>NEW LEAD</Text>
                     </View>
+                    <Text style={styles.timeAgo}>Just now</Text>
                 </View>
 
-                {/* Real Budget from DB */}
                 <Text style={styles.budget}>
-                    {item.budget ? item.budget.toLocaleString() : '0'} <Text style={{fontSize: 14, color: '#2E7D32'}}>CFA</Text>
+                    {item.budget ? item.budget.toLocaleString() : '0'} <Text style={styles.currency}>CFA</Text>
                 </Text>
-                <Text style={styles.projectTitle} numberOfLines={1}>{item.title}</Text>
+                <Text style={styles.projectTitle} numberOfLines={2}>{item.title}</Text>
 
                 <View style={styles.locationRow}>
-                    <View style={styles.iconBox}>
-                        <Ionicons name="location" size={14} color="#555" />
-                    </View>
-                    <View>
-                        <Text style={styles.locationTitle}>{item.city}</Text>
-                        <Text style={styles.distance}>Remote Job</Text>
-                    </View>
+                    <Ionicons name="location" size={14} color="#64748B" />
+                    <Text style={styles.locationTitle}>{item.city}</Text>
                 </View>
             </View>
 
-            {/* SEPARATOR */}
+            {/* SEPARATOR (Perforated Line) */}
             <View style={styles.separator}>
                 <View style={styles.circleTop} />
                 <View style={styles.line} />
@@ -136,10 +137,8 @@ export default function RequestsScreen() {
                     </View>
                 )}
 
-                <Text style={styles.clientName}>Client</Text>
-
                 <TouchableOpacity
-                    style={[styles.acceptBtn, processingId === item.id && { opacity: 0.5 }]}
+                    style={[styles.acceptBtn, processingId === item.id && { opacity: 0.7 }]}
                     activeOpacity={0.8}
                     onPress={() => handleAccept(item.id)}
                     disabled={!!processingId}
@@ -152,7 +151,7 @@ export default function RequestsScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.declineBtn} onPress={() => hideJob(item.id)}>
-                    <Text style={styles.declineText}>Not Interested</Text>
+                    <Text style={styles.declineText}>Ignore</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -160,51 +159,96 @@ export default function RequestsScreen() {
 
     return (
         <View style={styles.container}>
-            <Text style={styles.pageTitle}>New Opportunities ({requests.length})</Text>
+            <StatusBar barStyle="dark-content" />
+
+            {/* --- PREMIUM HEADER --- */}
+            <View style={styles.header}>
+                <View>
+                    <Text style={styles.headerDate}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
+                    <Text style={styles.headerTitle}>New Opportunities</Text>
+                    <Text style={styles.headerSub}>You have <Text style={{color: '#0EA5E9', fontWeight:'800'}}>{requests.length}</Text> new leads waiting.</Text>
+                </View>
+                <TouchableOpacity style={styles.filterBtn}>
+                    <Ionicons name="options-outline" size={22} color="#0F172A" />
+                </TouchableOpacity>
+            </View>
+
             {loading ? (
-                <View style={{ marginTop: 50 }}><ActivityIndicator size="large" color="#0EA5E9" /></View>
+                <View style={styles.center}><ActivityIndicator size="large" color="#0EA5E9" /></View>
             ) : (
                 <FlatList
                     data={requests}
                     keyExtractor={item => item.id.toString()}
                     renderItem={renderItem}
-                    contentContainerStyle={{ paddingBottom: 100 }}
+                    contentContainerStyle={styles.listContent}
+                    onRefresh={onRefresh}
+                    refreshing={refreshing}
                     ListEmptyComponent={
-                        <View style={{ alignItems: 'center', marginTop: 50 }}>
-                            <Text style={{ color: '#94A3B8' }}>No new jobs available right now.</Text>
+                        <View style={styles.emptyContainer}>
+                            <Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/7486/7486744.png' }} style={styles.emptyImg} />
+                            <Text style={styles.emptyTitle}>All Caught Up!</Text>
+                            <Text style={styles.emptySub}>There are no new jobs matching your profile right now. Check back later.</Text>
                         </View>
                     }
                 />
             )}
+
+            <ProviderNavigation />
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f4f6f8', padding: 20 },
-    pageTitle: { fontSize: 22, fontWeight: '800', color: '#1a1a1a', marginBottom: 20 },
-    ticketContainer: { flexDirection: 'row', height: 190, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5 },
-    ticketMain: { flex: 2, backgroundColor: '#fff', borderTopLeftRadius: 16, borderBottomLeftRadius: 16, padding: 16, justifyContent: 'space-between' },
+    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
+    // Header Styles
+    header: { paddingTop: 70, paddingHorizontal: 24, paddingBottom: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    headerDate: { fontSize: 11, fontWeight: '700', color: '#94A3B8', marginBottom: 4, letterSpacing: 1 },
+    headerTitle: { fontSize: 26, fontWeight: '800', color: '#0F172A', lineHeight: 32 },
+    headerSub: { fontSize: 14, color: '#64748B', marginTop: 4 },
+    filterBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+
+    listContent: { padding: 20, paddingBottom: 100 },
+
+    // Ticket Styles
+    ticketContainer: { flexDirection: 'row', height: 170, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
+    ticketMain: { flex: 2, backgroundColor: '#fff', borderTopLeftRadius: 20, borderBottomLeftRadius: 20, padding: 16, justifyContent: 'space-between' },
+
     ticketHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    tagContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFEBEE', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, gap: 4 },
-    urgencyText: { color: '#D32F2F', fontSize: 10, fontWeight: '700' },
-    budget: { fontSize: 26, fontWeight: '900', color: '#2E7D32', letterSpacing: -0.5 },
-    projectTitle: { fontSize: 16, fontWeight: '600', color: '#333', marginTop: -5 },
-    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    iconBox: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#F5F5F5', alignItems: 'center', justifyContent: 'center' },
-    locationTitle: { fontSize: 12, fontWeight: '700', color: '#333' },
-    distance: { fontSize: 11, color: '#888' },
-    separator: { width: 20, backgroundColor: '#f4f6f8', alignItems: 'center', justifyContent: 'center' },
-    line: { width: 1, height: '80%', borderStyle: 'dashed', borderWidth: 1, borderColor: '#ccc' },
-    circleTop: { position: 'absolute', top: -10, width: 20, height: 20, borderRadius: 10, backgroundColor: '#f4f6f8' },
-    circleBottom: { position: 'absolute', bottom: -10, width: 20, height: 20, borderRadius: 10, backgroundColor: '#f4f6f8' },
-    ticketActions: { flex: 1, backgroundColor: '#fff', borderTopRightRadius: 16, borderBottomRightRadius: 16, padding: 12, alignItems: 'center', justifyContent: 'center', borderLeftWidth: 1, borderLeftColor: '#f0f0f0' },
-    clientAvatar: { width: 40, height: 40, borderRadius: 20, marginBottom: 8 },
-    clientAvatarFallback: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-    avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
-    clientName: { fontSize: 12, color: '#666', marginBottom: 12, textAlign: 'center' },
-    acceptBtn: { backgroundColor: '#000', width: '100%', paddingVertical: 10, borderRadius: 8, alignItems: 'center', marginBottom: 8 },
-    acceptText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
-    declineBtn: { width: '100%', paddingVertical: 6, alignItems: 'center' },
-    declineText: { color: '#999', fontSize: 11, fontWeight: '600' }
+    tagContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, gap: 4 },
+    urgencyText: { color: '#D97706', fontSize: 10, fontWeight: '800' },
+    timeAgo: { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
+
+    budget: { fontSize: 24, fontWeight: '800', color: '#0F172A' },
+    currency: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+    projectTitle: { fontSize: 15, fontWeight: '600', color: '#334155', marginTop: -4, lineHeight: 22 },
+
+    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    locationTitle: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+
+    // Separator
+    separator: { width: 20, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
+    line: { width: 1, height: '70%', borderStyle: 'dashed', borderWidth: 1, borderColor: '#CBD5E1' },
+    circleTop: { position: 'absolute', top: -10, width: 20, height: 20, borderRadius: 10, backgroundColor: '#F8FAFC' },
+    circleBottom: { position: 'absolute', bottom: -10, width: 20, height: 20, borderRadius: 10, backgroundColor: '#F8FAFC' },
+
+    // Right Side
+    ticketActions: { flex: 1, backgroundColor: '#fff', borderTopRightRadius: 20, borderBottomRightRadius: 20, padding: 12, alignItems: 'center', justifyContent: 'center' },
+
+    clientAvatar: { width: 44, height: 44, borderRadius: 22, marginBottom: 10, borderWidth: 2, borderColor: '#F1F5F9' },
+    clientAvatarFallback: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+    avatarText: { color: '#64748B', fontWeight: '700', fontSize: 18 },
+
+    acceptBtn: { backgroundColor: '#0F172A', width: '100%', paddingVertical: 10, borderRadius: 10, alignItems: 'center', marginBottom: 8 },
+    acceptText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+
+    declineBtn: { paddingVertical: 8 },
+    declineText: { color: '#94A3B8', fontSize: 11, fontWeight: '600' },
+
+    // Empty State
+    emptyContainer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
+    emptyImg: { width: 80, height: 80, opacity: 0.5, marginBottom: 20 },
+    emptyTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+    emptySub: { textAlign: 'center', color: '#64748B', marginTop: 8, lineHeight: 22 },
 });

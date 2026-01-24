@@ -1,288 +1,159 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Alert, ActivityIndicator, TextInput } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, ImageBackground, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { PortfolioItem, Profile } from '@/types/models';
 
-export default function ProviderProfile() {
-    const { user, signOut } = useAuth();
+export default function ProviderProfileScreen() {
     const router = useRouter();
+    const { user, signOut } = useAuth();
     const { t } = useLanguage();
-    const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [uploading, setUploading] = useState(false);
-    const [fullName, setFullName] = useState('');
-    const [bio, setBio] = useState('');
-    const [saving, setSaving] = useState(false);
-    const [deleting, setDeleting] = useState(false);
 
-    const fetchPortfolio = useCallback(async () => {
-        if (!user) return;
-        const { data } = await supabase
-            .from<PortfolioItem>('portfolios')
-            .select('*')
-            .eq('provider_id', user.id)
-            .order('created_at', { ascending: false });
-
-        setPortfolio(data || []);
-    }, [user]);
-
-    const fetchProfile = useCallback(async () => {
-        if (!user) return;
-        const { data } = await supabase
-            .from<Profile>('profiles')
-            .select('full_name, bio')
-            .eq('id', user.id)
-            .maybeSingle();
-
-        setFullName(data?.full_name || user.user_metadata?.full_name || '');
-        setBio(data?.bio || '');
-    }, [user]);
+    const [profile, setProfile] = useState<any>(null);
+    const [portfolio, setPortfolio] = useState<any[]>([]);
 
     useEffect(() => {
-        const load = async () => {
-            setLoading(true);
-            await Promise.all([fetchPortfolio(), fetchProfile()]);
-            setLoading(false);
-        };
-        load();
-    }, [fetchPortfolio, fetchProfile]);
-
-    const addPastWork = async () => {
-        if (!user) return;
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-            Alert.alert(t('permissionNeededTitle'), t('portfolioPermissionBody'));
-            return;
-        }
-
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            quality: 0.7
-        });
-
-        if (result.canceled) return;
-
-        try {
-            setUploading(true);
-            const asset = result.assets[0];
-            const ext = asset.uri.split('.').pop() || 'jpg';
-            const path = `portfolio/${user.id}-${Date.now()}.${ext}`;
-
-            const response = await fetch(asset.uri);
-            const arrayBuffer = await response.arrayBuffer();
-            const { error: uploadError } = await supabase.storage
-                .from('portfolio-images')
-                .upload(path, arrayBuffer, { contentType: asset.mimeType || 'image/jpeg' });
-
-            if (uploadError) throw uploadError;
-            const { data: publicData } = supabase.storage.from('portfolio-images').getPublicUrl(path);
-
-            const { error } = await supabase.from<PortfolioItem>('portfolios').insert({
-                provider_id: user.id,
-                image_url: publicData.publicUrl
-            });
-            if (error) throw error;
-
+        if (user) {
+            fetchProfile();
             fetchPortfolio();
-        } catch (error) {
-            const message = error instanceof Error ? error.message : t('portfolioUploadFailed');
-            Alert.alert(t('uploadFailedTitle'), message);
-        } finally {
-            setUploading(false);
         }
+    }, [user]);
+
+    const fetchProfile = async () => {
+        const { data } = await supabase.from('profiles').select('*').eq('id', user?.id).single();
+        if (data) setProfile(data);
     };
 
-    const handleSave = async () => {
-        if (!user) return;
-        setSaving(true);
-
-        const { error } = await supabase
-            .from<Profile>('profiles')
-            .upsert({ id: user.id, full_name: fullName, bio }, { onConflict: 'id' });
-
-        if (!error) {
-            await supabase.auth.updateUser({ data: { full_name: fullName } });
-        }
-
-        setSaving(false);
-
-        if (error) {
-            Alert.alert(t('errorTitle'), error.message || t('profileSaveFailed'));
-            return;
-        }
-
-        Alert.alert(t('successTitle'), t('profileSaved'));
-    };
-
-    const handleSignOut = () => {
-        Alert.alert(t('signOutTitle'), t('signOutConfirmBody'), [
-            { text: t('cancel'), style: 'cancel' },
-            {
-                text: t('signOut'),
-                style: 'destructive',
-                onPress: async () => {
-                    await supabase.auth.signOut();
-                    router.replace('/login');
-                }
-            }
-        ]);
-    };
-
-    // --- NEW: DELETE ACCOUNT LOGIC ---
-    const handleDeleteAccount = () => {
-        Alert.alert(
-            t('deleteAccountTitle') || "Delete Account",
-            t('deleteAccountConfirm') || "Are you sure? This will permanently delete your profile, portfolio, and active applications. This cannot be undone.",
-            [
-                { text: t('cancel'), style: 'cancel' },
-                {
-                    text: t('delete'),
-                    style: 'destructive',
-                    onPress: async () => {
-                        setDeleting(true);
-                        try {
-                            // Deleting from 'profiles' will trigger CASCADE delete in your DB
-                            const { error } = await supabase.from('profiles').delete().eq('id', user?.id);
-
-                            if (error) throw error;
-
-                            // Finally, sign out and go to login
-                            await supabase.auth.signOut();
-                            router.replace('/login');
-                        } catch (err) {
-                            const message = err instanceof Error ? err.message : "Failed to delete account";
-                            Alert.alert(t('errorTitle'), message);
-                        } finally {
-                            setDeleting(false);
-                        }
-                    }
-                }
-            ]
-        );
+    const fetchPortfolio = async () => {
+        // Assuming you have a 'portfolios' table or similar logic
+        // If not, this gracefully handles empty data
+        const { data } = await supabase.from('project_updates').select('*').eq('provider_id', user?.id).limit(5);
+        if (data) setPortfolio(data);
     };
 
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-                    <Ionicons name="chevron-back" size={20} color="#0F172A" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>{t('myProfileTitle')}</Text>
-                <View style={{ width: 40 }} />
-            </View>
+            <ScrollView contentContainerStyle={{ paddingBottom: 150 }} showsVerticalScrollIndicator={false}>
 
-            <ScrollView contentContainerStyle={styles.content}>
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>{t('editProfileTitle')}</Text>
-                    <Text style={styles.label}>{t('fullNameLabel')}</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={fullName}
-                        onChangeText={setFullName}
-                        placeholder={t('fullNamePlaceholder')}
-                        placeholderTextColor="#94A3B8"
-                    />
+                {/* --- HERO --- */}
+                <ImageBackground
+                    source={{ uri: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?q=80&w=2070&auto=format&fit=crop' }}
+                    style={styles.headerImage}
+                >
+                    <LinearGradient colors={['transparent', '#0F172A']} style={styles.gradient}>
+                        <View style={styles.headerContent}>
+                            <Image
+                                source={{ uri: profile?.avatar_url || 'https://i.pravatar.cc/150?u=pro' }}
+                                style={styles.avatar}
+                            />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.name}>{profile?.full_name || "Provider Name"}</Text>
+                                <Text style={styles.role}>Professional Contractor</Text>
+                                <View style={styles.ratingRow}>
+                                    <Ionicons name="star" size={14} color="#F59E0B" />
+                                    <Text style={styles.ratingText}>4.9 (12 Jobs)</Text>
+                                </View>
+                            </View>
+                        </View>
+                    </LinearGradient>
+                </ImageBackground>
 
-                    <Text style={styles.label}>{t('bioLabel')}</Text>
-                    <TextInput
-                        style={[styles.input, styles.textArea]}
-                        value={bio}
-                        onChangeText={setBio}
-                        placeholder={t('bioPlaceholder')}
-                        placeholderTextColor="#94A3B8"
-                        multiline
-                    />
-
-                    <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
-                        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>{t('saveChanges')}</Text>}
-                    </TouchableOpacity>
+                {/* --- STATS GRID --- */}
+                <View style={styles.statsContainer}>
+                    <View style={styles.statCard}>
+                        <Text style={styles.statValue}>12</Text>
+                        <Text style={styles.statLabel}>Completed</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.statCard}>
+                        <Text style={styles.statValue}>98%</Text>
+                        <Text style={styles.statLabel}>On Time</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.statCard}>
+                        <Text style={styles.statValue}>3</Text>
+                        <Text style={styles.statLabel}>Years Exp</Text>
+                    </View>
                 </View>
 
+                {/* --- PORTFOLIO --- */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>{t('portfolioTitle')}</Text>
-                        <TouchableOpacity style={styles.addBtn} onPress={addPastWork} disabled={uploading}>
-                            {uploading ? (
-                                <ActivityIndicator color="#fff" />
-                            ) : (
-                                <>
-                                    <Ionicons name="add" size={16} color="#fff" />
-                                    <Text style={styles.addText}>{t('addAction')}</Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
+                        <Text style={styles.sectionTitle}>{t('portfolioTitle') || "Portfolio"}</Text>
+                        <TouchableOpacity><Text style={styles.link}>{t('common.seeAll')}</Text></TouchableOpacity>
                     </View>
 
-                    {loading ? (
-                        <ActivityIndicator size="large" color="#0EA5E9" style={{ marginTop: 20 }} />
-                    ) : (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-                            {portfolio.length === 0 ? (
-                                <View style={styles.empty}>
-                                    <Text style={styles.emptyText}>{t('noPortfolioItems')}</Text>
-                                    <Text style={styles.emptySub}>{t('portfolioHint')}</Text>
-                                </View>
-                            ) : (
-                                portfolio.map((item) => (
-                                    <Image key={item.id} source={{ uri: item.image_url }} style={styles.portfolioImg} />
-                                ))
-                            )}
-                        </ScrollView>
-                    )}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.portfolioScroll}>
+                        <TouchableOpacity style={styles.addPortfolioBtn}>
+                            <Ionicons name="add" size={32} color="#CBD5E1" />
+                            <Text style={styles.addText}>Add Work</Text>
+                        </TouchableOpacity>
+
+                        {portfolio.map((item, index) => (
+                            <Image
+                                key={index}
+                                source={{ uri: item.image_url || 'https://via.placeholder.com/150' }}
+                                style={styles.portfolioImg}
+                            />
+                        ))}
+                    </ScrollView>
                 </View>
 
-                {/* --- Danger Zone --- */}
-                <View style={styles.dangerZone}>
-                    <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-                        <Text style={styles.signOutText}>{t('signOut')}</Text>
+                {/* --- MENU --- */}
+                <View style={styles.menuContainer}>
+                    <TouchableOpacity style={styles.menuItem} onPress={() => {}}>
+                        <Text style={styles.menuText}>Skill Tags</Text>
+                        <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
                     </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={styles.deleteBtn}
-                        onPress={handleDeleteAccount}
-                        disabled={deleting}
-                    >
-                        {deleting ? (
-                            <ActivityIndicator color="#EF4444" />
-                        ) : (
-                            <Text style={styles.deleteText}>{t('deleteAccountAction') || "Delete Account"}</Text>
-                        )}
+                    <TouchableOpacity style={styles.menuItem} onPress={() => {}}>
+                        <Text style={styles.menuText}>Verification Status</Text>
+                        <View style={styles.verifiedBadge}><Text style={styles.verifiedText}>Verified</Text></View>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.menuItem} onPress={async () => { await signOut(); router.replace('/login'); }}>
+                        <Text style={[styles.menuText, { color: '#EF4444' }]}>{t('signOut')}</Text>
+                        <Ionicons name="log-out-outline" size={20} color="#EF4444" />
                     </TouchableOpacity>
                 </View>
+
             </ScrollView>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, paddingTop: 50, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
-    backBtn: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-    headerTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-    content: { padding: 20, gap: 20 },
-    section: { backgroundColor: '#fff', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#E2E8F0' },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    sectionTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
-    label: { fontSize: 13, fontWeight: '700', color: '#334155', marginBottom: 8, marginTop: 6 },
-    input: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 14, fontSize: 15, backgroundColor: '#fff', color: '#0F172A' },
-    textArea: { minHeight: 100, textAlignVertical: 'top' },
-    saveBtn: { backgroundColor: '#0F172A', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 16 },
-    saveText: { color: '#fff', fontWeight: '700' },
-    addBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#0EA5E9', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
-    addText: { color: '#fff', fontWeight: '700' },
-    portfolioImg: { width: 200, height: 160, borderRadius: 16, backgroundColor: '#E2E8F0' },
-    empty: { width: 260, backgroundColor: '#fff', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#E2E8F0' },
-    emptyText: { fontWeight: '800', color: '#0F172A', marginBottom: 6 },
-    emptySub: { color: '#64748B' },
-    dangerZone: { gap: 12, marginTop: 10, marginBottom: 30 },
-    signOutBtn: { backgroundColor: '#fff', borderRadius: 12, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0' },
-    signOutText: { color: '#64748B', fontWeight: '700' },
-    deleteBtn: { backgroundColor: '#FEF2F2', borderRadius: 12, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: '#FEE2E2' },
-    deleteText: { color: '#EF4444', fontWeight: '700' }
+    container: { flex: 1, backgroundColor: '#F1F5F9' },
+
+    headerImage: { width: '100%', height: 280 },
+    gradient: { flex: 1, justifyContent: 'flex-end', padding: 20 },
+    headerContent: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 10 },
+    avatar: { width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: '#fff' },
+    name: { fontSize: 22, fontWeight: '800', color: '#fff' },
+    role: { color: '#CBD5E1', fontSize: 14, marginBottom: 4 },
+    ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.1)', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 },
+    ratingText: { color: '#F59E0B', fontWeight: '700', fontSize: 12 },
+
+    statsContainer: { flexDirection: 'row', backgroundColor: '#fff', margin: 20, marginTop: -20, borderRadius: 16, padding: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 5 },
+    statCard: { flex: 1, alignItems: 'center' },
+    statValue: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
+    statLabel: { color: '#64748B', fontSize: 12, fontWeight: '600' },
+    statDivider: { width: 1, backgroundColor: '#E2E8F0' },
+
+    section: { marginBottom: 20 },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 12 },
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+    link: { color: '#0EA5E9', fontWeight: '600' },
+
+    portfolioScroll: { paddingHorizontal: 20, gap: 12 },
+    addPortfolioBtn: { width: 120, height: 160, borderRadius: 16, borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
+    addText: { color: '#94A3B8', fontWeight: '700', marginTop: 8 },
+    portfolioImg: { width: 200, height: 160, borderRadius: 16, backgroundColor: '#CBD5E1' },
+
+    menuContainer: { paddingHorizontal: 20 },
+    menuItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 18, borderRadius: 16, marginBottom: 10 },
+    menuText: { fontSize: 16, fontWeight: '600', color: '#0F172A' },
+    verifiedBadge: { backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+    verifiedText: { color: '#16A34A', fontSize: 12, fontWeight: '700' },
 });

@@ -30,7 +30,7 @@ export const translations = {
         missingFields: "Please fill all fields.",
         signupFailed: "Signup Failed",
 
-        // ... (Keep existing keys below if needed, or just use this file as the master)
+        // ... Existing keys ...
         providerDashboardTitle: "Provider Dashboard",
         providerDashboardSubtitle: "Professional Control",
         accountMenuTitle: "Account Menu",
@@ -146,7 +146,22 @@ export const translations = {
         statusPending: "Pending",
         success: "Success",
         successTitle: "Success",
-        uploadFailedTitle: "Upload Failed"
+        uploadFailedTitle: "Upload Failed",
+
+        // --- NEW KEYS FOR REDESIGN ---
+        "project.title": "Project Title",
+        "project.city": "City",
+        "project.budget": "Budget",
+        "project.description": "Description",
+        "common.select": "Select",
+        "common.submit": "Submit",
+        "common.seeAll": "See All",
+        "clientDashboard.greeting": "Hello,",
+        "clientDashboard.activeProjects": "Active Projects",
+        "clientDashboard.noProjects": "No active projects yet.",
+        "clientDashboard.postJob": "Post a Job",
+        "clientDashboard.myWallet": "My Wallet",
+        "clientDashboard.recentActivity": "Recent Activity",
     },
     fr: {
         flag: "🇫🇷",
@@ -294,7 +309,22 @@ export const translations = {
         statusPending: "En attente",
         success: "Succès",
         successTitle: "Succès",
-        uploadFailedTitle: "Échec du téléchargement"
+        uploadFailedTitle: "Échec du téléchargement",
+
+        // --- NEW KEYS FOR REDESIGN ---
+        "project.title": "Titre du projet",
+        "project.city": "Ville",
+        "project.budget": "Budget",
+        "project.description": "Description",
+        "common.select": "Sélectionner",
+        "common.submit": "Soumettre",
+        "common.seeAll": "Voir tout",
+        "clientDashboard.greeting": "Bonjour,",
+        "clientDashboard.activeProjects": "Projets Actifs",
+        "clientDashboard.noProjects": "Aucun projet pour le moment.",
+        "clientDashboard.postJob": "Publier un projet",
+        "clientDashboard.myWallet": "Mon Portefeuille",
+        "clientDashboard.recentActivity": "Activité Récente",
     },
     es: {
         flag: "🇪🇸",
@@ -442,7 +472,22 @@ export const translations = {
         statusPending: "Pendiente",
         success: "Éxito",
         successTitle: "Éxito",
-        uploadFailedTitle: "Error de carga"
+        uploadFailedTitle: "Error de carga",
+
+        // --- NEW KEYS FOR REDESIGN ---
+        "project.title": "Título del Proyecto",
+        "project.city": "Ciudad",
+        "project.budget": "Presupuesto",
+        "project.description": "Descripción",
+        "common.select": "Seleccionar",
+        "common.submit": "Enviar",
+        "common.seeAll": "Ver Todo",
+        "clientDashboard.greeting": "Hola,",
+        "clientDashboard.activeProjects": "Proyectos Activos",
+        "clientDashboard.noProjects": "No hay proyectos activos.",
+        "clientDashboard.postJob": "Publicar Trabajo",
+        "clientDashboard.myWallet": "Mi Billetera",
+        "clientDashboard.recentActivity": "Actividad Reciente",
     },
     de: {
         flag: "🇩🇪",
@@ -528,7 +573,26 @@ export const translations = {
         notificationDefaultTitle: "Neue Benachrichtigung",
         notificationDefaultBody: "Sie haben ein neues Update.",
         inboxTitle: "Posteingang",
-        inboxSubtitle: "Ihre Projekt-Benachrichtigungen"
+        inboxSubtitle: "Ihre Projekt-Benachrichtigungen",
+        accountSettings: "Kontoeinstellungen",
+        errorTitle: "Fehler",
+        successTitle: "Erfolg",
+        uploadFailedTitle: "Upload fehlgeschlagen",
+
+        // --- NEW KEYS FOR REDESIGN ---
+        "project.title": "Projekttitel",
+        "project.city": "Stadt",
+        "project.budget": "Budget",
+        "project.description": "Beschreibung",
+        "common.select": "Auswählen",
+        "common.submit": "Absenden",
+        "common.seeAll": "Alle ansehen",
+        "clientDashboard.greeting": "Hallo,",
+        "clientDashboard.activeProjects": "Aktive Projekte",
+        "clientDashboard.noProjects": "Noch keine aktiven Projekte.",
+        "clientDashboard.postJob": "Job veröffentlichen",
+        "clientDashboard.myWallet": "Mein Wallet",
+        "clientDashboard.recentActivity": "Letzte Aktivität",
     },
     it: {
         flag: "🇮🇹",
@@ -614,6 +678,25 @@ export const translations = {
         notificationDefaultTitle: "Nuova Notifica",
         notificationDefaultBody: "Hai un nuovo aggiornamento.",
         inboxTitle: "Posta in arrivo",
-        inboxSubtitle: "Avvisi del tuo progetto"
+        inboxSubtitle: "Avvisi del tuo progetto",
+        accountSettings: "Impostazioni account",
+        errorTitle: "Errore",
+        successTitle: "Successo",
+        uploadFailedTitle: "Caricamento fallito",
+
+        // --- NEW KEYS FOR REDESIGN ---
+        "project.title": "Titolo del progetto",
+        "project.city": "Città",
+        "project.budget": "Budget",
+        "project.description": "Descrizione",
+        "common.select": "Seleziona",
+        "common.submit": "Invia",
+        "common.seeAll": "Vedi tutti",
+        "clientDashboard.greeting": "Ciao,",
+        "clientDashboard.activeProjects": "Progetti Attivi",
+        "clientDashboard.noProjects": "Nessun progetto attivo.",
+        "clientDashboard.postJob": "Pubblica un lavoro",
+        "clientDashboard.myWallet": "Il mio portafoglio",
+        "clientDashboard.recentActivity": "Attività Recente",
     }
 };

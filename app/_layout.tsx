@@ -9,12 +9,18 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { GlobalProvider } from '@/context/GlobalContext';
 import { LanguageProvider } from '@/context/LanguageContext';
+import { usePushNotifications } from '@/hooks/usePushNotifications'; // <--- IMPORT
 
 function InitialLayout() {
     const { session, loading } = useAuth();
     const segments = useSegments();
     const router = useRouter();
     const [isMounted, setIsMounted] = useState(false);
+
+    // --- ACTIVATE NOTIFICATIONS ---
+    // This starts listening immediately. It will only save the token
+    // once 'session' (user) is available, which is handled inside the hook.
+    usePushNotifications();
 
     useEffect(() => {
         setIsMounted(true);

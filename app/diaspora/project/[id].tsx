@@ -1,68 +1,96 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
-    View, Text, StyleSheet, Image, ScrollView, TouchableOpacity,
-    ActivityIndicator, Dimensions, StatusBar, Alert, RefreshControl, TextInput, Modal
+    View, Text, StyleSheet, Image, TouchableOpacity,
+    ActivityIndicator, Dimensions, StatusBar, Alert, RefreshControl, TextInput, Modal, Animated, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { supabase } from '@/lib/supabase';
-import NavigationBar from '@/components/NavigationBar';
-// Removed BudgetProgress to prevent crash if file missing.
-// If you have it, uncomment the import.
-// import BudgetProgress from '@/components/BudgetProgress';
+import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { mediumFeedback, successFeedback } from '@/utils/haptics';
+import BudgetProgress from '@/components/BudgetProgress';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
+const HEADER_HEIGHT = 300;
 
 export default function ProjectDetailsScreen() {
     const { id } = useLocalSearchParams();
     const router = useRouter();
     const { t } = useLanguage();
+    const scrollY = useRef(new Animated.Value(0)).current;
 
+    // --- DATA STATE ---
     const [project, setProject] = useState<any>(null);
     const [expenses, setExpenses] = useState<any[]>([]);
     const [applications, setApplications] = useState<any[]>([]);
+    const [updates, setUpdates] = useState<any[]>([]); // Timeline Data
+    const [review, setReview] = useState<any | null>(null);
+
+    // --- UI STATE ---
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [review, setReview] = useState<any | null>(null);
+    const [selectedImage, setSelectedImage] = useState<string | null>(null); // Image Zoom
+
+    // --- ACTION STATES ---
+    const [showCompleteModal, setShowCompleteModal] = useState(false);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+    // Payment Form
+    const [paymentAmount, setPaymentAmount] = useState('');
+    const [paymentDesc, setPaymentDesc] = useState('');
+    const [processingPayment, setProcessingPayment] = useState(false);
+
+    // Review Form
     const [rating, setRating] = useState(5);
     const [reviewText, setReviewText] = useState('');
     const [submittingReview, setSubmittingReview] = useState(false);
-    const [showCompleteModal, setShowCompleteModal] = useState(false);
-    const [hiring, setHiring] = useState(false);
 
+    // Note: 'hiring' state removed here because hiring moved to Proposals screen
+
+    // --- 1. FETCH DATA ---
     const fetchData = useCallback(async () => {
-        if (!id) {
-            setLoading(false);
-            return;
-        }
-
+        if (!id) return;
         try {
-            // 1. Get Project with Assigned Provider Info
+            // A. Project & Provider
             const { data: projectData, error: projError } = await supabase
                 .from('projects')
-                .select('*, profiles:assigned_provider_id(full_name, avatar_url, city)')
+                .select('*, profiles:assigned_provider_id(full_name, avatar_url, city, rating)')
                 .eq('id', id)
                 .single();
 
             if (projError) throw projError;
 
-            // 2. Get Expenses
+            // B. Expenses
             const { data: expData } = await supabase
                 .from('project_expenses')
                 .select('*')
                 .eq('project_id', id)
+                .eq('status', 'approved')
                 .order('created_at', { ascending: false });
 
-            // 3. Get Applications (Only pending)
-            const { data: appData } = await supabase
-                .from('project_applications')
-                .select('*, profiles:provider_id(full_name, city, avatar_url)')
-                .eq('project_id', id)
-                .eq('status', 'pending');
+            // C. Applicants (Only if pending)
+            let appData = [];
+            if (projectData.status === 'pending') {
+                const { data } = await supabase
+                    .from('project_applications')
+                    .select('*, profiles:provider_id(full_name, city, avatar_url, rating)')
+                    .eq('project_id', id)
+                    .eq('status', 'pending')
+                    .order('bid_amount', { ascending: true }); // Cheapest first
+                appData = data || [];
+            }
 
-            // 4. Get Review (Use 'comment' column)
+            // D. Updates (The Timeline)
+            const { data: updatesData } = await supabase
+                .from('project_updates')
+                .select('*')
+                .eq('project_id', id)
+                .order('created_at', { ascending: false });
+
+            // E. Review
             const { data: reviewData } = await supabase
                 .from('reviews')
                 .select('*')
@@ -72,6 +100,7 @@ export default function ProjectDetailsScreen() {
             setProject(projectData);
             setExpenses(expData || []);
             setApplications(appData || []);
+            setUpdates(updatesData || []);
             setReview(reviewData || null);
 
         } catch (e: any) {
@@ -82,344 +111,370 @@ export default function ProjectDetailsScreen() {
         }
     }, [id]);
 
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    useEffect(() => { fetchData(); }, [fetchData]);
 
-    const onRefresh = () => {
-        setRefreshing(true);
-        fetchData();
-    };
+    // --- ANIMATION CONFIG ---
+    const headerTranslateY = scrollY.interpolate({
+        inputRange: [0, HEADER_HEIGHT],
+        outputRange: [0, -HEADER_HEIGHT / 2],
+        extrapolate: 'clamp',
+    });
+    const imageScale = scrollY.interpolate({
+        inputRange: [-HEADER_HEIGHT, 0],
+        outputRange: [2, 1],
+        extrapolate: 'clamp',
+    });
 
-    // --- FIX: Hire Logic (Using correct column name) ---
-    const handleAcceptApplication = async (providerId: string, providerName: string) => {
-        Alert.alert(t('confirmHire') || "Confirm Hiring", `${t('hirePrompt') || "Hire"} ${providerName}?`, [
-            { text: t('cancel'), style: 'cancel' },
-            {
-                text: t('hire') || "Hire",
-                onPress: async () => {
-                    setHiring(true);
-                    try {
-                        const { error } = await supabase
-                            .from('projects')
-                            .update({
-                                assigned_provider_id: providerId, // FIX: Correct column
-                                status: 'in_progress'
-                            })
-                            .eq('id', id);
+    // --- HANDLERS ---
 
-                        if (error) throw error;
+    const handleReleaseFunds = async () => {
+        if (!paymentAmount || !paymentDesc) {
+            Alert.alert("Missing Info", "Please enter an amount and description.");
+            return;
+        }
 
-                        Alert.alert(t('success') || "Success", t('providerHired') || "Provider assigned!");
-                        fetchData();
-                    } catch (err: any) {
-                        Alert.alert(t('errorTitle'), err.message);
-                    } finally {
-                        setHiring(false);
-                    }
-                }
-            }
-        ]);
+        setProcessingPayment(true);
+        try {
+            // Using RPC for safe transaction
+            const { error } = await supabase.rpc('release_milestone', {
+                p_project_id: id,
+                p_provider_id: project.assigned_provider_id,
+                p_amount: parseFloat(paymentAmount),
+                p_desc: paymentDesc
+            });
+
+            if (error) throw error;
+
+            successFeedback();
+            Alert.alert("Success", "Funds released to provider.");
+            setShowPaymentModal(false);
+            setPaymentAmount('');
+            setPaymentDesc('');
+            fetchData();
+        } catch (err: any) {
+            Alert.alert("Payment Failed", err.message);
+        } finally {
+            setProcessingPayment(false);
+        }
     };
 
     const handleCompleteProject = async () => {
-        if (!project?.assigned_provider_id) { // FIX: Correct column
-            Alert.alert(t('missingProviderTitle'), t('missingProviderBody'));
-            return;
-        }
         setSubmittingReview(true);
+        try {
+            const { error } = await supabase.from('reviews').insert({
+                project_id: id,
+                provider_id: project.assigned_provider_id,
+                client_id: project.owner_id,
+                rating,
+                comment: reviewText
+            });
 
-        // FIX: Using 'comment' instead of 'review'
-        const { error: reviewError } = await supabase.from('reviews').insert({
-            project_id: id,
-            provider_id: project.assigned_provider_id, // FIX
-            client_id: project.owner_id,
-            rating,
-            comment: reviewText // FIX
-        });
+            if (error) throw error;
 
-        if (reviewError) {
+            await supabase.from('projects').update({ status: 'completed' }).eq('id', id);
+
+            successFeedback();
+            setShowCompleteModal(false);
+            fetchData();
+        } catch (e: any) {
+            Alert.alert("Error", e.message);
+        } finally {
             setSubmittingReview(false);
-            Alert.alert(t('errorTitle'), reviewError.message);
-            return;
         }
-
-        const { error: statusError } = await supabase
-            .from('projects')
-            .update({ status: 'completed' })
-            .eq('id', id);
-
-        setSubmittingReview(false);
-
-        if (statusError) {
-            Alert.alert(t('errorTitle'), statusError.message);
-            return;
-        }
-
-        setReview({ rating, comment: reviewText });
-        setShowCompleteModal(false);
-        Alert.alert(t('completedTitle'), t('projectCompletedBody'));
-        router.back();
     };
 
+    // Helper: Render Stars
     const renderStars = (current: number, interactive = false) => (
         <View style={styles.starRow}>
             {[1, 2, 3, 4, 5].map(num => (
-                <TouchableOpacity
-                    key={num}
-                    disabled={!interactive}
-                    onPress={() => setRating(num)}
-                    style={styles.starBtn}
-                >
-                    <Ionicons name={num <= current ? "star" : "star-outline"} size={22} color="#FBBF24" />
+                <TouchableOpacity key={num} disabled={!interactive} onPress={() => setRating(num)}>
+                    <Ionicons name={num <= current ? "star" : "star-outline"} size={24} color="#FBBF24" />
                 </TouchableOpacity>
             ))}
         </View>
     );
 
-    const handleDeleteProject = async () => {
-        if (!project) return;
-        Alert.alert(t('deleteProjectTitle'), t('deleteProjectBody'), [
-            { text: t('cancel'), style: "cancel" },
-            {
-                text: t('deleteAction'),
-                style: 'destructive',
-                onPress: async () => {
-                    await supabase.from('projects').delete().eq('id', id);
-                    router.replace('/diaspora');
-                }
-            }
-        ]);
-    };
+    if (loading || !project) {
+        return <View style={styles.center}><ActivityIndicator size="large" color="#0F172A" /></View>;
+    }
 
-    const getStatusStep = () => {
-        if (!project) return 0;
-        const normalized = project.status?.toString().toLowerCase().replace(/\s+/g, '_');
-        if (normalized === 'pending') return 0;
-        if (normalized === 'in_progress') return 1;
-        if (normalized === 'completed') return 2;
-        return 0;
-    };
-
-    const normalizedStatus = project?.status?.toString().toLowerCase().replace(/\s+/g, '_');
-    const statusLabel = normalizedStatus === 'pending'
-        ? t('statusPending')
-        : normalizedStatus === 'in_progress'
-            ? t('statusInProgress')
-            : normalizedStatus === 'completed'
-                ? t('statusCompleted')
-                : project?.status?.toString() || '';
-
-    // Budget Logic (Simple calculation)
+    // Status Helpers
     const totalSpent = expenses.reduce((sum, item) => sum + (item.amount || 0), 0);
-    const progress = project?.budget > 0 ? (totalSpent / project.budget) : 0;
-
-    if (loading) return (
-        <View style={styles.center}><ActivityIndicator size="large" color="#0F172A" /></View>
-    );
-
-    if (!project) return (
-        <View style={styles.center}><Text>{t('projectNotFound')}</Text></View>
-    );
+    const isPending = project.status === 'pending';
+    const isCompleted = project.status === 'completed';
 
     return (
         <View style={styles.container}>
             <StatusBar barStyle="light-content" />
-            <NavigationBar title={t('projectHubTitle')} showBack={true} />
 
-            <ScrollView
-                contentContainerStyle={{ paddingBottom: 60 }}
-                showsVerticalScrollIndicator={false}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            >
-                {/* --- HEADER --- */}
-                <View style={styles.imageHeader}>
-                    <Image
-                        source={{ uri: project.image_url || 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5' }}
-                        style={styles.heroImage}
-                    />
-                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.gradientOverlay}>
-                        <View style={styles.headerContent}>
-                            <View style={styles.tag}>
-                                <Text style={styles.tagText}>{statusLabel.toUpperCase()}</Text>
-                            </View>
-                            <Text style={styles.title}>{project.title}</Text>
-                            <Text style={styles.location}>
-                                <Ionicons name="location" size={16} color="#CBD5E1" /> {project.city}
-                            </Text>
-                        </View>
-                    </LinearGradient>
-                </View>
-
-                <View style={styles.body}>
-                    {/* --- STATUS STEPPER --- */}
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>{t('projectStatusTitle')}</Text>
-                        <View style={styles.stepperContainer}>
-                            {[t('statusPending'), t('statusInProgress'), t('statusCompleted')].map((step, index) => {
-                                const activeStep = getStatusStep();
-                                const isActive = index <= activeStep;
-                                return (
-                                    <View key={index} style={styles.stepWrapper}>
-                                        <View style={[styles.stepCircle, isActive && styles.stepActive]}>
-                                            {index < activeStep ? (
-                                                <Ionicons name="checkmark" size={14} color="#fff" />
-                                            ) : (
-                                                <Text style={[styles.stepNum, isActive && { color: '#fff' }]}>{index + 1}</Text>
-                                            )}
-                                        </View>
-                                        <Text style={[styles.stepLabel, isActive && styles.labelActive]}>{step}</Text>
-                                        {index < 2 && <View style={[styles.stepLine, index < activeStep && styles.lineActive]} />}
-                                    </View>
-                                );
-                            })}
-                        </View>
-                    </View>
-
-                    {/* --- BUDGET PROGRESS (Inline) --- */}
-                    <View style={styles.section}>
-                        <View style={{flexDirection:'row', justifyContent:'space-between', marginBottom:8}}>
-                            <Text style={styles.sectionTitle}>Budget</Text>
-                            <Text style={{fontWeight:'700', color: progress > 1 ? '#EF4444' : '#10B981'}}>
-                                {Math.round(progress * 100)}% Spent
-                            </Text>
-                        </View>
-                        <View style={{height: 10, backgroundColor: '#E2E8F0', borderRadius: 5, overflow: 'hidden'}}>
-                            <View style={{height: '100%', width: `${Math.min(progress * 100, 100)}%`, backgroundColor: progress > 1 ? '#EF4444' : '#10B981'}} />
-                        </View>
-                        <Text style={{marginTop: 6, color: '#64748B', fontSize: 12}}>
-                            {totalSpent.toLocaleString()} / {project.budget?.toLocaleString()} CFA
+            {/* --- HEADER --- */}
+            <Animated.View style={[styles.headerContainer, { transform: [{ translateY: headerTranslateY }] }]}>
+                <Animated.Image
+                    source={{ uri: project.image_url || 'https://images.unsplash.com/photo-1503387762-592deb58ef4e' }}
+                    style={[styles.headerImage, { transform: [{ scale: imageScale }] }]}
+                />
+                <LinearGradient colors={['rgba(0,0,0,0.1)', 'rgba(15, 23, 42, 0.9)']} style={styles.gradient} />
+                <View style={styles.headerContent}>
+                    <View style={[styles.statusBadge, isPending ? styles.bgWarning : styles.bgSuccess]}>
+                        <Text style={[styles.statusText, isPending ? styles.textWarning : styles.textSuccess]}>
+                            {project.status.replace('_', ' ').toUpperCase()}
                         </Text>
                     </View>
+                    <Text style={styles.headerTitle}>{project.title}</Text>
+                    <View style={styles.locationRow}>
+                        <Ionicons name="location" size={16} color="#CBD5E1" />
+                        <Text style={styles.headerLoc}>{project.city}</Text>
+                    </View>
+                </View>
+            </Animated.View>
 
-                    {/* --- ACTION ROW --- */}
-                    <View style={styles.actionRow}>
-                        <TouchableOpacity
-                            style={styles.actionBtn}
-                            onPress={() => router.push({ pathname: '/chat/[id]', params: { id: id } })}
-                        >
-                            <Ionicons name="chatbubbles" size={20} color="#0EA5E9" />
-                            <Text style={styles.actionText}>{t('chatAction')}</Text>
-                        </TouchableOpacity>
+            {/* --- NAV BAR --- */}
+            <View style={styles.navBar}>
+                <TouchableOpacity onPress={() => router.back()} style={styles.navBtn}>
+                    <Ionicons name="arrow-back" size={24} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.navBtn}>
+                    <Ionicons name="ellipsis-horizontal" size={24} color="#fff" />
+                </TouchableOpacity>
+            </View>
 
-                        <TouchableOpacity
-                            style={styles.actionBtn}
-                            onPress={() => router.push({ pathname: '/diaspora/timeline', params: { id: id } })}
-                        >
-                            <Ionicons name="images" size={20} color="#0EA5E9" />
-                            <Text style={styles.actionText}>{t('photosAction')}</Text>
-                        </TouchableOpacity>
+            {/* --- SCROLL CONTENT --- */}
+            <Animated.ScrollView
+                contentContainerStyle={{ paddingTop: HEADER_HEIGHT - 30, paddingBottom: 140 }}
+                onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+                scrollEventThrottle={16}
+                showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} />}
+            >
+                <View style={styles.body}>
+
+                    {/* 1. Glass Metrics */}
+                    <View style={styles.metricsContainer}>
+                        <BlurView intensity={30} tint="light" style={styles.glassRow}>
+                            <View style={styles.metricItem}>
+                                <Text style={styles.metricLabel}>Budget</Text>
+                                <Text style={styles.metricValue}>{(project.budget / 1000).toFixed(0)}k</Text>
+                            </View>
+                            <View style={styles.metricDivider} />
+                            <View style={styles.metricItem}>
+                                <Text style={styles.metricLabel}>Spent</Text>
+                                <Text style={styles.metricValue}>{(totalSpent / 1000).toFixed(0)}k</Text>
+                            </View>
+                            <View style={styles.metricDivider} />
+                            <View style={styles.metricItem}>
+                                <Text style={styles.metricLabel}>Remaining</Text>
+                                <Text style={[styles.metricValue, { color: '#16A34A' }]}>{((project.budget - totalSpent) / 1000).toFixed(0)}k</Text>
+                            </View>
+                        </BlurView>
                     </View>
 
-                    {/* --- APPLICANTS (Inline List) --- */}
-                    {normalizedStatus === 'pending' && (
+                    {/* 2. Overview */}
+                    <Text style={styles.sectionTitle}>Overview</Text>
+                    <Text style={styles.description}>{project.description || "No description available."}</Text>
+
+                    {!isPending && (
                         <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>{t('providerRequestsTitle')} ({applications.length})</Text>
-                            {applications.length === 0 ? (
-                                <View style={styles.emptyBox}>
-                                    <Ionicons name="people-outline" size={32} color="#CBD5E1" />
-                                    <Text style={styles.emptyText}>No applications yet</Text>
+                            <BudgetProgress totalBudget={project.budget} spent={totalSpent} />
+                        </View>
+                    )}
+
+                    {/* 3. Expenses List (If Approved) */}
+                    {!isPending && expenses.length > 0 && (
+                        <View style={styles.section}>
+                            <Text style={styles.subTitle}>Recent Expenses</Text>
+                            {expenses.map((item) => (
+                                <View key={item.id} style={styles.expenseRow}>
+                                    <View style={styles.expenseIcon}>
+                                        <Ionicons name="receipt-outline" size={16} color="#64748B" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.expenseTitle}>{item.description || "Milestone Payment"}</Text>
+                                        <Text style={styles.expenseDate}>{new Date(item.created_at).toLocaleDateString()}</Text>
+                                    </View>
+                                    <Text style={styles.expenseAmount}>-{item.amount?.toLocaleString()} CFA</Text>
+                                </View>
+                            ))}
+                        </View>
+                    )}
+
+                    {/* 4. Provider / Applicants (UPDATED LINK) */}
+                    <View style={{ marginTop: 24, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={styles.sectionTitle}>
+                            {isPending ? `Applicants (${applications.length})` : "Contractor"}
+                        </Text>
+
+                        {/* Link to Review Proposals Screen */}
+                        {isPending && applications.length > 0 && (
+                            <TouchableOpacity onPress={() => router.push(`/diaspora/project/proposals?id=${id}`)}>
+                                <Text style={{ color: '#0EA5E9', fontWeight: '700', fontSize: 14 }}>Review All</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+
+                    {isPending ? (
+                        applications.length === 0 ? (
+                            <View style={styles.emptyCard}>
+                                <Ionicons name="people-outline" size={32} color="#CBD5E1" />
+                                <Text style={styles.emptyText}>Waiting for providers...</Text>
+                            </View>
+                        ) : (
+                            // Show top 3 max, guide user to click "View" to see details
+                            applications.slice(0, 3).map((app) => (
+                                <View key={app.id} style={styles.applicantCard}>
+                                    <View style={styles.applicantInfo}>
+                                        <Image source={{ uri: app.profiles?.avatar_url || 'https://i.pravatar.cc/150' }} style={styles.avatar} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.appName}>{app.profiles?.full_name}</Text>
+                                            <Text style={styles.appRating}>⭐ {app.profiles?.rating || 'New'} • Bid: {app.bid_amount?.toLocaleString()}</Text>
+                                        </View>
+                                    </View>
+                                    <TouchableOpacity
+                                        style={[styles.hireBtn, { backgroundColor: '#F1F5F9' }]}
+                                        onPress={() => router.push(`/diaspora/project/proposals?id=${id}`)}
+                                    >
+                                        <Text style={[styles.hireText, { color: '#0F172A' }]}>View</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            ))
+                        )
+                    ) : (
+                        <View style={styles.activeProviderCard}>
+                            <Image source={{ uri: project.profiles?.avatar_url || 'https://i.pravatar.cc/150' }} style={styles.largeAvatar} />
+                            <View style={{ flex: 1, paddingHorizontal: 12 }}>
+                                <Text style={styles.provName}>{project.profiles?.full_name}</Text>
+                                <Text style={styles.provStatus}>Verified Professional</Text>
+                            </View>
+                            <TouchableOpacity style={styles.callBtn} onPress={() => { mediumFeedback(); router.push(`/chat/${id}`); }}>
+                                <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+                            </TouchableOpacity>
+                        </View>
+                    )}
+
+                    {/* 5. Live Timeline (Project Updates) */}
+                    {!isPending && (
+                        <View style={styles.section}>
+                            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Site Activity</Text>
+                            {updates.length === 0 ? (
+                                <View style={styles.emptyTimeline}>
+                                    <View style={styles.dashedLine} />
+                                    <Text style={styles.emptyText}>Provider has not posted updates yet.</Text>
                                 </View>
                             ) : (
-                                applications.map((app) => (
-                                    <View key={app.id} style={styles.appCard}>
-                                        <View style={styles.appHeader}>
-                                            <Image source={{ uri: app.profiles?.avatar_url || 'https://i.pravatar.cc/150' }} style={styles.smallAvatar} />
-                                            <View style={{ flex: 1, marginLeft: 10 }}>
-                                                <Text style={styles.appName}>{app.profiles?.full_name}</Text>
-                                                <Text style={styles.appCity}>{app.profiles?.city}</Text>
-                                            </View>
+                                updates.map((update, index) => (
+                                    <View key={update.id} style={styles.timelineItem}>
+                                        <View style={styles.timelineLeft}>
+                                            <View style={styles.timelineDot} />
+                                            {index !== updates.length - 1 && <View style={styles.timelineLine} />}
                                         </View>
-                                        <TouchableOpacity
-                                            style={styles.hireBtn}
-                                            onPress={() => handleAcceptApplication(app.provider_id, app.profiles?.full_name)}
-                                            disabled={hiring}
-                                        >
-                                            {hiring ? <ActivityIndicator color="#fff"/> : <Text style={styles.hireText}>Hire</Text>}
-                                        </TouchableOpacity>
+
+                                        <View style={styles.timelineContent}>
+                                            <View style={styles.timelineHeader}>
+                                                <Text style={styles.updateTitle}>{update.title || "Update"}</Text>
+                                                <Text style={styles.updateDate}>
+                                                    {new Date(update.created_at).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
+                                                </Text>
+                                            </View>
+
+                                            <Text style={styles.updateDesc}>{update.description}</Text>
+
+                                            {update.image_url && (
+                                                <TouchableOpacity onPress={() => { mediumFeedback(); setSelectedImage(update.image_url); }}>
+                                                    <Image source={{ uri: update.image_url }} style={styles.updateImage} />
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
                                     </View>
                                 ))
                             )}
                         </View>
                     )}
 
-                    {/* --- ASSIGNED PROVIDER --- */}
-                    {normalizedStatus !== 'pending' && project.profiles && (
-                        <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>{t('assignedProviderTitle')}</Text>
-                            <View style={styles.providerCard}>
-                                <Image source={{ uri: project.profiles.avatar_url || 'https://i.pravatar.cc/150?u=provider' }} style={styles.providerImg} />
-                                <View>
-                                    <Text style={styles.providerName}>{project.profiles.full_name}</Text>
-                                    <Text style={styles.providerSub}>{project.profiles.city}</Text>
-                                </View>
-                                <Ionicons name="checkmark-circle" size={24} color="#16A34A" style={{marginLeft:'auto'}} />
+                    {/* 6. Reviews */}
+                    {isCompleted && review && (
+                        <View style={styles.reviewDisplay}>
+                            <Text style={styles.reviewHeader}>Your Rating</Text>
+                            <View style={styles.reviewContent}>
+                                {renderStars(review.rating)}
+                                <Text style={styles.reviewComment}>"{review.comment}"</Text>
                             </View>
                         </View>
                     )}
 
-                    {/* --- DELETE BUTTON --- */}
-                    {normalizedStatus === 'pending' && (
-                        <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteProject}>
-                            <Ionicons name="trash-outline" size={20} color="#EF4444" />
-                            <Text style={styles.deleteText}>{t('deleteProjectAction')}</Text>
-                        </TouchableOpacity>
-                    )}
-
-                    {/* --- COMPLETE BUTTON --- */}
-                    {normalizedStatus === 'in_progress' && (
-                        <TouchableOpacity style={styles.completeBtn} onPress={() => setShowCompleteModal(true)}>
-                            <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                            <Text style={styles.completeText}>{t('markCompleteAction')}</Text>
-                        </TouchableOpacity>
-                    )}
-
-                    {/* --- REVIEW DISPLAY --- */}
-                    {normalizedStatus === 'completed' && (
-                        <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>{t('rateProviderTitle')}</Text>
-                            {review ? (
-                                <View style={styles.reviewCard}>
-                                    {renderStars(review.rating || 0)}
-                                    <Text style={styles.reviewText}>{review.comment || t('noCommentProvided')}</Text>
-                                </View>
-                            ) : (
-                                <View style={styles.reviewCard}>
-                                    <Text style={styles.reviewText}>{t('noReviewSubmitted')}</Text>
-                                </View>
-                            )}
-                        </View>
-                    )}
-
                 </View>
-            </ScrollView>
+            </Animated.ScrollView>
 
-            {/* --- COMPLETE MODAL --- */}
+            {/* --- ACTION BAR (Bottom) --- */}
+            {!isPending && !isCompleted && (
+                <View style={styles.actionBar}>
+                    <TouchableOpacity style={styles.actionPayBtn} onPress={() => setShowPaymentModal(true)}>
+                        <Ionicons name="wallet-outline" size={20} color="#fff" />
+                        <Text style={styles.actionPayText}>Release Funds</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.actionDoneBtn} onPress={() => setShowCompleteModal(true)}>
+                        <Text style={styles.actionDoneText}>Complete</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {/* --- MODALS --- */}
+
+            {/* 1. Payment Modal */}
+            <Modal visible={showPaymentModal} transparent animationType="slide">
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+                    <TouchableOpacity style={{flex:1}} onPress={() => setShowPaymentModal(false)} />
+                    <View style={styles.modalCard}>
+                        <View style={styles.modalHandle} />
+                        <Text style={styles.modalTitle}>Release Payment</Text>
+                        <Text style={styles.modalSub}>Safe transfer from escrow to provider.</Text>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Amount (CFA)</Text>
+                            <TextInput style={styles.input} placeholder="0" keyboardType="numeric" value={paymentAmount} onChangeText={setPaymentAmount} />
+                        </View>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Note</Text>
+                            <TextInput style={styles.input} placeholder="e.g. For materials" value={paymentDesc} onChangeText={setPaymentDesc} />
+                        </View>
+
+                        <View style={styles.modalBtns}>
+                            <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowPaymentModal(false)}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
+                            <TouchableOpacity style={styles.confirmBtn} onPress={handleReleaseFunds} disabled={processingPayment}>
+                                {processingPayment ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmText}>Confirm</Text>}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
+
+            {/* 2. Review Modal */}
             <Modal visible={showCompleteModal} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalCard}>
-                        <Text style={styles.modalTitle}>{t('completeProjectTitle')}</Text>
-                        <Text style={styles.modalSub}>{t('completeProjectSub')}</Text>
-                        {renderStars(rating, true)}
-                        <TextInput
-                            style={styles.reviewInput}
-                            placeholder={t('reviewPlaceholder')}
-                            placeholderTextColor="#94A3B8"
-                            multiline
-                            value={reviewText}
-                            onChangeText={setReviewText}
-                        />
-                        <View style={styles.modalActions}>
-                            <TouchableOpacity style={styles.modalCancel} onPress={() => setShowCompleteModal(false)}>
-                                <Text style={styles.modalCancelText}>{t('cancel')}</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.submitBtn} onPress={handleCompleteProject} disabled={submittingReview}>
-                                {submittingReview ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>{t('submitCompleteAction')}</Text>}
+                        <Text style={styles.modalTitle}>Project Complete</Text>
+                        <Text style={styles.modalSub}>Please rate the contractor.</Text>
+                        <View style={{ marginVertical: 20 }}>{renderStars(rating, true)}</View>
+                        <TextInput style={styles.inputArea} placeholder="Write a review..." multiline value={reviewText} onChangeText={setReviewText} />
+                        <View style={styles.modalBtns}>
+                            <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowCompleteModal(false)}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
+                            <TouchableOpacity style={styles.confirmBtn} onPress={handleCompleteProject} disabled={submittingReview}>
+                                {submittingReview ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmText}>Finish</Text>}
                             </TouchableOpacity>
                         </View>
                     </View>
                 </View>
             </Modal>
+
+            {/* 3. Image Zoom Modal */}
+            <Modal visible={!!selectedImage} transparent animationType="fade">
+                <View style={styles.zoomOverlay}>
+                    <TouchableOpacity style={styles.closeZoom} onPress={() => setSelectedImage(null)}>
+                        <Ionicons name="close-circle" size={40} color="#fff" />
+                    </TouchableOpacity>
+                    <Image source={{ uri: selectedImage || '' }} style={styles.zoomedImage} resizeMode="contain" />
+                </View>
+            </Modal>
+
         </View>
     );
 }
@@ -427,61 +482,111 @@ export default function ProjectDetailsScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    imageHeader: { height: 250, width: '100%', position: 'relative' },
-    heroImage: { width: '100%', height: '100%' },
-    gradientOverlay: { position: 'absolute', bottom: 0, width: '100%', height: '100%', justifyContent: 'flex-end', padding: 24 },
-    headerContent: { marginBottom: 10 },
-    tag: { backgroundColor: '#0EA5E9', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 10 },
-    tagText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-    title: { color: '#fff', fontSize: 28, fontWeight: '800', marginBottom: 4 },
-    location: { color: '#E2E8F0', fontSize: 16, fontWeight: '500' },
-    body: { padding: 24, marginTop: -20, backgroundColor: '#F8FAFC', borderTopLeftRadius: 30, borderTopRightRadius: 30 },
-    section: { marginBottom: 30 },
-    sectionTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 16 },
-    stepperContainer: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 10 },
-    stepWrapper: { alignItems: 'center', flex: 1, position: 'relative' },
-    stepCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', marginBottom: 8, zIndex: 2 },
-    stepActive: { backgroundColor: '#0EA5E9' },
-    stepNum: { fontSize: 12, fontWeight: '700', color: '#64748B' },
-    stepLabel: { fontSize: 12, color: '#94A3B8', fontWeight: '600' },
-    labelActive: { color: '#0F172A' },
-    stepLine: { position: 'absolute', top: 16, left: '50%', width: '100%', height: 2, backgroundColor: '#E2E8F0', zIndex: 1 },
-    lineActive: { backgroundColor: '#0EA5E9' },
-    actionRow: { flexDirection: 'row', gap: 12, marginBottom: 30 },
-    actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', paddingVertical: 12, borderRadius: 14, gap: 8, borderWidth: 1, borderColor: '#E2E8F0' },
-    actionText: { color: '#0F172A', fontWeight: '700', fontSize: 14 },
 
-    // NEW: App Card (Inline Applicant)
-    appCard: { backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
-    appHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-    smallAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E2E8F0' },
-    appName: { fontWeight: '700', color: '#0F172A', fontSize: 16 },
-    appCity: { color: '#64748B', fontSize: 13 },
-    hireBtn: { backgroundColor: '#0F172A', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
-    hireText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-    emptyBox: { alignItems: 'center', padding: 20, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, borderStyle: 'dashed' },
-    emptyText: { color: '#94A3B8', marginTop: 8 },
+    headerContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: HEADER_HEIGHT, overflow: 'hidden', zIndex: 0 },
+    headerImage: { width: '100%', height: HEADER_HEIGHT, resizeMode: 'cover' },
+    gradient: { ...StyleSheet.absoluteFillObject },
+    headerContent: { position: 'absolute', bottom: 40, left: 20, right: 20 },
 
-    providerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' },
-    providerImg: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
-    providerName: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-    providerSub: { fontSize: 12, color: '#64748B' },
-    deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20, padding: 15, borderRadius: 14, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FEE2E2' },
-    deleteText: { color: '#EF4444', fontWeight: '700', fontSize: 14 },
-    completeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 16, padding: 15, borderRadius: 14, backgroundColor: '#16A34A' },
-    completeText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-    reviewCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#E2E8F0', gap: 12 },
-    starRow: { flexDirection: 'row', gap: 4 },
-    starBtn: { padding: 4 },
-    reviewInput: { backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', padding: 12, minHeight: 90, textAlignVertical: 'top', color: '#0F172A' },
-    submitBtn: { flex: 1, backgroundColor: '#0EA5E9', paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-    submitText: { color: '#fff', fontWeight: '800' },
-    reviewText: { color: '#334155', fontSize: 14, lineHeight: 20 },
+    statusBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginBottom: 10 },
+    bgWarning: { backgroundColor: 'rgba(245, 158, 11, 0.2)' },
+    bgSuccess: { backgroundColor: 'rgba(22, 163, 74, 0.2)' },
+    statusText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+    textWarning: { color: '#FCD34D' },
+    textSuccess: { color: '#4ADE80' },
+
+    headerTitle: { fontSize: 32, fontWeight: '800', color: '#fff', marginBottom: 4 },
+    headerLoc: { color: '#E2E8F0', fontSize: 16, fontWeight: '600' },
+    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+
+    navBar: { position: 'absolute', top: 50, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 10 },
+    navBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' },
+
+    body: { backgroundColor: '#F8FAFC', borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 24, paddingBottom: 40, minHeight: 800 },
+
+    metricsContainer: { marginTop: -40, marginBottom: 24 },
+    glassRow: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 20, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 8, justifyContent: 'space-between' },
+    metricItem: { alignItems: 'center', flex: 1 },
+    metricLabel: { fontSize: 11, color: '#64748B', fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 },
+    metricValue: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+    metricDivider: { width: 1, height: 24, backgroundColor: '#E2E8F0' },
+
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
+    subTitle: { fontSize: 14, fontWeight: '700', color: '#64748B', marginBottom: 12, textTransform: 'uppercase', marginTop: 10 },
+    description: { fontSize: 15, color: '#475569', lineHeight: 24, marginBottom: 20 },
+    section: { marginBottom: 24 },
+
+    // Expense Styles
+    expenseRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 12, borderRadius: 12, marginBottom: 8, gap: 12 },
+    expenseIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+    expenseTitle: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+    expenseDate: { fontSize: 12, color: '#94A3B8' },
+    expenseAmount: { fontSize: 14, fontWeight: '700', color: '#EF4444' },
+
+    // Timeline Styles
+    timelineItem: { flexDirection: 'row' },
+    timelineLeft: { width: 24, alignItems: 'center', marginRight: 12 },
+    timelineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#0F172A', borderWidth: 2, borderColor: '#fff', zIndex: 10 },
+    timelineLine: { width: 2, flex: 1, backgroundColor: '#E2E8F0', position: 'absolute', top: 12, bottom: -12 },
+    timelineContent: { flex: 1, backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 24, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 5 },
+    timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+    updateTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+    updateDate: { fontSize: 12, color: '#94A3B8' },
+    updateDesc: { color: '#334155', lineHeight: 20 },
+    updateImage: { width: '100%', height: 160, borderRadius: 12, marginTop: 12 },
+
+    emptyTimeline: { alignItems: 'center', padding: 20 },
+    dashedLine: { height: 40, width: 1, borderStyle: 'dashed', borderWidth: 1, borderColor: '#CBD5E1', marginBottom: 10 },
+    emptyText: { color: '#94A3B8', fontWeight: '500' },
+
+    // Provider / Applicant
+    emptyCard: { alignItems: 'center', padding: 30, borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed', borderRadius: 16 },
+    emptyText: { color: '#94A3B8', marginTop: 8, fontWeight: '600' },
+    applicantCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 5 },
+    applicantInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E2E8F0' },
+    appName: { fontWeight: '700', color: '#0F172A', fontSize: 15 },
+    appRating: { fontSize: 12, color: '#64748B' },
+    hireBtn: { backgroundColor: '#0F172A', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 },
+    hireText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+
+    activeProviderCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', padding: 20, borderRadius: 20, shadowColor: '#0F172A', shadowOpacity: 0.3, shadowRadius: 10, elevation: 8 },
+    largeAvatar: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, borderColor: '#fff' },
+    provName: { color: '#fff', fontSize: 18, fontWeight: '700' },
+    provStatus: { color: '#94A3B8', fontSize: 13 },
+    callBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+
+    // Actions & Reviews
+    actionBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', flexDirection: 'row', padding: 20, gap: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+    actionPayBtn: { flex: 2, backgroundColor: '#0F172A', borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 50, gap: 8 },
+    actionPayText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    actionDoneBtn: { flex: 1, backgroundColor: '#F0FDF4', borderRadius: 14, alignItems: 'center', justifyContent: 'center', height: 50, borderWidth: 1, borderColor: '#DCFCE7' },
+    actionDoneText: { color: '#16A34A', fontWeight: '700', fontSize: 16 },
+
+    reviewDisplay: { marginTop: 10, padding: 16, backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' },
+    reviewHeader: { fontWeight: '700', marginBottom: 8, color: '#0F172A' },
+    reviewContent: { gap: 6 },
+    reviewComment: { color: '#334155', fontStyle: 'italic' },
+
+    // Modal
     modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
-    modalCard: { backgroundColor: '#fff', padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, gap: 14 },
-    modalTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-    modalSub: { fontSize: 13, color: '#64748B' },
-    modalActions: { flexDirection: 'row', gap: 12, marginTop: 6 },
-    modalCancel: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center' },
-    modalCancelText: { color: '#0F172A', fontWeight: '700' }
+    modalCard: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 10 },
+    modalHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginBottom: 10 },
+    modalTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', textAlign: 'center' },
+    modalSub: { fontSize: 14, color: '#64748B', textAlign: 'center', marginBottom: 10 },
+    inputGroup: { marginBottom: 16 },
+    label: { fontWeight: '700', color: '#64748B', marginBottom: 6 },
+    input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 14, fontSize: 16, color: '#0F172A' },
+    starRow: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
+    inputArea: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 16, minHeight: 100, textAlignVertical: 'top', borderWidth: 1, borderColor: '#E2E8F0', fontSize: 16 },
+    modalBtns: { flexDirection: 'row', gap: 12, marginTop: 10 },
+    cancelBtn: { flex: 1, padding: 16, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center' },
+    cancelText: { fontWeight: '700', color: '#64748B' },
+    confirmBtn: { flex: 1, padding: 16, borderRadius: 14, backgroundColor: '#0EA5E9', alignItems: 'center' },
+    confirmText: { fontWeight: '700', color: '#fff' },
+
+    // Zoom
+    zoomOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' },
+    zoomedImage: { width: width, height: height * 0.7 },
+    closeZoom: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
 });
