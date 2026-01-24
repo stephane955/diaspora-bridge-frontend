@@ -85,9 +85,33 @@ export default function ProposalsScreen() {
                                 .eq('project_id', id)
                                 .neq('id', application.id);
 
+                            // --- 4. NEW: AUTO-CREATE MILESTONES ---
+                            // This ensures the Workroom is not empty.
+                            // We split the bid into 2 chunks (50% / 50%) for simplicity.
+                            const halfAmount = Math.floor(application.bid_amount / 2);
+                            const remainder = application.bid_amount - halfAmount;
+
+                            const { error: milesError } = await supabase.from('milestones').insert([
+                                {
+                                    project_id: id,
+                                    title: "Phase 1: Mobilization & Materials",
+                                    amount: halfAmount,
+                                    status: 'pending' // Provider must upload proof
+                                },
+                                {
+                                    project_id: id,
+                                    title: "Phase 2: Completion & Handover",
+                                    amount: remainder,
+                                    status: 'pending' // Locked until Phase 1 is done
+                                }
+                            ]);
+
+                            if (milesError) throw milesError;
+
                             successFeedback();
-                            Alert.alert("Success", "Provider Hired! Redirecting...");
-                            router.replace(`/diaspora/project/${id}`); // Go back to Project Details
+                            Alert.alert("Success", "Provider Hired! Workroom created.");
+                            // Go back to Project Details so Client can see the "Active Provider" view
+                            router.replace(`/diaspora/project/${id}`);
 
                         } catch (err: any) {
                             Alert.alert("Error", err.message);

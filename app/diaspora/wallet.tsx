@@ -11,10 +11,16 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { mediumFeedback, lightFeedback } from '@/utils/haptics';
 
+// --- BIOMETRICS IMPORT ---
+import { useBiometrics } from '@/hooks/useBiometrics';
+
 export default function ProviderWalletScreen() {
     const router = useRouter();
     const { user } = useAuth();
     const { t } = useLanguage();
+
+    // --- INITIALIZE BIOMETRICS HOOK ---
+    const { authenticate } = useBiometrics();
 
     const [transactions, setTransactions] = useState<any[]>([]);
     const [balance, setBalance] = useState(0);
@@ -57,10 +63,10 @@ export default function ProviderWalletScreen() {
 
     useFocusEffect(useCallback(() => { fetchData(); }, [fetchData]));
 
-    const handleWithdraw = () => {
+    const handleWithdraw = async () => {
         mediumFeedback();
 
-        // --- THE VERIFICATION BARRIER ---
+        // --- BARRIER 1: IDENTITY VERIFICATION ---
         if (verificationStatus !== 'verified') {
             Alert.alert(
                 "Verification Required",
@@ -73,13 +79,18 @@ export default function ProviderWalletScreen() {
             return;
         }
 
+        // --- BARRIER 2: EMPTY BALANCE ---
         if (balance <= 0) {
             Alert.alert("Empty Wallet", "You don't have any funds to withdraw yet.");
             return;
         }
 
-        // Future: Integration with Mobile Money (Orange/MTN) or Bank
-        router.push('/provider/payout-setup');
+        // --- BARRIER 3: BIOMETRIC AUTHENTICATION ---
+        const isAuthenticated = await authenticate();
+
+        if (isAuthenticated) {
+            router.push('/provider/payout-setup');
+        }
     };
 
     return (
@@ -173,6 +184,30 @@ export default function ProviderWalletScreen() {
                         ))
                     )}
                 </View>
+
+                {/* --- SECRET ADMIN DOOR (Only visible to you) --- */}
+                {user?.email === 'skengni4@gmail.com' && (
+                    <TouchableOpacity
+                        style={{
+                            marginTop: 40,
+                            backgroundColor: '#DC2626',
+                            padding: 16,
+                            borderRadius: 16,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 10,
+                            marginBottom: 20
+                        }}
+                        onPress={() => router.push('/admin/payouts')}
+                    >
+                        <Ionicons name="shield-checkmark" size={24} color="white" />
+                        <Text style={{ color: 'white', fontWeight: '800', fontSize: 16 }}>
+                            OPEN ADMIN PANEL
+                        </Text>
+                    </TouchableOpacity>
+                )}
+
             </ScrollView>
         </View>
     );

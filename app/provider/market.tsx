@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity,
-    Image, ActivityIndicator, Modal, Alert, KeyboardAvoidingView, Platform
+    View, Text, StyleSheet, TextInput, TouchableOpacity,
+    ActivityIndicator, Modal, Alert, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,7 +10,12 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import ProviderNavigation from '@/components/ProviderNavigation';
 
+// --- PERFORMANCE UPGRADES ---
+import { FlashList } from '@shopify/flash-list';
+import { Image } from 'expo-image'; // Better caching & blurhash
+
 const CITIES = ["All", "Douala", "Yaoundé", "Bamenda", "Kribi", "Limbe", "Bafoussam"];
+const blurhash = 'L6PZfSi_.AyE_3t7t7R**0o#DgR4'; // Placeholder animation
 
 export default function MarketScreen() {
     const { user } = useAuth();
@@ -42,7 +47,7 @@ export default function MarketScreen() {
                 setUserProfile(profile);
             }
 
-            // 2. Fetch Jobs with Owner details (The Proposed Fix)
+            // 2. Fetch Jobs with Owner details
             let query = supabase
                 .from('projects')
                 .select(`
@@ -129,20 +134,25 @@ export default function MarketScreen() {
             activeOpacity={0.9}
             onPress={() => setSelectedJob(item)}
         >
+            {/* UPGRADE: Smart Image Component */}
             <Image
-                source={{ uri: item.image_url || 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5' }}
+                source={item.image_url || 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5'}
                 style={styles.cardImage}
+                placeholder={blurhash}
+                contentFit="cover"
+                transition={500}
             />
-            <LinearGradient colors={['transparent', 'rgba(15,23,42,0.9)']} style={styles.cardOverlay}>
+
+            <LinearGradient colors={['transparent', 'rgba(15,23,42,0.95)']} style={styles.cardOverlay}>
                 <View style={styles.cardContent}>
                     <View style={styles.badgeRow}>
                         <View style={styles.cityBadge}>
                             <Text style={styles.cityBadgeText}>{item.city?.toUpperCase() || "CAMEROON"}</Text>
                         </View>
-                        {/* Displaying Client Name from the Joined Profile */}
+                        {/* Client Name Badge */}
                         {item.profiles?.full_name && (
                             <View style={styles.clientBadge}>
-                                <Ionicons name="person-outline" size={10} color="#fff" />
+                                <Ionicons name="person-circle-outline" size={12} color="#fff" />
                                 <Text style={styles.clientText}>{item.profiles.full_name}</Text>
                             </View>
                         )}
@@ -184,40 +194,45 @@ export default function MarketScreen() {
                     />
                 </View>
 
-                <FlatList
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    data={CITIES}
-                    keyExtractor={item => item}
-                    contentContainerStyle={{ gap: 8, paddingBottom: 10 }}
-                    renderItem={({ item }) => (
-                        <TouchableOpacity
-                            style={[styles.chip, selectedCity === item && styles.chipActive]}
-                            onPress={() => setSelectedCity(item)}
-                        >
-                            <Text style={[styles.chipText, selectedCity === item && styles.textActive]}>{item}</Text>
-                        </TouchableOpacity>
-                    )}
-                />
+                {/* City Filter - FlashList for horizontal scrolling */}
+                <View style={{ height: 40 }}>
+                    <FlashList
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        data={CITIES}
+                        estimatedItemSize={80}
+                        renderItem={({ item }: any) => (
+                            <TouchableOpacity
+                                style={[styles.chip, selectedCity === item && styles.chipActive]}
+                                onPress={() => setSelectedCity(item)}
+                            >
+                                <Text style={[styles.chipText, selectedCity === item && styles.textActive]}>{item}</Text>
+                            </TouchableOpacity>
+                        )}
+                        contentContainerStyle={{ paddingHorizontal: 0 }}
+                    />
+                </View>
             </View>
 
-            {/* --- JOB LIST --- */}
+            {/* --- JOB LIST (FlashList Upgrade) --- */}
             {loading ? (
                 <View style={styles.center}><ActivityIndicator size="large" color="#0F172A" /></View>
             ) : (
-                <FlatList
-                    data={jobs}
-                    keyExtractor={item => item.id.toString()}
-                    renderItem={renderJob}
-                    contentContainerStyle={styles.listContent}
-                    ListEmptyComponent={
-                        <View style={styles.emptyState}>
-                            <Ionicons name="briefcase-outline" size={48} color="#CBD5E1" />
-                            <Text style={styles.emptyText}>No open jobs found.</Text>
-                            <Text style={styles.emptySub}>Try changing filters or check back later.</Text>
-                        </View>
-                    }
-                />
+                <View style={{ flex: 1, paddingHorizontal: 20 }}>
+                    <FlashList
+                        data={jobs}
+                        renderItem={renderJob}
+                        estimatedItemSize={210}
+                        contentContainerStyle={{ paddingBottom: 100, paddingTop: 10 }}
+                        ListEmptyComponent={
+                            <View style={styles.emptyState}>
+                                <Ionicons name="briefcase-outline" size={48} color="#CBD5E1" />
+                                <Text style={styles.emptyText}>No open jobs found.</Text>
+                                <Text style={styles.emptySub}>Try changing filters or check back later.</Text>
+                            </View>
+                        }
+                    />
+                </View>
             )}
 
             {/* --- APPLY MODAL --- */}
@@ -278,11 +293,12 @@ const styles = StyleSheet.create({
     verifiedText: { fontSize: 12, fontWeight: '700', color: '#0EA5E9' },
     searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 12, paddingHorizontal: 12, height: 48, marginBottom: 16 },
     input: { flex: 1, marginLeft: 10, fontSize: 16, color: '#0F172A' },
-    chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F1F5F9' },
+    chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F1F5F9', marginRight: 8 },
     chipActive: { backgroundColor: '#0F172A' },
     chipText: { color: '#64748B', fontWeight: '600' },
     textActive: { color: '#fff' },
-    listContent: { padding: 20, paddingBottom: 100 },
+
+    // Card Styles
     card: { height: 210, borderRadius: 24, marginBottom: 20, overflow: 'hidden', backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
     cardImage: { width: '100%', height: '100%' },
     cardOverlay: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', padding: 20 },
@@ -290,11 +306,12 @@ const styles = StyleSheet.create({
     badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
     cityBadge: { backgroundColor: '#0EA5E9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
     cityBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-    clientBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
+    clientBadge: { backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
     clientText: { color: '#fff', fontSize: 10, fontWeight: '600' },
     cardTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 },
     cardBudget: { color: '#CBD5E1', fontSize: 14, fontWeight: '600' },
     applyBtnIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
+
     emptyState: { alignItems: 'center', marginTop: 60, gap: 10 },
     emptyText: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
     emptySub: { color: '#64748B' },
