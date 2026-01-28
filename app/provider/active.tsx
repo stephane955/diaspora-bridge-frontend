@@ -1,138 +1,191 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, TouchableOpacity, FlatList, StyleSheet,
-    ActivityIndicator, RefreshControl, Image, ImageBackground
+    ActivityIndicator, RefreshControl
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { mediumFeedback } from '@/utils/haptics';
-import ProviderNavigation from '@/components/ProviderNavigation'; // <--- ADDED THIS
+import { useLanguage } from '@/context/LanguageContext'; // <--- Language Support
 
 export default function ActiveSites() {
     const router = useRouter();
     const { user } = useAuth();
-    const [projects, setProjects] = useState<any[]>([]);
+    const { t } = useLanguage(); // <--- Hook for translations
+
+    // --- STATE ---
+    const [activeTab, setActiveTab] = useState<'active' | 'applied'>('active');
+    const [projects, setProjects] = useState<any[]>([]);       // Active Jobs
+    const [applications, setApplications] = useState<any[]>([]); // Bids
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const fetchActiveProjects = useCallback(async () => {
+    // --- FETCH DATA ---
+    const fetchData = useCallback(async () => {
         if (!user) return;
+        setLoading(true);
 
-        // Fetch projects where I am the provider AND status is 'In Progress'
-        // Note: We check for both casing variations just to be safe
-        const { data, error } = await supabase
-            .from('projects')
-            .select('*')
-            .eq('provider_id', user.id)
-            .in('status', ['in_progress', 'In Progress'])
-            .order('updated_at', { ascending: false });
+        try {
+            // 1. Fetch ACTIVE Contracts (Where you are the assigned provider)
+            const { data: activeData } = await supabase
+                .from('projects')
+                .select('*')
+                .eq('assigned_provider_id', user.id)
+                .in('status', ['in_progress', 'In Progress'])
+                .order('updated_at', { ascending: false });
 
-        if (data) setProjects(data);
-        setLoading(false);
-        setRefreshing(false);
+            // 2. Fetch APPLIED Jobs (Where you sent a bid)
+            const { data: appliedData } = await supabase
+                .from('project_applications')
+                .select('*, projects(title, city, budget, status)')
+                .eq('provider_id', user.id)
+                .eq('status', 'pending');
+
+            if (activeData) setProjects(activeData);
+            if (appliedData) setApplications(appliedData);
+
+        } catch (error) {
+            console.error("Error fetching jobs:", error);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
     }, [user]);
 
-    useEffect(() => { fetchActiveProjects(); }, [fetchActiveProjects]);
+    useEffect(() => { fetchData(); }, [fetchData]);
 
     const onRefresh = () => {
         setRefreshing(true);
-        fetchActiveProjects();
+        fetchData();
     };
+
+    // --- RENDER: ACTIVE JOB CARD (Command Center Style) ---
+    const renderActive = ({ item }: { item: any }) => (
+        <TouchableOpacity
+            style={styles.activeCard}
+            activeOpacity={0.95}
+            // IMPORTANT: Links to the Workroom (project/[id])
+            onPress={() => router.push(`/provider/project/${item.id}`)}
+        >
+            <View style={styles.activeHeader}>
+                <View style={styles.liveBadge}>
+                    <View style={styles.pulsingDot} />
+                    <Text style={styles.liveText}>{t('liveSite') || "LIVE SITE"}</Text>
+                </View>
+                <Text style={styles.dateText}>
+                    {t('started') || "Started"} {new Date(item.created_at).toLocaleDateString()}
+                </Text>
+            </View>
+
+            <View style={styles.activeContent}>
+                <Text style={styles.activeTitle} numberOfLines={2}>{item.title}</Text>
+                <View style={styles.locationRow}>
+                    <Ionicons name="location-sharp" size={16} color="#64748B" />
+                    <Text style={styles.locationText}>{item.city}</Text>
+                </View>
+            </View>
+
+            {/* Action Bar */}
+            <View style={styles.actionBar}>
+                <View style={styles.actionLeft}>
+                    <Text style={styles.nextTaskLabel}>{t('nextTask') || "NEXT TASK"}</Text>
+                    <Text style={styles.nextTaskValue}>{t('uploadProof') || "Upload Milestone Proof"}</Text>
+                </View>
+                <View style={styles.enterBtn}>
+                    <Text style={styles.enterText}>{t('open') || "Open"}</Text>
+                    <Ionicons name="arrow-forward" size={16} color="#fff" />
+                </View>
+            </View>
+        </TouchableOpacity>
+    );
+
+    // --- RENDER: APPLIED JOB CARD (Ticket Style) ---
+    const renderApplied = ({ item }: { item: any }) => (
+        <View style={styles.ticketCard}>
+            {/* Left Side: Status Color Strip */}
+            <View style={[styles.statusStrip, { backgroundColor: '#F59E0B' }]} />
+
+            <View style={styles.ticketContent}>
+                <View style={styles.ticketHeader}>
+                    <Text style={styles.ticketTitle}>{item.projects?.title || 'Unknown Project'}</Text>
+                    <View style={styles.pendingTag}>
+                        <Text style={styles.pendingTagText}>{t('pending') || "PENDING"}</Text>
+                    </View>
+                </View>
+
+                <View style={styles.ticketInfo}>
+                    <View>
+                        <Text style={styles.ticketLabel}>{t('clientBudget') || "CLIENT BUDGET"}</Text>
+                        <Text style={styles.ticketValue}>
+                            {item.projects?.budget ? item.projects.budget.toLocaleString() : 'N/A'} CFA
+                        </Text>
+                    </View>
+                    <View style={styles.verticalLine} />
+                    <View>
+                        <Text style={styles.ticketLabel}>{t('yourBid') || "YOUR BID"}</Text>
+                        <Text style={[styles.ticketValue, {color: '#0F172A'}]}>
+                            {item.bid_amount?.toLocaleString()} CFA
+                        </Text>
+                    </View>
+                </View>
+            </View>
+        </View>
+    );
 
     return (
         <View style={styles.container}>
-            {/* Header: Title Only (No Back Button) */}
+            {/* --- NEW HEADER --- */}
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Active Contracts</Text>
+                <Text style={styles.headerTitle}>{t('sitesTitle') || "My Sites"}</Text>
+
+                {/* Integrated Tabs */}
+                <View style={styles.tabContainer}>
+                    <TouchableOpacity
+                        style={[styles.tab, activeTab === 'active' && styles.activeTab]}
+                        onPress={() => setActiveTab('active')}
+                    >
+                        <Text style={[styles.tabText, activeTab === 'active' && styles.activeTabText]}>
+                            {t('clientDashboard.activeProjects') || "Active"} ({projects.length})
+                        </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.tab, activeTab === 'applied' && styles.activeTab]}
+                        onPress={() => setActiveTab('applied')}
+                    >
+                        <Text style={[styles.tabText, activeTab === 'applied' && styles.activeTabText]}>
+                            {t('applicantsTitle') || "Applied"} ({applications.length})
+                        </Text>
+                    </TouchableOpacity>
+                </View>
             </View>
 
+            {/* CONTENT LIST */}
             {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color="#0EA5E9" /></View>
+                <View style={styles.center}><ActivityIndicator size="large" color="#0F172A" /></View>
             ) : (
                 <FlatList
-                    data={projects}
+                    data={activeTab === 'active' ? projects : applications}
                     keyExtractor={(item) => item.id.toString()}
+                    renderItem={activeTab === 'active' ? renderActive : renderApplied}
                     contentContainerStyle={styles.listContent}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
-                            <Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/7486/7486744.png' }} style={styles.emptyImg} />
-                            <Text style={styles.emptyTitle}>No Active Contracts</Text>
-                            <Text style={styles.emptySub}>Apply for jobs in the "Find Work" tab. Once hired, the project will appear here.</Text>
+                            <Ionicons name={activeTab === 'active' ? "hammer-outline" : "document-text-outline"} size={48} color="#CBD5E1" />
+                            <Text style={styles.emptyTitle}>
+                                {activeTab === 'active' ? (t('noActiveJobs') || "No Active Sites") : "No Applications"}
+                            </Text>
+                            <Text style={styles.emptySub}>
+                                {activeTab === 'active'
+                                    ? (t('clientDashboard.noProjects') || "Once you are hired, your projects will appear here.")
+                                    : "Check the market for new opportunities."}
+                            </Text>
                         </View>
                     }
-                    renderItem={({ item }) => (
-                        <TouchableOpacity
-                            style={styles.card}
-                            activeOpacity={0.95}
-                            onPress={() => router.push(`/diaspora/project/${item.id}`)}
-                        >
-                            <ImageBackground
-                                source={{ uri: item.image_url || 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5' }}
-                                style={styles.cardImage}
-                                imageStyle={{ borderTopLeftRadius: 20, borderTopRightRadius: 20 }}
-                            >
-                                <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.imageOverlay}>
-                                    <View style={styles.statusBadge}>
-                                        <View style={styles.statusDot} />
-                                        <Text style={styles.statusText}>Live Site</Text>
-                                    </View>
-                                    <Text style={styles.projectTitle}>{item.title}</Text>
-                                    <Text style={styles.projectCity}>
-                                        <Ionicons name="location" size={14} color="#CBD5E1" /> {item.city}
-                                    </Text>
-                                </LinearGradient>
-                            </ImageBackground>
-
-                            <View style={styles.cardBody}>
-                                <View style={styles.statsRow}>
-                                    <View>
-                                        <Text style={styles.statLabel}>Budget</Text>
-                                        <Text style={styles.statValue}>{item.budget?.toLocaleString()} CFA</Text>
-                                    </View>
-                                    <View style={styles.divider} />
-                                    <View>
-                                        <Text style={styles.statLabel}>Client</Text>
-                                        <Text style={styles.statValue}>Verified</Text>
-                                    </View>
-                                </View>
-
-                                <View style={styles.actionRow}>
-                                    <TouchableOpacity
-                                        style={[styles.btn, styles.updateBtn]}
-                                        onPress={() => {
-                                            mediumFeedback();
-                                            // Pass the project ID to the update screen
-                                            router.push(`/provider/post_update?projectId=${item.id}`);
-                                        }}
-                                    >
-                                        <Ionicons name="camera" size={18} color="#fff" />
-                                        <Text style={styles.btnText}>Post Update</Text>
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity
-                                        style={[styles.btn, styles.payBtn]}
-                                        onPress={() => {
-                                            mediumFeedback();
-                                            // Future: Request Payout Logic
-                                            router.push(`/provider/earnings`);
-                                        }}
-                                    >
-                                        <Ionicons name="cash-outline" size={18} color="#0F172A" />
-                                        <Text style={[styles.btnText, { color: '#0F172A' }]}>Wallet</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        </TouchableOpacity>
-                    )}
                 />
             )}
-
-            {/* Bottom Navigation */}
-            <ProviderNavigation />
         </View>
     );
 }
@@ -141,37 +194,98 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-    // Updated Header to match Provider Market style
-    header: { paddingTop: 70, paddingHorizontal: 20, paddingBottom: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-    headerTitle: { fontSize: 28, fontWeight: '800', color: '#0F172A' },
+    // --- NEW HEADER STYLES ---
+    header: {
+        paddingTop: 70,
+        paddingHorizontal: 24,
+        paddingBottom: 24,
+        backgroundColor: '#fff',
+        borderBottomLeftRadius: 32,
+        borderBottomRightRadius: 32,
+        shadowColor: '#000',
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        elevation: 5,
+        marginBottom: 10
+    },
+    headerTitle: {
+        fontSize: 34,
+        fontWeight: '800',
+        color: '#0F172A',
+        marginBottom: 20,
+        letterSpacing: -1
+    },
+
+    // Tabs
+    tabContainer: {
+        flexDirection: 'row',
+        backgroundColor: '#F1F5F9',
+        borderRadius: 20,
+        padding: 4,
+        gap: 4
+    },
+    tab: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    activeTab: {
+        backgroundColor: '#fff',
+        shadowColor: '#000',
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2
+    },
+    tabText: {
+        color: '#64748B',
+        fontWeight: '700',
+        fontSize: 13
+    },
+    activeTabText: {
+        color: '#0F172A'
+    },
 
     listContent: { padding: 20, paddingBottom: 100 },
 
+    // --- ACTIVE CARD STYLES ---
+    activeCard: { backgroundColor: '#fff', borderRadius: 20, marginBottom: 20, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
+
+    activeHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', alignItems: 'center' },
+    liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+    pulsingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#16A34A' },
+    liveText: { fontSize: 10, fontWeight: '800', color: '#16A34A' },
+    dateText: { color: '#94A3B8', fontSize: 12, fontWeight: '500' },
+
+    activeContent: { padding: 20 },
+    activeTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
+    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    locationText: { color: '#64748B', fontWeight: '500' },
+
+    actionBar: { backgroundColor: '#F8FAFC', padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+    actionLeft: { gap: 2 },
+    nextTaskLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8' },
+    nextTaskValue: { fontSize: 13, fontWeight: '600', color: '#334155' },
+    enterBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, gap: 6 },
+    enterText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+
+    // --- TICKET (APPLIED) CARD STYLES ---
+    ticketCard: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 16, marginBottom: 12, overflow: 'hidden', elevation: 1, borderWidth: 1, borderColor: '#F1F5F9' },
+    statusStrip: { width: 6, height: '100%' },
+    ticketContent: { flex: 1, padding: 16 },
+    ticketHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+    ticketTitle: { fontSize: 16, fontWeight: '700', color: '#334155', flex: 1, marginRight: 10 },
+    pendingTag: { backgroundColor: '#FFFBEB', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#FEF3C7' },
+    pendingTagText: { fontSize: 10, fontWeight: '800', color: '#D97706' },
+
+    ticketInfo: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+    ticketLabel: { fontSize: 10, color: '#94A3B8', fontWeight: '700', marginBottom: 2 },
+    ticketValue: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+    verticalLine: { width: 1, height: 24, backgroundColor: '#E2E8F0' },
+
+    // EMPTY STATE
     emptyContainer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
-    emptyImg: { width: 100, height: 100, opacity: 0.5, marginBottom: 20 },
-    emptyTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
+    emptyTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginTop: 16 },
     emptySub: { textAlign: 'center', color: '#64748B', marginTop: 8, lineHeight: 22 },
-
-    card: { backgroundColor: '#fff', borderRadius: 20, marginBottom: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4 },
-    cardImage: { width: '100%', height: 160 },
-    imageOverlay: { flex: 1, justifyContent: 'flex-end', padding: 16 },
-
-    statusBadge: { position: 'absolute', top: 16, right: 16, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-    statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#16A34A', marginRight: 6 },
-    statusText: { fontSize: 10, fontWeight: '700', color: '#16A34A' },
-
-    projectTitle: { color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 4 },
-    projectCity: { color: '#E2E8F0', fontSize: 14, fontWeight: '500' },
-
-    cardBody: { padding: 16 },
-    statsRow: { flexDirection: 'row', marginBottom: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-    divider: { width: 1, backgroundColor: '#E2E8F0', marginHorizontal: 20 },
-    statLabel: { fontSize: 11, color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 },
-    statValue: { fontSize: 16, color: '#0F172A', fontWeight: '700' },
-
-    actionRow: { flexDirection: 'row', gap: 12 },
-    btn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, gap: 6 },
-    updateBtn: { backgroundColor: '#0F172A' },
-    payBtn: { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
-    btnText: { color: '#fff', fontSize: 13, fontWeight: '700' }
 });

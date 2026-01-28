@@ -1,95 +1,87 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
-    View, Text, StyleSheet, FlatList, TouchableOpacity, Image,
-    RefreshControl, StatusBar, Alert, Modal, ImageBackground
+    View, Text, StyleSheet, TouchableOpacity, Image, ScrollView,
+    RefreshControl, StatusBar, Platform, ImageBackground, Modal, Alert
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 
 export default function ProviderDashboard() {
     const router = useRouter();
+    const navigation = useNavigation();
     const { user, signOut } = useAuth();
     const { t } = useLanguage();
 
-    const [activeJobs, setActiveJobs] = useState<any[]>([]);
-    const [leads, setLeads] = useState<any[]>([]);
-    const [myCity, setMyCity] = useState('');
-    const [filterCity, setFilterCity] = useState(true);
+    const [profile, setProfile] = useState<any>(null);
+    const [stats, setStats] = useState({ activeJobs: 0, pendingRequests: 0, balance: 0 });
+    const [isOnline, setIsOnline] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [activeTab, setActiveTab] = useState<'jobs' | 'requests'>('jobs');
-    const [profileName, setProfileName] = useState('');
     const [menuOpen, setMenuOpen] = useState(false);
 
+    // --- FETCH DATA ---
     const fetchData = useCallback(async () => {
         if (!user) return;
-        setRefreshing(true);
-
         try {
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('full_name, city')
-                .eq('id', user.id)
-                .maybeSingle();
-
-            const meta = user.user_metadata as any;
-            const cityValue = profile?.city || meta?.city || t('unknownLocation');
-            setProfileName(profile?.full_name || meta?.full_name || t('providerFallback'));
-            setMyCity(cityValue);
-
-            const { data: hiddenData } = await supabase
-                .from('hidden_projects')
-                .select('project_id')
-                .eq('provider_id', user.id);
-
-            const hiddenIds = (hiddenData || []).map((row: any) => row.project_id);
-
-            const { data: active } = await supabase
-                .from('projects')
-                .select('*')
-                .eq('assigned_provider_id', user.id)
-                .in('status', ['in_progress', 'In Progress', 'active', 'Active']);
-
-            if (active) setActiveJobs(active);
-
-            let query = supabase
-                .from('projects')
-                .select('*')
-                .in('status', ['pending', 'Pending']);
-
-            if (filterCity && cityValue) {
-                query = query.ilike('city', cityValue);
+            // 1. Profile & Status
+            const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+            if (profileData) {
+                setProfile(profileData);
+                setIsOnline(profileData.is_online !== false);
             }
 
-            const { data: pending } = await query.order('created_at', { ascending: false });
-            if (pending) {
-                const filtered = pending.filter((item: any) => !hiddenIds.includes(item.id));
-                setLeads(filtered);
-            }
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setRefreshing(false);
+            // 2. Active Jobs
+            const { count: jobsCount } = await supabase.from('projects')
+                .select('*', { count: 'exact', head: true })
+                .eq('assigned_provider_id', user.id) // Corrected column name based on your schema
+                .in('status', ['in_progress', 'In Progress']);
+
+            // 3. Requests
+            const { count: requestsCount } = await supabase.from('applications') // or project_applications
+                .select('*', { count: 'exact', head: true })
+                .eq('provider_id', user.id)
+                .eq('status', 'pending');
+
+            // 4. Wallet
+            const { data: tx } = await supabase.from('transactions').select('amount').eq('user_id', user.id);
+            const balance = tx?.reduce((acc, curr) => acc + Number(curr.amount), 0) || 0;
+
+            setStats({
+                activeJobs: jobsCount || 0,
+                pendingRequests: requestsCount || 0,
+                balance: balance
+            });
+
+        } catch (e) {
+            console.error(e);
         }
-    }, [filterCity, myCity, t, user]);
+    }, [user]);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    // Refresh on Focus
+    useEffect(() => {
+        fetchData();
+        const unsub = navigation.addListener('focus', fetchData);
+        return unsub;
+    }, [navigation, fetchData]);
 
-    const handleHideRequest = async (projectId: number) => {
-        if (!user) return;
-        const { error } = await supabase
-            .from('hidden_projects')
-            .insert({ provider_id: user.id, project_id: projectId });
-
-        if (error) {
-            Alert.alert(t('errorTitle') || "Error", error.message);
-            return;
+    // --- ACTIONS ---
+    const toggleOnlineStatus = async () => {
+        const newStatus = !isOnline;
+        setIsOnline(newStatus); // Optimistic Update
+        try {
+            await supabase.from('profiles').update({ is_online: newStatus }).eq('id', user?.id);
+        } catch (e) {
+            setIsOnline(!newStatus); // Revert on error
         }
-        setLeads(prev => prev.filter(item => item.id !== projectId));
+    };
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await fetchData();
+        setRefreshing(false);
     };
 
     const handleSignOut = async () => {
@@ -97,211 +89,162 @@ export default function ProviderDashboard() {
         router.replace('/login');
     };
 
-    const handleDeleteAccount = () => {
-        if (!user) return;
-        Alert.alert(
-            t('deleteAccountTitle') || "Delete Account",
-            t('deleteAccountConfirm') || "This action is permanent.",
-            [
-                { text: t('cancel') || "Cancel", style: 'cancel' },
-                {
-                    text: t('delete') || "Delete",
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            const { error } = await supabase.from('profiles').delete().eq('id', user.id);
-                            if (error) throw error;
-                            await signOut();
-                            router.replace('/login');
-                        } catch (err: any) {
-                            Alert.alert("Error", err.message);
-                        }
-                    }
-                }
-            ]
-        );
-    };
-
-    const listData = activeTab === 'jobs' ? activeJobs : leads;
-    const emptyText = activeTab === 'jobs' ? t('noActiveJobs') : t('noRequests');
-
     return (
         <View style={styles.container}>
             <StatusBar barStyle="light-content" />
 
-            <FlatList
-                data={listData}
-                keyExtractor={item => item.id.toString()}
-                contentContainerStyle={{ paddingBottom: 150 }}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} tintColor="#0F172A" />}
-                ListHeaderComponent={
-                    <View style={{ marginBottom: 20 }}>
-                        {/* --- HERO SECTION --- */}
-                        <ImageBackground
-                            source={{ uri: 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?q=80&w=2070&auto=format&fit=crop' }}
-                            style={styles.heroContainer}
-                        >
-                            <LinearGradient
-                                colors={['rgba(15, 23, 42, 0.4)', 'rgba(15, 23, 42, 0.8)', '#F8FAFC']}
-                                style={styles.heroGradient}
-                            >
-                                {/* Top Bar */}
-                                <View style={styles.topBar}>
-                                    <View style={styles.topBarLeft}>
-                                        <Image source={{ uri: 'https://i.pravatar.cc/150?u=pro' }} style={styles.avatarSmall} />
-                                        <Text style={styles.topBarTitle}>{t('providerDashboardTitle')}</Text>
-                                    </View>
-                                    <View style={styles.headerActions}>
-                                        <TouchableOpacity style={styles.glassIconBtn} onPress={() => { setRefreshing(true); fetchData(); }}>
-                                            <Ionicons name="refresh" size={20} color="#fff" />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity style={styles.glassIconBtn} onPress={() => setMenuOpen(true)}>
-                                            <Ionicons name="menu" size={22} color="#fff" />
-                                        </TouchableOpacity>
-                                    </View>
+            {/* ============================================================
+                1. STATIC HEADER (Fixed Top)
+               ============================================================ */}
+            <View style={styles.staticHeader}>
+                <ImageBackground
+                    source={{ uri: 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?q=80&w=2070&auto=format&fit=crop' }}
+                    style={styles.headerBg}
+                >
+                    <LinearGradient
+                        colors={isOnline ? ['rgba(15, 23, 42, 0.85)', 'rgba(15, 23, 42, 0.95)'] : ['rgba(71, 85, 105, 0.9)', 'rgba(100, 116, 139, 0.95)']}
+                        style={styles.gradient}
+                    >
+
+                        {/* Top Row: Menu + Status + Bell */}
+                        <View style={styles.topRow}>
+                            <TouchableOpacity onPress={() => setMenuOpen(true)} style={styles.iconBtn}>
+                                <Ionicons name="menu" size={24} color="#fff" />
+                            </TouchableOpacity>
+
+                            {/* ONLINE TOGGLE */}
+                            <TouchableOpacity style={[styles.statusPill, isOnline ? styles.pillOnline : styles.pillOffline]} onPress={toggleOnlineStatus}>
+                                <View style={[styles.statusDot, { backgroundColor: isOnline ? '#22C55E' : '#94A3B8' }]} />
+                                <Text style={styles.statusText}>
+                                    {isOnline ? (t('goOnline') || "Online") : (t('goOffline') || "Offline")}
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity onPress={() => router.push('/notifications')} style={styles.iconBtn}>
+                                <Ionicons name="notifications-outline" size={24} color="#fff" />
+                                <View style={styles.redDot} />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Greeting */}
+                        <View style={styles.greetingBox}>
+                            <Text style={styles.greeting}>{t('welcomeBack')}</Text>
+                            <Text style={styles.username}>{profile?.full_name || t('providerFallback')}</Text>
+                        </View>
+
+                    </LinearGradient>
+                </ImageBackground>
+
+                {/* --- FLOATING COMMAND CARD --- */}
+                <View style={styles.commandCard}>
+                    {/* Wallet */}
+                    <View style={styles.statBlock}>
+                        <Text style={styles.statLabel}>{t('availableBalance')}</Text>
+                        <Text style={styles.statAmount}>{stats.balance.toLocaleString()} CFA</Text>
+                        <TouchableOpacity onPress={() => router.push('/provider/earnings')}>
+                            <Text style={styles.linkText}>{t('openWallet')} ›</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.verticalDivider} />
+
+                    {/* Active Jobs */}
+                    <View style={styles.statBlock}>
+                        <Text style={styles.statLabel}>{t('clientDashboard.activeProjects')}</Text>
+                        <View style={{flexDirection:'row', alignItems:'center', gap: 6}}>
+                            <Text style={styles.statBigNumber}>{stats.activeJobs}</Text>
+                            {stats.activeJobs > 0 && (
+                                <View style={styles.liveBadge}>
+                                    <View style={styles.liveDot} />
+                                    <Text style={styles.liveText}>LIVE</Text>
                                 </View>
-
-                                {/* Welcome Info */}
-                                <View style={styles.welcomeSection}>
-                                    <Text style={styles.welcomeLabel}>{t('welcomeBack')}</Text>
-                                    <Text style={styles.userName}>{profileName}</Text>
-                                    <View style={styles.locationRow}>
-                                        <Ionicons name="location" size={14} color="#38BDF8" />
-                                        <Text style={styles.cityText}>{myCity}</Text>
-                                    </View>
-                                </View>
-
-                                {/* Glass Stats */}
-                                <BlurView intensity={30} tint="light" style={styles.glassStats}>
-                                    <View style={styles.statItem}>
-                                        <Text style={styles.statValue}>{activeJobs.length}</Text>
-                                        <Text style={styles.statLabel}>Active</Text>
-                                    </View>
-                                    <View style={styles.statDivider} />
-                                    <View style={styles.statItem}>
-                                        <Text style={styles.statValue}>{leads.length}</Text>
-                                        <Text style={styles.statLabel}>Requests</Text>
-                                    </View>
-                                    <View style={styles.statDivider} />
-                                    <View style={styles.statItem}>
-                                        <Text style={styles.statValue}>4.9</Text>
-                                        <Text style={styles.statLabel}>Rating</Text>
-                                    </View>
-                                </BlurView>
-                            </LinearGradient>
-                        </ImageBackground>
-
-                        {/* --- TABS --- */}
-                        <View style={styles.tabsContainer}>
-                            <View style={styles.tabsRow}>
-                                <TouchableOpacity
-                                    style={[styles.tab, activeTab === 'jobs' && styles.tabActive]}
-                                    onPress={() => setActiveTab('jobs')}
-                                >
-                                    <Text style={[styles.tabText, activeTab === 'jobs' && styles.tabTextActive]}>{t('myJobsTab')}</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.tab, activeTab === 'requests' && styles.tabActive]}
-                                    onPress={() => setActiveTab('requests')}
-                                >
-                                    <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>{t('requestsTab')}</Text>
-                                    {leads.length > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{leads.length}</Text></View>}
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* Filter (Only for Requests) */}
-                            {activeTab === 'requests' && (
-                                <TouchableOpacity onPress={() => setFilterCity(!filterCity)} style={styles.filterRow}>
-                                    <Ionicons name={filterCity ? "checkbox" : "square-outline"} size={20} color="#0F172A" />
-                                    <Text style={styles.filterText}>
-                                        {filterCity ? `Only showing jobs in ${myCity}` : t('allCities')}
-                                    </Text>
-                                </TouchableOpacity>
                             )}
                         </View>
-                    </View>
-                }
-                ListEmptyComponent={
-                    <View style={styles.emptyBox}>
-                        <Text style={styles.emptyText}>{emptyText}</Text>
-                    </View>
-                }
-                renderItem={({ item }) => (
-                    activeTab === 'jobs' ? (
-                        <TouchableOpacity
-                            style={styles.card}
-                            onPress={() => router.push(`/provider/job/${item.id}`)}
-                            activeOpacity={0.9}
-                        >
-                            <View style={styles.cardHeader}>
-                                <Text style={styles.cardTitle}>{item.title}</Text>
-                                <View style={styles.statusBadge}>
-                                    <Text style={styles.statusText}>ACTIVE</Text>
-                                </View>
-                            </View>
-                            <Text style={styles.cardSub}>{item.city} • {item.budget?.toLocaleString()} CFA</Text>
-
-                            <View style={styles.cardFooter}>
-                                <View style={styles.providerRow}>
-                                    <Ionicons name="construct" size={16} color="#64748B" />
-                                    <Text style={styles.providerText}>In Progress</Text>
-                                </View>
-                                <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
-                            </View>
-                        </TouchableOpacity>
-                    ) : (
-                        <View style={styles.card}>
-                            <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/provider/job/${item.id}`)}>
-                                <View style={styles.cardHeader}>
-                                    <Text style={styles.cardTitle}>{item.title}</Text>
-                                    <View style={[styles.statusBadge, { backgroundColor: '#F0F9FF' }]}>
-                                        <Text style={[styles.statusText, { color: '#0EA5E9' }]}>NEW</Text>
-                                    </View>
-                                </View>
-                                <Text style={styles.cardSub}>{item.city} • {item.budget?.toLocaleString()} CFA</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.refuseBtn} onPress={() => handleHideRequest(item.id)}>
-                                <Text style={styles.refuseText}>{t('notInterested')}</Text>
-                            </TouchableOpacity>
-                        </View>
-                    )
-                )}
-            />
-
-            {/* SETTINGS MENU MODAL */}
-            <Modal visible={menuOpen} transparent animationType="slide">
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalCard}>
-                        <View style={styles.modalHandle} />
-                        <Text style={styles.modalTitle}>{t('accountMenuTitle')}</Text>
-
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { setMenuOpen(false); router.push('/provider/profile'); }}>
-                            <View style={styles.modalIconBox}><Ionicons name="settings-outline" size={20} color="#0F172A" /></View>
-                            <Text style={styles.modalText}>{t('accountSettings')}</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { setMenuOpen(false); router.push('/modal'); }}>
-                            <View style={styles.modalIconBox}><Ionicons name="help-circle-outline" size={20} color="#0F172A" /></View>
-                            <Text style={styles.modalText}>{t('support')}</Text>
-                        </TouchableOpacity>
-
-                        <View style={styles.divider} />
-
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { setMenuOpen(false); handleSignOut(); }}>
-                            <View style={[styles.modalIconBox, { backgroundColor: '#FEF2F2' }]}><Ionicons name="log-out-outline" size={20} color="#EF4444" /></View>
-                            <Text style={[styles.modalText, { color: '#EF4444' }]}>{t('signOut')}</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { setMenuOpen(false); handleDeleteAccount(); }}>
-                            <View style={[styles.modalIconBox, { backgroundColor: '#FEF2F2' }]}><Ionicons name="trash-outline" size={20} color="#EF4444" /></View>
-                            <Text style={[styles.modalText, { color: '#EF4444' }]}>{t('deleteAccountAction') || "Delete Account"}</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.modalClose} onPress={() => setMenuOpen(false)}>
-                            <Text style={styles.modalCloseText}>{t('close')}</Text>
+                        <TouchableOpacity onPress={() => router.push('/provider/active-jobs')}>
+                            <Text style={styles.linkText}>{t('common.seeAll')} ›</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
+            </View>
+
+            {/* ============================================================
+                2. SCROLLABLE CONTENT (Menu & Tips)
+               ============================================================ */}
+            <ScrollView
+                contentContainerStyle={{ paddingBottom: 100, paddingTop: 20 }}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0F172A"/>}
+                showsVerticalScrollIndicator={false}
+                style={styles.scrollArea}
+            >
+                <Text style={styles.sectionTitle}>{t('accountMenuTitle')}</Text>
+
+                <View style={styles.grid}>
+                    {/* 1. Find Work */}
+                    <TouchableOpacity style={styles.gridCard} onPress={() => router.push('/provider/market')}>
+                        <View style={[styles.iconCircle, {backgroundColor: '#EFF6FF'}]}>
+                            <Ionicons name="search" size={24} color="#3B82F6" />
+                        </View>
+                        <Text style={styles.gridTitle}>{t('marketTitle')}</Text>
+                        <Text style={styles.gridSub}>Browse jobs</Text>
+                    </TouchableOpacity>
+
+                    {/* 2. Requests */}
+                    <TouchableOpacity style={styles.gridCard} onPress={() => router.push('/provider/requests')}>
+                        <View style={[styles.iconCircle, {backgroundColor: '#FFF7ED'}]}>
+                            <Ionicons name="mail-unread" size={24} color="#F97316" />
+                        </View>
+                        <Text style={styles.gridTitle}>{t('requestsTab')}</Text>
+                        <Text style={styles.gridSub}>{stats.pendingRequests} Pending</Text>
+                    </TouchableOpacity>
+
+                    {/* 3. My Sites */}
+                    <TouchableOpacity style={styles.gridCard} onPress={() => router.push('/provider/active-jobs')}>
+                        <View style={[styles.iconCircle, {backgroundColor: '#F0FDF4'}]}>
+                            <Ionicons name="construct" size={24} color="#16A34A" />
+                        </View>
+                        <Text style={styles.gridTitle}>{t('sitesTitle')}</Text>
+                        <Text style={styles.gridSub}>Update progress</Text>
+                    </TouchableOpacity>
+
+                    {/* 4. Profile */}
+                    <TouchableOpacity style={styles.gridCard} onPress={() => router.push('/provider/profile')}>
+                        <View style={[styles.iconCircle, {backgroundColor: '#F1F5F9'}]}>
+                            <Ionicons name="person" size={24} color="#64748B" />
+                        </View>
+                        <Text style={styles.gridTitle}>{t('tabProfile')}</Text>
+                        <Text style={styles.gridSub}>Verification & Info</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* TIP CARD */}
+                <View style={styles.tipCard}>
+                    <View style={styles.tipContent}>
+                        <Ionicons name="bulb" size={24} color="#F59E0B" />
+                        <View style={{flex: 1}}>
+                            <Text style={styles.tipTitle}>Pro Tip</Text>
+                            <Text style={styles.tipText}>Keep your status "Online" to appear at the top of client searches.</Text>
+                        </View>
+                    </View>
+                </View>
+
+            </ScrollView>
+
+            {/* --- MENU MODAL --- */}
+            <Modal visible={menuOpen} transparent animationType="fade">
+                <TouchableOpacity style={styles.modalOverlay} onPress={() => setMenuOpen(false)} activeOpacity={1}>
+                    <View style={styles.modalCard}>
+                        <View style={styles.modalHandle} />
+                        <Text style={styles.modalTitle}>{t('accountMenuTitle')}</Text>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { setMenuOpen(false); router.push('/provider/settings'); }}>
+                            <Ionicons name="settings-outline" size={20} color="#0F172A" />
+                            <Text style={styles.modalText}>{t('accountSettings')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { setMenuOpen(false); handleSignOut(); }}>
+                            <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+                            <Text style={[styles.modalText, { color: '#EF4444' }]}>{t('signOut')}</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
             </Modal>
         </View>
     );
@@ -310,71 +253,59 @@ export default function ProviderDashboard() {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
 
-    // --- HERO HEADER ---
-    heroContainer: { width: '100%', height: 340 },
-    heroGradient: { flex: 1, paddingTop: 60, paddingHorizontal: 20, justifyContent: 'space-between', paddingBottom: 30 },
+    // --- STATIC HEADER ---
+    staticHeader: { width: '100%', height: 280, zIndex: 10, backgroundColor: '#F8FAFC' },
+    headerBg: { width: '100%', height: 230 },
+    gradient: { flex: 1, paddingTop: 50, paddingHorizontal: 24 },
 
-    topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    avatarSmall: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: '#fff' },
-    topBarTitle: { fontSize: 16, fontWeight: '700', color: 'rgba(255,255,255,0.9)' },
+    topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    iconBtn: { padding: 8, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12 },
+    redDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
 
-    headerActions: { flexDirection: 'row', gap: 8 },
-    glassIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+    // STATUS PILL
+    statusPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 6, backgroundColor: 'rgba(0,0,0,0.3)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+    pillOnline: { borderColor: '#22C55E' },
+    pillOffline: { borderColor: '#94A3B8' },
+    statusDot: { width: 8, height: 8, borderRadius: 4 },
+    statusText: { color: '#fff', fontWeight: '700', fontSize: 12 },
 
-    welcomeSection: { marginBottom: 20 },
-    welcomeLabel: { fontSize: 16, color: '#CBD5E1', fontWeight: '600', marginBottom: 4 },
-    userName: { fontSize: 32, color: '#fff', fontWeight: '800', letterSpacing: -0.5 },
-    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-    cityText: { fontSize: 14, color: '#E2E8F0', fontWeight: '600' },
+    greetingBox: { marginTop: 0 },
+    greeting: { color: '#94A3B8', fontSize: 13, fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 },
+    username: { color: '#fff', fontSize: 26, fontWeight: '800' },
 
-    glassStats: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 16, padding: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', overflow: 'hidden' },
-    statItem: { flex: 1, alignItems: 'center' },
-    statValue: { fontSize: 20, fontWeight: '800', color: '#fff' },
-    statLabel: { fontSize: 11, color: '#CBD5E1', textTransform: 'uppercase', marginTop: 2, fontWeight: '600' },
-    statDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginVertical: 5 },
+    // --- FLOATING COMMAND CARD ---
+    commandCard: { flexDirection: 'row', position: 'absolute', bottom: 0, left: 20, right: 20, backgroundColor: '#fff', borderRadius: 24, padding: 20, shadowColor: '#0F172A', shadowOpacity: 0.1, shadowRadius: 15, elevation: 5, height: 110, alignItems: 'center' },
+    statBlock: { flex: 1, gap: 4 },
+    statLabel: { fontSize: 11, color: '#64748B', fontWeight: '700', textTransform: 'uppercase' },
+    statAmount: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+    statBigNumber: { fontSize: 24, fontWeight: '800', color: '#0F172A' },
+    linkText: { fontSize: 12, color: '#3B82F6', fontWeight: '600', marginTop: 2 },
+    verticalDivider: { width: 1, height: '70%', backgroundColor: '#E2E8F0', marginHorizontal: 20 },
+    liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+    liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#16A34A' },
+    liveText: { fontSize: 10, fontWeight: '800', color: '#16A34A' },
 
-    // --- TABS & FILTERS ---
-    tabsContainer: { paddingHorizontal: 20, marginTop: -20 },
-    tabsRow: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 16, padding: 6, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 5 },
-    tab: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
-    tabActive: { backgroundColor: '#0F172A' },
-    tabText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
-    tabTextActive: { color: '#fff' },
-    badge: { backgroundColor: '#EF4444', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
-    badgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+    // --- SCROLL CONTENT ---
+    scrollArea: { flex: 1, paddingHorizontal: 20 },
+    sectionTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
 
-    filterRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, gap: 8, paddingLeft: 4 },
-    filterText: { color: '#0F172A', fontWeight: '600' },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+    gridCard: { width: '48%', backgroundColor: '#fff', padding: 16, borderRadius: 20, gap: 10, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 5, elevation: 1 },
+    iconCircle: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+    gridTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+    gridSub: { fontSize: 12, color: '#94A3B8' },
 
-    // --- CARDS ---
-    emptyBox: { alignItems: 'center', marginTop: 40 },
-    emptyText: { color: '#94A3B8', fontSize: 16 },
+    // TIP CARD
+    tipCard: { marginVertical: 24, backgroundColor: '#FFFBEB', padding: 20, borderRadius: 20, borderWidth: 1, borderColor: '#FEF3C7' },
+    tipContent: { flexDirection: 'row', gap: 16, alignItems: 'center' },
+    tipTitle: { fontSize: 16, fontWeight: '800', color: '#B45309', marginBottom: 4 },
+    tipText: { fontSize: 13, color: '#92400E', lineHeight: 20 },
 
-    card: { backgroundColor: '#fff', borderRadius: 20, padding: 18, marginHorizontal: 20, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 8, elevation: 2, borderWidth: 1, borderColor: '#F1F5F9' },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-    cardTitle: { fontSize: 17, fontWeight: '700', color: '#0F172A', flex: 1, marginRight: 10 },
-    statusBadge: { backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-    statusText: { fontSize: 10, fontWeight: '800', color: '#16A34A' },
-
-    cardSub: { fontSize: 13, color: '#64748B', marginBottom: 16 },
-
-    cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F8FAFC', paddingTop: 12 },
-    providerRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    providerText: { fontSize: 13, color: '#64748B', fontWeight: '500' },
-
-    refuseBtn: { marginTop: 12, alignSelf: 'flex-start', backgroundColor: '#FEF2F2', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
-    refuseText: { color: '#EF4444', fontWeight: '700', fontSize: 12 },
-
-    // --- MODAL ---
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
-    modalCard: { backgroundColor: '#fff', padding: 24, borderTopLeftRadius: 24, borderTopRightRadius: 24, gap: 8 },
+    // MODAL
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    modalCard: { backgroundColor: '#fff', padding: 24, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 },
     modalHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-    modalTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
-    modalItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14 },
-    modalIconBox: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+    modalTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
+    modalItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     modalText: { fontSize: 16, fontWeight: '600', color: '#0F172A' },
-    divider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 10 },
-    modalClose: { alignItems: 'center', paddingTop: 10, marginTop: 10 },
-    modalCloseText: { color: '#94A3B8', fontWeight: '700' }
 });

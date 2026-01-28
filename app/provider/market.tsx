@@ -1,66 +1,68 @@
 import React, { useState, useCallback } from 'react';
 import {
     View, Text, StyleSheet, TextInput, TouchableOpacity,
-    ActivityIndicator, Modal, Alert, KeyboardAvoidingView, Platform
+    ActivityIndicator, Modal, Alert, KeyboardAvoidingView, Platform, Share
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import ProviderNavigation from '@/components/ProviderNavigation';
+import { useLanguage } from '@/context/LanguageContext';
 
 // --- PERFORMANCE UPGRADES ---
 import { FlashList } from '@shopify/flash-list';
-import { Image } from 'expo-image'; // Better caching & blurhash
+import { Image } from 'expo-image';
 
 const CITIES = ["All", "Douala", "Yaoundé", "Bamenda", "Kribi", "Limbe", "Bafoussam"];
-const blurhash = 'L6PZfSi_.AyE_3t7t7R**0o#DgR4'; // Placeholder animation
+const blurhash = 'L6PZfSi_.AyE_3t7t7R**0o#DgR4';
 
 export default function MarketScreen() {
     const { user } = useAuth();
     const router = useRouter();
+    const { t } = useLanguage();
 
+    // --- STATE ---
     const [jobs, setJobs] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedCity, setSelectedCity] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [userProfile, setUserProfile] = useState<any>(null);
 
-    // Application Modal State
+    // Modal State
     const [selectedJob, setSelectedJob] = useState<any>(null);
     const [bidAmount, setBidAmount] = useState('');
     const [coverLetter, setCoverLetter] = useState('');
     const [applying, setApplying] = useState(false);
 
-    // --- FETCH JOBS & USER STATUS ---
+    // --- FETCH DATA ---
     const fetchMarketData = useCallback(async () => {
         setLoading(true);
         try {
-            // 1. Fetch Provider Profile status
+            // 1. Get Provider Status & SKILLS
+            let userSkills: string[] = [];
             if (user) {
                 const { data: profile } = await supabase
                     .from('profiles')
-                    .select('verification_status')
+                    .select('verification_status, skills')
                     .eq('id', user.id)
                     .single();
                 setUserProfile(profile);
+                userSkills = profile?.skills || [];
             }
 
-            // 2. Fetch Jobs with Owner details
+            // 2. Build Query
             let query = supabase
                 .from('projects')
-                .select(`
-                    *,
-                    profiles:owner_id (full_name, avatar_url)
-                `)
-                .eq('status', 'pending') // Only show open jobs
+                .select(`*, profiles:owner_id (full_name, avatar_url)`)
+                .eq('status', 'pending')
+                .is('assigned_provider_id', null)
                 .order('created_at', { ascending: false });
 
+            // 3. Apply Filters
             if (selectedCity !== 'All') {
                 query = query.eq('city', selectedCity);
             }
-
             if (searchQuery) {
                 query = query.ilike('title', `%${searchQuery}%`);
             }
@@ -68,34 +70,81 @@ export default function MarketScreen() {
             const { data, error } = await query;
             if (error) throw error;
 
-            setJobs(data || []);
+            // 4. --- SMART SORT ---
+            let finalJobs = data || [];
+
+            if (userSkills.length > 0) {
+                finalJobs = finalJobs.sort((a, b) => {
+                    const aMatch = userSkills.some(skill => a.title.toLowerCase().includes(skill.toLowerCase()));
+                    const bMatch = userSkills.some(skill => b.title.toLowerCase().includes(skill.toLowerCase()));
+
+                    if (aMatch && !bMatch) return -1; // A comes first
+                    if (!aMatch && bMatch) return 1;  // B comes first
+                    return 0; // Maintain date order
+                });
+            }
+
+            setJobs(finalJobs);
+
         } catch (err) {
-            console.error("Market Data Error:", err);
+            console.error("Market Error:", err);
         } finally {
             setLoading(false);
         }
     }, [selectedCity, searchQuery, user]);
 
-    useFocusEffect(
-        useCallback(() => { fetchMarketData(); }, [fetchMarketData])
-    );
+    useFocusEffect(useCallback(() => { fetchMarketData(); }, [fetchMarketData]));
 
-    // --- APPLY LOGIC ---
+    // --- ACTIONS ---
+
+    // 1. SHARE LOGIC (New)
+    const handleShareJob = async (job: any) => {
+        try {
+            await Share.share({
+                message: `${t('brandName') || "Diaspora Bridge"}: Check out this job in ${job.city}!\n\n*${job.title}*\nBudget: ${job.budget?.toLocaleString()} CFA\n\nApply now on the app!`
+            });
+        } catch (error) {
+            console.log(error);
+        }
+    };
+
+    const handleHideJob = (jobId: string) => {
+        Alert.alert(t('hide') || "Hide Job", "Remove this from your feed?", [
+            { text: t('cancel') || "Cancel", style: "cancel" },
+            {
+                text: t('hide') || "Hide",
+                style: 'destructive',
+                onPress: async () => {
+                    // Optimistic update
+                    setJobs(prev => prev.filter(j => j.id !== jobId));
+
+                    // Fire and forget DB update
+                    if (user) {
+                        await supabase.from('hidden_projects').insert({
+                            user_id: user.id,
+                            project_id: jobId
+                        });
+                    }
+                }
+            }
+        ]);
+    };
+
     const handleApply = async () => {
         if (userProfile?.verification_status !== 'verified') {
             Alert.alert(
-                "Verification Required",
-                "You must verify your identity before you can submit proposals.",
+                "ID Verification Required",
+                t('getVerified') || "Get verified to apply for jobs.",
                 [
                     { text: "Later", style: "cancel" },
-                    { text: "Verify Now", onPress: () => { setSelectedJob(null); router.push('/provider/verification'); } }
+                    { text: t('verified') || "Verify Now", onPress: () => { setSelectedJob(null); router.push('/provider/profile'); } }
                 ]
             );
             return;
         }
 
         if (!bidAmount || !coverLetter) {
-            Alert.alert("Missing Fields", "Please enter a bid amount and a short note.");
+            Alert.alert("Missing Info", t('missingFields') || "Please fill all fields.");
             return;
         }
 
@@ -110,13 +159,10 @@ export default function MarketScreen() {
             });
 
             if (error) {
-                if (error.code === '23505') {
-                    Alert.alert("Already Applied", "You have already sent a proposal for this job.");
-                } else {
-                    throw error;
-                }
+                if (error.code === '23505') Alert.alert("Already Applied", "You have already bid on this job.");
+                else throw error;
             } else {
-                Alert.alert("Success", "Proposal sent successfully!");
+                Alert.alert(t('success'), "Proposal sent! Check 'My Sites' -> 'Applied' tab.");
                 setSelectedJob(null);
                 setBidAmount('');
                 setCoverLetter('');
@@ -128,107 +174,156 @@ export default function MarketScreen() {
         }
     };
 
-    const renderJob = ({ item }: { item: any }) => (
-        <TouchableOpacity
-            style={styles.card}
-            activeOpacity={0.9}
-            onPress={() => setSelectedJob(item)}
-        >
-            {/* UPGRADE: Smart Image Component */}
-            <Image
-                source={item.image_url || 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5'}
-                style={styles.cardImage}
-                placeholder={blurhash}
-                contentFit="cover"
-                transition={500}
-            />
+    // --- RENDER ITEM (IMMERSIVE CARD) ---
+    const renderJob = ({ item }: { item: any }) => {
+        // Check for Skill Match
+        const isRecommended = userProfile?.skills?.some((s: string) =>
+            item.title.toLowerCase().includes(s.toLowerCase())
+        );
 
-            <LinearGradient colors={['transparent', 'rgba(15,23,42,0.95)']} style={styles.cardOverlay}>
-                <View style={styles.cardContent}>
-                    <View style={styles.badgeRow}>
-                        <View style={styles.cityBadge}>
-                            <Text style={styles.cityBadgeText}>{item.city?.toUpperCase() || "CAMEROON"}</Text>
-                        </View>
-                        {/* Client Name Badge */}
-                        {item.profiles?.full_name && (
-                            <View style={styles.clientBadge}>
-                                <Ionicons name="person-circle-outline" size={12} color="#fff" />
-                                <Text style={styles.clientText}>{item.profiles.full_name}</Text>
+        return (
+            <TouchableOpacity
+                style={styles.card}
+                activeOpacity={0.95}
+                onPress={() => setSelectedJob(item)}
+            >
+                {/* 1. Full Bleed Image */}
+                <Image
+                    source={item.image_url || 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5'}
+                    style={styles.cardImage}
+                    placeholder={blurhash}
+                    contentFit="cover"
+                    transition={500}
+                />
+
+                {/* 2. Dark Gradient Overlay */}
+                <LinearGradient
+                    colors={['rgba(0,0,0,0.1)', 'rgba(15,23,42,0.6)', '#0F172A']}
+                    style={styles.cardOverlay}
+                >
+                    {/* Top Row: Badges & Actions */}
+                    <View style={styles.topRow}>
+                        <View style={styles.badgesLeft}>
+                            {isRecommended && (
+                                <View style={styles.matchBadge}>
+                                    <Ionicons name="sparkles" size={10} color="#FFD700" />
+                                    <Text style={styles.matchText}>{t('match') || "MATCH"}</Text>
+                                </View>
+                            )}
+                            <View style={styles.cityBadge}>
+                                <Ionicons name="location" size={10} color="#fff" />
+                                <Text style={styles.cityText}>{item.city?.toUpperCase()}</Text>
                             </View>
-                        )}
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {/* SHARE BUTTON (Added) */}
+                            <TouchableOpacity onPress={() => handleShareJob(item)} style={styles.iconBtn}>
+                                <Ionicons name="share-social" size={16} color="#fff" />
+                            </TouchableOpacity>
+
+                            {/* HIDE BUTTON */}
+                            <TouchableOpacity onPress={() => handleHideJob(item.id)} style={styles.iconBtn}>
+                                <Ionicons name="eye-off" size={16} color="rgba(255,255,255,0.7)" />
+                            </TouchableOpacity>
+                        </View>
                     </View>
-                    <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-                    <Text style={styles.cardBudget}>Budget: {item.budget?.toLocaleString()} CFA</Text>
-                </View>
-                <View style={styles.applyBtnIcon}>
-                    <Ionicons name="chevron-forward" size={20} color="#fff" />
-                </View>
-            </LinearGradient>
-        </TouchableOpacity>
-    );
+
+                    {/* Bottom Content */}
+                    <View style={styles.bottomContent}>
+                        <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+
+                        <View style={styles.priceRow}>
+                            <View>
+                                <Text style={styles.budgetLabel}>
+                                    {t('budget')?.toUpperCase() || "ESTIMATED BUDGET"}
+                                </Text>
+                                <Text style={styles.cardBudget}>{(item.budget || 0).toLocaleString()} CFA</Text>
+                            </View>
+                            <View style={styles.arrowBtn}>
+                                <Ionicons name="arrow-forward" size={20} color="#0F172A" />
+                            </View>
+                        </View>
+                    </View>
+                </LinearGradient>
+            </TouchableOpacity>
+        );
+    };
 
     return (
         <View style={styles.container}>
-            {/* --- HEADER --- */}
-            <View style={styles.header}>
-                <View style={styles.titleRow}>
-                    <Text style={styles.title}>Find Work</Text>
-                    {userProfile?.verification_status === 'verified' && (
-                        <View style={styles.verifiedBadge}>
-                            <Ionicons name="checkmark-circle" size={18} color="#0EA5E9" />
-                            <Text style={styles.verifiedText}>Verified</Text>
-                        </View>
-                    )}
-                </View>
 
-                <View style={styles.searchContainer}>
-                    <Ionicons name="search" size={20} color="#94A3B8" />
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Search projects..."
-                        placeholderTextColor="#94A3B8"
-                        value={searchQuery}
-                        onChangeText={setSearchQuery}
-                        onSubmitEditing={fetchMarketData}
-                        returnKeyType="search"
-                    />
-                </View>
-
-                {/* City Filter - FlashList for horizontal scrolling */}
-                <View style={{ height: 40 }}>
-                    <FlashList
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        data={CITIES}
-                        estimatedItemSize={80}
-                        renderItem={({ item }: any) => (
-                            <TouchableOpacity
-                                style={[styles.chip, selectedCity === item && styles.chipActive]}
-                                onPress={() => setSelectedCity(item)}
-                            >
-                                <Text style={[styles.chipText, selectedCity === item && styles.textActive]}>{item}</Text>
-                            </TouchableOpacity>
+            {/* --- PREMIUM HEADER --- */}
+            <View style={styles.headerContainer}>
+                <LinearGradient
+                    colors={['#0F172A', '#1E293B']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.headerGradient}
+                >
+                    {/* Title Row */}
+                    <View style={styles.headerTop}>
+                        <Text style={styles.headerTitle}>{t('marketTitle') || "Find Work"}</Text>
+                        {userProfile?.verification_status === 'verified' && (
+                            <View style={styles.verifiedBadge}>
+                                <Ionicons name="checkmark-circle" size={14} color="#0EA5E9" />
+                                <Text style={styles.verifiedText}>{t('verified') || "Verified"}</Text>
+                            </View>
                         )}
-                        contentContainerStyle={{ paddingHorizontal: 0 }}
-                    />
-                </View>
+                    </View>
+
+                    {/* Search Bar (Glass Effect) */}
+                    <View style={styles.searchContainer}>
+                        <Ionicons name="search" size={20} color="rgba(255,255,255,0.5)" />
+                        <TextInput
+                            style={styles.input}
+                            placeholder={t('searchPlaceholder') || "Search projects (e.g. Plumbing)"}
+                            placeholderTextColor="rgba(255,255,255,0.5)"
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            onSubmitEditing={fetchMarketData}
+                            returnKeyType="search"
+                        />
+                    </View>
+
+                    {/* Filter Chips */}
+                    <View style={{ height: 40, marginTop: 12 }}>
+                        <FlashList
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            data={CITIES}
+                            estimatedItemSize={80}
+                            renderItem={({ item }: any) => (
+                                <TouchableOpacity
+                                    style={[styles.chip, selectedCity === item && styles.chipActive]}
+                                    onPress={() => setSelectedCity(item)}
+                                >
+                                    <Text style={[styles.chipText, selectedCity === item && styles.chipTextActive]}>
+                                        {item}
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                            contentContainerStyle={{ paddingHorizontal: 0 }}
+                        />
+                    </View>
+                </LinearGradient>
             </View>
 
-            {/* --- JOB LIST (FlashList Upgrade) --- */}
+            {/* --- LIST --- */}
             {loading ? (
                 <View style={styles.center}><ActivityIndicator size="large" color="#0F172A" /></View>
             ) : (
-                <View style={{ flex: 1, paddingHorizontal: 20 }}>
+                <View style={styles.listContainer}>
                     <FlashList
                         data={jobs}
                         renderItem={renderJob}
-                        estimatedItemSize={210}
-                        contentContainerStyle={{ paddingBottom: 100, paddingTop: 10 }}
+                        estimatedItemSize={240}
+                        contentContainerStyle={{ paddingBottom: 100, paddingTop: 20 }}
                         ListEmptyComponent={
                             <View style={styles.emptyState}>
                                 <Ionicons name="briefcase-outline" size={48} color="#CBD5E1" />
-                                <Text style={styles.emptyText}>No open jobs found.</Text>
-                                <Text style={styles.emptySub}>Try changing filters or check back later.</Text>
+                                <Text style={styles.emptyText}>{t('noActiveJobs') || "No open jobs found."}</Text>
+                                <Text style={styles.emptySub}>Try changing the city filter.</Text>
                             </View>
                         }
                     />
@@ -238,18 +333,23 @@ export default function MarketScreen() {
             {/* --- APPLY MODAL --- */}
             <Modal visible={!!selectedJob} transparent animationType="slide">
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+                    <TouchableOpacity style={{flex:1}} onPress={() => setSelectedJob(null)} />
                     <View style={styles.modalContent}>
+                        <View style={styles.modalHandle} />
+
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Submit Proposal</Text>
+                            <Text style={styles.modalTitle}>{t('common.submit') || "Submit Proposal"}</Text>
                             <TouchableOpacity onPress={() => setSelectedJob(null)}>
                                 <Ionicons name="close-circle" size={28} color="#94A3B8" />
                             </TouchableOpacity>
                         </View>
 
                         <Text style={styles.jobTitle}>{selectedJob?.title}</Text>
-                        <Text style={styles.jobBudget}>Client's Budget: {selectedJob?.budget?.toLocaleString()} CFA</Text>
+                        <Text style={styles.jobBudget}>
+                            {t('clientBudget') || "Client's Budget"}: <Text style={{fontWeight:'800', color:'#0F172A'}}>{selectedJob?.budget?.toLocaleString()} CFA</Text>
+                        </Text>
 
-                        <Text style={styles.label}>Your Bid (CFA)</Text>
+                        <Text style={styles.label}>{t('yourBid') || "Your Bid Amount"} (CFA)</Text>
                         <TextInput
                             style={styles.modalInput}
                             placeholder="e.g. 50000"
@@ -261,24 +361,18 @@ export default function MarketScreen() {
                         <Text style={styles.label}>Cover Letter</Text>
                         <TextInput
                             style={[styles.modalInput, { height: 100, textAlignVertical: 'top' }]}
-                            placeholder="Explain why you are the best fit for this project..."
+                            placeholder="I have 5 years experience in..."
                             multiline
                             value={coverLetter}
                             onChangeText={setCoverLetter}
                         />
 
                         <TouchableOpacity style={styles.submitBtn} onPress={handleApply} disabled={applying}>
-                            {applying ? (
-                                <ActivityIndicator color="#fff" />
-                            ) : (
-                                <Text style={styles.submitText}>Send Proposal</Text>
-                            )}
+                            {applying ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>{t('common.submit') || "Send Proposal"}</Text>}
                         </TouchableOpacity>
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
-
-            <ProviderNavigation />
         </View>
     );
 }
@@ -286,43 +380,144 @@ export default function MarketScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: { paddingTop: 60, paddingHorizontal: 20, backgroundColor: '#fff', paddingBottom: 10 },
-    titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-    title: { fontSize: 28, fontWeight: '800', color: '#0F172A' },
-    verifiedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F9FF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, gap: 4 },
-    verifiedText: { fontSize: 12, fontWeight: '700', color: '#0EA5E9' },
-    searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 12, paddingHorizontal: 12, height: 48, marginBottom: 16 },
-    input: { flex: 1, marginLeft: 10, fontSize: 16, color: '#0F172A' },
-    chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F1F5F9', marginRight: 8 },
-    chipActive: { backgroundColor: '#0F172A' },
-    chipText: { color: '#64748B', fontWeight: '600' },
-    textActive: { color: '#fff' },
 
-    // Card Styles
-    card: { height: 210, borderRadius: 24, marginBottom: 20, overflow: 'hidden', backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
-    cardImage: { width: '100%', height: '100%' },
-    cardOverlay: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', padding: 20 },
-    cardContent: { flex: 1 },
-    badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-    cityBadge: { backgroundColor: '#0EA5E9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-    cityBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-    clientBadge: { backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-    clientText: { color: '#fff', fontSize: 10, fontWeight: '600' },
-    cardTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 },
-    cardBudget: { color: '#CBD5E1', fontSize: 14, fontWeight: '600' },
-    applyBtnIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
+    // --- NEW PREMIUM HEADER ---
+    headerContainer: {
+        borderBottomLeftRadius: 32,
+        borderBottomRightRadius: 32,
+        overflow: 'hidden',
+        elevation: 5,
+        shadowColor: '#000',
+        shadowOpacity: 0.15,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 5 }
+    },
+    headerGradient: {
+        paddingTop: 60,
+        paddingHorizontal: 20,
+        paddingBottom: 24
+    },
+    headerTop: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16
+    },
+    headerTitle: {
+        fontSize: 28,
+        fontWeight: '800',
+        color: '#fff',
+        letterSpacing: -0.5
+    },
+    verifiedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 20,
+        gap: 6
+    },
+    verifiedText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#fff'
+    },
 
+    // Search Bar
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        height: 50,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)'
+    },
+    input: {
+        flex: 1,
+        marginLeft: 10,
+        fontSize: 16,
+        color: '#fff'
+    },
+
+    // Chips
+    chip: {
+        paddingHorizontal: 18,
+        paddingVertical: 8,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        marginRight: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)'
+    },
+    chipActive: {
+        backgroundColor: '#fff'
+    },
+    chipText: {
+        color: 'rgba(255,255,255,0.7)',
+        fontWeight: '600',
+        fontSize: 13
+    },
+    chipTextActive: {
+        color: '#0F172A'
+    },
+
+    // List
+    listContainer: { flex: 1, paddingHorizontal: 20 },
+
+    // --- IMMERSIVE CARD STYLES ---
+    card: {
+        height: 240,
+        borderRadius: 24,
+        marginBottom: 20,
+        backgroundColor: '#1E293B',
+        overflow: 'hidden',
+        elevation: 5,
+        shadowColor: '#0F172A',
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 }
+    },
+    cardImage: { width: '100%', height: '100%', position: 'absolute' },
+    cardOverlay: { flex: 1, justifyContent: 'space-between', padding: 16 },
+
+    topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    badgesLeft: { flexDirection: 'row', gap: 8 },
+
+    matchBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: '#FFD700', gap: 4 },
+    matchText: { color: '#FFD700', fontSize: 10, fontWeight: '800' },
+
+    cityBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 12, overflow: 'hidden', gap: 4 },
+    cityText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+
+    iconBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' },
+
+    bottomContent: { gap: 4 },
+    cardTitle: { fontSize: 22, fontWeight: '800', color: '#fff', lineHeight: 26, marginBottom: 8, textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 4 },
+
+    priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+    budgetLabel: { color: '#94A3B8', fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+    cardBudget: { color: '#fff', fontSize: 20, fontWeight: '700' },
+
+    arrowBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+
+    // --- EMPTY STATE ---
     emptyState: { alignItems: 'center', marginTop: 60, gap: 10 },
     emptyText: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
     emptySub: { color: '#64748B' },
+
+    // --- MODAL ---
     modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
     modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 },
+    modalHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
     modalTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
-    jobTitle: { fontSize: 17, fontWeight: '700', color: '#334155' },
+    jobTitle: { fontSize: 18, fontWeight: '700', color: '#334155' },
     jobBudget: { fontSize: 14, color: '#64748B', marginBottom: 20 },
     label: { fontSize: 13, fontWeight: '700', color: '#64748B', marginBottom: 8, marginTop: 16, textTransform: 'uppercase' },
     modalInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 16, padding: 16, fontSize: 16, color: '#0F172A' },
-    submitBtn: { backgroundColor: '#0F172A', padding: 18, borderRadius: 18, alignItems: 'center', marginTop: 30, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, elevation: 5 },
+    submitBtn: { backgroundColor: '#0F172A', padding: 18, borderRadius: 18, alignItems: 'center', marginTop: 30 },
     submitText: { color: '#fff', fontWeight: '800', fontSize: 16 }
 });

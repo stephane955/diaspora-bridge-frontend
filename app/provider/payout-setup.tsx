@@ -46,8 +46,7 @@ export default function PayoutSetupScreen() {
 
         if (method === 'mtn') {
             // MTN typically starts with 65, 67, 68.
-            // Orange starts with 69, 65.
-            // If they start with 69, it is definitely NOT MTN.
+            // Orange starts with 69.
             if (prefix === '69') {
                 Alert.alert("Carrier Mismatch", "You selected MTN, but entered an Orange number (starts with 69).");
                 return;
@@ -86,7 +85,7 @@ export default function PayoutSetupScreen() {
                 amount: withdrawalAmount,
                 method: method === 'mtn' ? 'mtn_momo' : 'orange_money',
                 phone_number: formData.phoneNumber,
-                account_name: formData.fullName, // <--- UNCOMMENTED AND ACTIVE ✅
+                account_name: formData.fullName,
                 status: 'pending'
             });
 
@@ -104,7 +103,7 @@ export default function PayoutSetupScreen() {
 
             successFeedback();
             Alert.alert("Request Sent", "Your funds will be transferred within 24 hours.", [
-                { text: "OK", onPress: () => router.replace('/provider/wallet') }
+                { text: "OK", onPress: () => router.replace('/provider/earnings') } // Updated route
             ]);
 
         } catch (e: any) {

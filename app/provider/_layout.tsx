@@ -7,20 +7,28 @@ export default function ProviderLayout() {
             tabBar={() => <ProviderNavigation />}
             screenOptions={{
                 headerShown: false,
-                tabBarStyle: { display: 'none' }, // Completely hide the default white bar
+                tabBarStyle: { display: 'none' }, // We use the custom ProviderNavigation below
             }}
         >
-            <Tabs.Screen name="index" />
-            <Tabs.Screen name="active" />
-            <Tabs.Screen name="requests" />
-            <Tabs.Screen name="earnings" />
+            {/* --- THE 5 MAIN TABS --- */}
+            <Tabs.Screen name="index" />      {/* Tab 1: Hub (Dashboard) */}
+            <Tabs.Screen name="market" />     {/* Tab 2: Find Work */}
+            <Tabs.Screen name="active" />     {/* Tab 3: My Sites (Active & Applied) */}
+            <Tabs.Screen name="earnings" />   {/* Tab 4: Wallet */}
+            <Tabs.Screen name="profile" />    {/* Tab 5: Identity */}
 
-            {/* Hidden Utility Screens */}
+            {/* --- HIDDEN SCREENS (Navigated to, but not tabs) --- */}
             <Tabs.Screen name="job/[id]" options={{ href: null }} />
-            <Tabs.Screen name="request-payout" options={{ href: null }} />
+            <Tabs.Screen name="project/[id]" options={{ href: null }} />
             <Tabs.Screen name="post_update" options={{ href: null }} />
+            <Tabs.Screen name="payout-setup" options={{ href: null }} />
+            <Tabs.Screen name="verification" options={{ href: null }} />
+            <Tabs.Screen name="request-payout" options={{ href: null }} />
+
+            {/* Ignored/Deprecated files (Hide them to prevent errors) */}
+            <Tabs.Screen name="home" options={{ href: null }} />
             <Tabs.Screen name="withdraw" options={{ href: null }} />
-            <Tabs.Screen name="profile" options={{ href: null }} />
+            <Tabs.Screen name="requests" options={{ href: null }} />
         </Tabs>
     );
 }
