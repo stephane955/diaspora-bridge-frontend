@@ -1,13 +1,13 @@
 import { Tabs } from 'expo-router';
-import ProviderNavigation from '@/components/ProviderNavigation';
+import GlassTabBar from '@/components/GlassTabBar';
 
 export default function ProviderLayout() {
     return (
         <Tabs
-            tabBar={() => <ProviderNavigation />}
+            tabBar={(props) => <GlassTabBar {...props} theme="dark" />}
             screenOptions={{
                 headerShown: false,
-                tabBarStyle: { display: 'none' }, // We use the custom ProviderNavigation below
+                tabBarStyle: { display: 'none' },
             }}
         >
             {/* --- THE 5 MAIN TABS --- */}

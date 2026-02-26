@@ -1,17 +1,15 @@
 import { Tabs } from 'expo-router';
 import { useLanguage } from '@/context/LanguageContext';
-import GlassNavigation from '@/components/GlassNavigation'; // Import your custom component
+import GlassTabBar from '@/components/GlassTabBar';
 
 export default function DiasporaLayout() {
     const { t } = useLanguage();
 
     return (
         <Tabs
-            // This replaces the default white bar with your Glass Component
-            tabBar={() => <GlassNavigation />}
+            tabBar={(props) => <GlassTabBar {...props} theme="light" />}
             screenOptions={{
                 headerShown: false,
-                // We hide the default bar completely just in case
                 tabBarStyle: { display: 'none' },
             }}
         >

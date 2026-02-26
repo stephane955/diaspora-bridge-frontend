@@ -5,21 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="41d20a8b-83f9-40ad-9ea3-14d6caa9b1af" name="Changes" comment="update">
-      <change afterPath="$PROJECT_DIR$/app/provider/settings.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/diaspora/wallet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/diaspora/wallet.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/notifications.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/notifications.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/provider/_layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/provider/_layout.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/provider/active.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/provider/active.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/provider/earnings.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/provider/earnings.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/provider/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/provider/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/provider/market.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/provider/market.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/provider/payout-setup.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/provider/payout-setup.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/provider/profile.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/provider/profile.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/provider/verification.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/provider/verification.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ProviderNavigation.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/ProviderNavigation.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/constants/translations.ts" beforeDir="false" afterPath="$PROJECT_DIR$/constants/translations.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -76,7 +62,9 @@
       <option name="presentableId" value="Default" />
       <updated>1769189143052</updated>
       <workItem from="1769189144477" duration="20627000" />
-      <workItem from="1769222975781" duration="26155000" />
+      <workItem from="1769222975781" duration="28793000" />
+      <workItem from="1770378638539" duration="1260000" />
+      <workItem from="1770382009426" duration="11000" />
     </task>
     <task id="LOCAL-00001" summary="update">
       <option name="closed" value="true" />
@@ -86,7 +74,15 @@
       <option name="project" value="LOCAL" />
       <updated>1769223145009</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="update">
+      <option name="closed" value="true" />
+      <created>1769559473035</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1769559473035</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

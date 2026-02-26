@@ -1,11 +1,13 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, Image, ScrollView,
-    RefreshControl, StatusBar, Platform, ImageBackground, Modal, Alert
+    RefreshControl, StatusBar, ImageBackground, Modal
 } from 'react-native';
 import { useRouter, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -93,140 +95,148 @@ export default function ProviderDashboard() {
         <View style={styles.container}>
             <StatusBar barStyle="light-content" />
 
-            {/* ============================================================
-                1. STATIC HEADER (Fixed Top)
-               ============================================================ */}
-            <View style={styles.staticHeader}>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 120 }}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
+            >
+                {/* --- HERO SECTION --- */}
                 <ImageBackground
-                    source={{ uri: 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?q=80&w=2070&auto=format&fit=crop' }}
-                    style={styles.headerBg}
+                    source={{ uri: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab' }}
+                    style={styles.heroContainer}
                 >
                     <LinearGradient
-                        colors={isOnline ? ['rgba(15, 23, 42, 0.85)', 'rgba(15, 23, 42, 0.95)'] : ['rgba(71, 85, 105, 0.9)', 'rgba(100, 116, 139, 0.95)']}
-                        style={styles.gradient}
+                        colors={isOnline ? ['rgba(15, 23, 42, 0.9)', 'rgba(15, 23, 42, 0.6)', 'rgba(15, 23, 42, 0.4)'] : ['rgba(71, 85, 105, 0.9)', 'rgba(71, 85, 105, 0.6)', 'rgba(71, 85, 105, 0.4)']}
+                        style={styles.heroGradient}
                     >
+                        <SafeAreaView edges={['top']} style={styles.topBar}>
+                            <View style={styles.heroTitleRow}>
+                                <TouchableOpacity onPress={() => setMenuOpen(true)}>
+                                    <Image
+                                        source={{ uri: profile?.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=provider' }}
+                                        style={styles.avatar}
+                                    />
+                                </TouchableOpacity>
+                                <View>
+                                    <Text style={styles.helloText}>{t('welcomeBack')}</Text>
+                                    <Text style={styles.userName}>{profile?.full_name?.split(' ')[0] || t('providerFallback')}</Text>
+                                </View>
+                            </View>
+                            <View style={styles.headerActions}>
+                                <TouchableOpacity style={[styles.statusPill, isOnline ? styles.pillOnline : styles.pillOffline]} onPress={toggleOnlineStatus}>
+                                    <View style={[styles.statusDot, { backgroundColor: isOnline ? '#16A34A' : '#94A3B8' }]} />
+                                    <Text style={styles.statusText}>
+                                        {isOnline ? (t('goOnline') || "Online") : (t('goOffline') || "Offline")}
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.glassIconBtn} onPress={() => router.push('/notifications')}>
+                                    <Ionicons name="notifications" size={20} color="#fff" />
+                                    <View style={styles.redDot} />
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.glassIconBtn} onPress={() => setMenuOpen(true)}>
+                                    <Ionicons name="menu" size={24} color="#fff" />
+                                </TouchableOpacity>
+                            </View>
+                        </SafeAreaView>
 
-                        {/* Top Row: Menu + Status + Bell */}
-                        <View style={styles.topRow}>
-                            <TouchableOpacity onPress={() => setMenuOpen(true)} style={styles.iconBtn}>
-                                <Ionicons name="menu" size={24} color="#fff" />
-                            </TouchableOpacity>
-
-                            {/* ONLINE TOGGLE */}
-                            <TouchableOpacity style={[styles.statusPill, isOnline ? styles.pillOnline : styles.pillOffline]} onPress={toggleOnlineStatus}>
-                                <View style={[styles.statusDot, { backgroundColor: isOnline ? '#22C55E' : '#94A3B8' }]} />
-                                <Text style={styles.statusText}>
-                                    {isOnline ? (t('goOnline') || "Online") : (t('goOffline') || "Offline")}
-                                </Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity onPress={() => router.push('/notifications')} style={styles.iconBtn}>
-                                <Ionicons name="notifications-outline" size={24} color="#fff" />
-                                <View style={styles.redDot} />
+                        <View style={styles.balanceSection}>
+                            <Text style={styles.balanceLabel}>{t('availableBalance')?.toUpperCase() || 'TOTAL EARNINGS'}</Text>
+                            <Text style={styles.balanceAmount}>{stats.balance.toLocaleString()} CFA</Text>
+                            <TouchableOpacity style={styles.secureBadge} onPress={() => router.push('/provider/earnings')}>
+                                <Ionicons name="wallet" size={12} color="#16A34A" />
+                                <Text style={styles.secureText}>{t('openWallet') || "Open Wallet"}</Text>
                             </TouchableOpacity>
                         </View>
-
-                        {/* Greeting */}
-                        <View style={styles.greetingBox}>
-                            <Text style={styles.greeting}>{t('welcomeBack')}</Text>
-                            <Text style={styles.username}>{profile?.full_name || t('providerFallback')}</Text>
-                        </View>
-
                     </LinearGradient>
                 </ImageBackground>
 
-                {/* --- FLOATING COMMAND CARD --- */}
-                <View style={styles.commandCard}>
-                    {/* Wallet */}
-                    <View style={styles.statBlock}>
-                        <Text style={styles.statLabel}>{t('availableBalance')}</Text>
-                        <Text style={styles.statAmount}>{stats.balance.toLocaleString()} CFA</Text>
-                        <TouchableOpacity onPress={() => router.push('/provider/earnings')}>
-                            <Text style={styles.linkText}>{t('openWallet')} ›</Text>
+                {/* --- FLOATING STATS CARD --- */}
+                <View style={styles.floatingCardWrap}>
+                    <BlurView intensity={60} tint="dark" style={styles.floatingStatsCard}>
+                        <View style={styles.statItem}>
+                            <Text style={styles.statValue}>{stats.activeJobs}</Text>
+                            <Text style={styles.statLabel}>Active Sites</Text>
+                        </View>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statItem}>
+                            <Text style={styles.statValue}>{stats.pendingRequests}</Text>
+                            <Text style={styles.statLabel}>Pending Requests</Text>
+                        </View>
+                    </BlurView>
+                </View>
+
+                {/* --- QUICK ACTIONS --- */}
+                <View style={styles.quickActions}>
+                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/provider/market')}>
+                        <View style={styles.quickActionIcon}>
+                            <Ionicons name="search" size={24} color="#0F172A" />
+                        </View>
+                        <Text style={styles.quickActionLabel}>Find Work</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/provider/request-payout')}>
+                        <View style={styles.quickActionIcon}>
+                            <Ionicons name="wallet" size={22} color="#0F172A" />
+                        </View>
+                        <Text style={styles.quickActionLabel}>Withdraw</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/provider/active')}>
+                        <View style={styles.quickActionIcon}>
+                            <Ionicons name="briefcase" size={22} color="#0F172A" />
+                        </View>
+                        <Text style={styles.quickActionLabel}>My Sites</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* --- FEED / CARDS --- */}
+                <View style={styles.bodyContent}>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>{t('accountMenuTitle')}</Text>
+                    </View>
+
+                    <View style={styles.feedGrid}>
+                        <TouchableOpacity style={styles.feedCard} onPress={() => router.push('/provider/market')}>
+                            <View style={styles.feedCardIconWrap}>
+                                <Ionicons name="search" size={24} color="#0EA5E9" />
+                            </View>
+                            <Text style={styles.feedCardTitle}>{t('marketTitle')}</Text>
+                            <Text style={styles.feedCardSub}>Browse jobs</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.feedCard} onPress={() => router.push('/provider/requests')}>
+                            <View style={styles.feedCardIconWrap}>
+                                <Ionicons name="mail-unread" size={24} color="#F59E0B" />
+                            </View>
+                            <Text style={styles.feedCardTitle}>{t('requestsTab')}</Text>
+                            <Text style={styles.feedCardSub}>{stats.pendingRequests} Pending</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.feedCard} onPress={() => router.push('/provider/active')}>
+                            <View style={styles.feedCardIconWrap}>
+                                <Ionicons name="briefcase" size={24} color="#16A34A" />
+                            </View>
+                            <Text style={styles.feedCardTitle}>{t('sitesTitle')}</Text>
+                            <Text style={styles.feedCardSub}>Update progress</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.feedCard} onPress={() => router.push('/provider/profile')}>
+                            <View style={styles.feedCardIconWrap}>
+                                <Ionicons name="person" size={24} color="#64748B" />
+                            </View>
+                            <Text style={styles.feedCardTitle}>{t('tabProfile')}</Text>
+                            <Text style={styles.feedCardSub}>Verification & Info</Text>
                         </TouchableOpacity>
                     </View>
 
-                    <View style={styles.verticalDivider} />
-
-                    {/* Active Jobs */}
-                    <View style={styles.statBlock}>
-                        <Text style={styles.statLabel}>{t('clientDashboard.activeProjects')}</Text>
-                        <View style={{flexDirection:'row', alignItems:'center', gap: 6}}>
-                            <Text style={styles.statBigNumber}>{stats.activeJobs}</Text>
-                            {stats.activeJobs > 0 && (
-                                <View style={styles.liveBadge}>
-                                    <View style={styles.liveDot} />
-                                    <Text style={styles.liveText}>LIVE</Text>
-                                </View>
-                            )}
-                        </View>
-                        <TouchableOpacity onPress={() => router.push('/provider/active-jobs')}>
-                            <Text style={styles.linkText}>{t('common.seeAll')} ›</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </View>
-
-            {/* ============================================================
-                2. SCROLLABLE CONTENT (Menu & Tips)
-               ============================================================ */}
-            <ScrollView
-                contentContainerStyle={{ paddingBottom: 100, paddingTop: 20 }}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0F172A"/>}
-                showsVerticalScrollIndicator={false}
-                style={styles.scrollArea}
-            >
-                <Text style={styles.sectionTitle}>{t('accountMenuTitle')}</Text>
-
-                <View style={styles.grid}>
-                    {/* 1. Find Work */}
-                    <TouchableOpacity style={styles.gridCard} onPress={() => router.push('/provider/market')}>
-                        <View style={[styles.iconCircle, {backgroundColor: '#EFF6FF'}]}>
-                            <Ionicons name="search" size={24} color="#3B82F6" />
-                        </View>
-                        <Text style={styles.gridTitle}>{t('marketTitle')}</Text>
-                        <Text style={styles.gridSub}>Browse jobs</Text>
-                    </TouchableOpacity>
-
-                    {/* 2. Requests */}
-                    <TouchableOpacity style={styles.gridCard} onPress={() => router.push('/provider/requests')}>
-                        <View style={[styles.iconCircle, {backgroundColor: '#FFF7ED'}]}>
-                            <Ionicons name="mail-unread" size={24} color="#F97316" />
-                        </View>
-                        <Text style={styles.gridTitle}>{t('requestsTab')}</Text>
-                        <Text style={styles.gridSub}>{stats.pendingRequests} Pending</Text>
-                    </TouchableOpacity>
-
-                    {/* 3. My Sites */}
-                    <TouchableOpacity style={styles.gridCard} onPress={() => router.push('/provider/active-jobs')}>
-                        <View style={[styles.iconCircle, {backgroundColor: '#F0FDF4'}]}>
-                            <Ionicons name="construct" size={24} color="#16A34A" />
-                        </View>
-                        <Text style={styles.gridTitle}>{t('sitesTitle')}</Text>
-                        <Text style={styles.gridSub}>Update progress</Text>
-                    </TouchableOpacity>
-
-                    {/* 4. Profile */}
-                    <TouchableOpacity style={styles.gridCard} onPress={() => router.push('/provider/profile')}>
-                        <View style={[styles.iconCircle, {backgroundColor: '#F1F5F9'}]}>
-                            <Ionicons name="person" size={24} color="#64748B" />
-                        </View>
-                        <Text style={styles.gridTitle}>{t('tabProfile')}</Text>
-                        <Text style={styles.gridSub}>Verification & Info</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* TIP CARD */}
-                <View style={styles.tipCard}>
-                    <View style={styles.tipContent}>
-                        <Ionicons name="bulb" size={24} color="#F59E0B" />
-                        <View style={{flex: 1}}>
-                            <Text style={styles.tipTitle}>Pro Tip</Text>
-                            <Text style={styles.tipText}>Keep your status "Online" to appear at the top of client searches.</Text>
+                    <View style={styles.tipCard}>
+                        <View style={styles.tipContent}>
+                            <Ionicons name="bulb" size={24} color="#F59E0B" />
+                            <View style={styles.tipTextWrap}>
+                                <Text style={styles.tipTitle}>Pro Tip</Text>
+                                <Text style={styles.tipText}>Keep your status "Online" to appear at the top of client searches.</Text>
+                            </View>
                         </View>
                     </View>
                 </View>
-
             </ScrollView>
 
             {/* --- MENU MODAL --- */}
@@ -253,59 +263,90 @@ export default function ProviderDashboard() {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
 
-    // --- STATIC HEADER ---
-    staticHeader: { width: '100%', height: 280, zIndex: 10, backgroundColor: '#F8FAFC' },
-    headerBg: { width: '100%', height: 230 },
-    gradient: { flex: 1, paddingTop: 50, paddingHorizontal: 24 },
+    // --- HERO ---
+    heroContainer: { width: '100%', height: 340 },
+    heroGradient: { flex: 1, paddingHorizontal: 20, justifyContent: 'space-between', paddingBottom: 28 },
 
-    topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    iconBtn: { padding: 8, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12 },
-    redDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
+    topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 },
+    heroTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    avatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)' },
+    helloText: { fontSize: 13, color: '#94A3B8', fontWeight: '600', marginBottom: 2, letterSpacing: -0.5 },
+    userName: { color: '#fff', fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    glassIconBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+    redDot: { position: 'absolute', top: 10, right: 10, width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444', borderWidth: 1, borderColor: '#fff' },
 
-    // STATUS PILL
-    statusPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 6, backgroundColor: 'rgba(0,0,0,0.3)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-    pillOnline: { borderColor: '#22C55E' },
+    statusPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 6, backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+    pillOnline: { borderColor: '#16A34A' },
     pillOffline: { borderColor: '#94A3B8' },
     statusDot: { width: 8, height: 8, borderRadius: 4 },
-    statusText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+    statusText: { color: '#fff', fontWeight: '800', fontSize: 12 },
 
-    greetingBox: { marginTop: 0 },
-    greeting: { color: '#94A3B8', fontSize: 13, fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 },
-    username: { color: '#fff', fontSize: 26, fontWeight: '800' },
+    balanceSection: { marginBottom: 0 },
+    balanceLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+    balanceAmount: { color: '#fff', fontSize: 40, fontWeight: '800', marginTop: 4, letterSpacing: -0.5 },
+    secureBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: 'rgba(22, 163, 74, 0.15)', borderWidth: 1, borderColor: 'rgba(22, 163, 74, 0.25)' },
+    secureText: { color: '#16A34A', fontSize: 12, fontWeight: '700' },
 
-    // --- FLOATING COMMAND CARD ---
-    commandCard: { flexDirection: 'row', position: 'absolute', bottom: 0, left: 20, right: 20, backgroundColor: '#fff', borderRadius: 24, padding: 20, shadowColor: '#0F172A', shadowOpacity: 0.1, shadowRadius: 15, elevation: 5, height: 110, alignItems: 'center' },
-    statBlock: { flex: 1, gap: 4 },
-    statLabel: { fontSize: 11, color: '#64748B', fontWeight: '700', textTransform: 'uppercase' },
-    statAmount: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-    statBigNumber: { fontSize: 24, fontWeight: '800', color: '#0F172A' },
-    linkText: { fontSize: 12, color: '#3B82F6', fontWeight: '600', marginTop: 2 },
-    verticalDivider: { width: 1, height: '70%', backgroundColor: '#E2E8F0', marginHorizontal: 20 },
-    liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
-    liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#16A34A' },
-    liveText: { fontSize: 10, fontWeight: '800', color: '#16A34A' },
+    // --- FLOATING STATS CARD ---
+    floatingCardWrap: { marginTop: -40, paddingHorizontal: 20 },
+    floatingStatsCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 24,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+        overflow: 'hidden',
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.12,
+        shadowRadius: 20,
+        elevation: 8,
+    },
+    statItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    statValue: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+    statLabel: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '700' },
+    statDivider: { width: 1, height: '60%', backgroundColor: 'rgba(255,255,255,0.2)' },
 
-    // --- SCROLL CONTENT ---
-    scrollArea: { flex: 1, paddingHorizontal: 20 },
-    sectionTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
+    // --- QUICK ACTIONS ---
+    quickActions: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 8 },
+    quickActionBtn: { alignItems: 'center', gap: 8 },
+    quickActionIcon: { width: 56, height: 56, borderRadius: 16, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4 },
+    quickActionLabel: { fontSize: 12, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
 
-    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-    gridCard: { width: '48%', backgroundColor: '#fff', padding: 16, borderRadius: 20, gap: 10, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 5, elevation: 1 },
-    iconCircle: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-    gridTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-    gridSub: { fontSize: 12, color: '#94A3B8' },
+    bodyContent: { paddingTop: 8, paddingHorizontal: 20 },
+    sectionHeader: { marginTop: 24, marginBottom: 16 },
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
 
-    // TIP CARD
-    tipCard: { marginVertical: 24, backgroundColor: '#FFFBEB', padding: 20, borderRadius: 20, borderWidth: 1, borderColor: '#FEF3C7' },
+    feedGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+    feedCard: {
+        width: '48%',
+        backgroundColor: '#fff',
+        padding: 20,
+        borderRadius: 24,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.08,
+        shadowRadius: 20,
+        elevation: 6,
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+    },
+    feedCardIconWrap: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+    feedCardTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+    feedCardSub: { fontSize: 12, color: '#64748B', marginTop: 4, fontWeight: '600' },
+
+    tipCard: { marginVertical: 24, padding: 20, borderRadius: 24, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FEF3C7', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8 },
     tipContent: { flexDirection: 'row', gap: 16, alignItems: 'center' },
+    tipTextWrap: { flex: 1 },
     tipTitle: { fontSize: 16, fontWeight: '800', color: '#B45309', marginBottom: 4 },
     tipText: { fontSize: 13, color: '#92400E', lineHeight: 20 },
 
-    // MODAL
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    modalCard: { backgroundColor: '#fff', padding: 24, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
+    modalCard: { backgroundColor: '#fff', padding: 24, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingBottom: 40 },
     modalHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-    modalTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
+    modalTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 16, letterSpacing: -0.5 },
     modalItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     modalText: { fontSize: 16, fontWeight: '600', color: '#0F172A' },
 });
