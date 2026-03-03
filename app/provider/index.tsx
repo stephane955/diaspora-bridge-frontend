@@ -7,12 +7,14 @@ import { useRouter, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { theme } from '@/constants/theme';
 
 export default function ProviderDashboard() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const navigation = useNavigation();
     const { user, signOut } = useAuth();
@@ -92,13 +94,13 @@ export default function ProviderDashboard() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
             <StatusBar barStyle="light-content" />
 
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingBottom: 120 }}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.surface} />}
             >
                 {/* --- HERO SECTION --- */}
                 <ImageBackground
@@ -109,7 +111,7 @@ export default function ProviderDashboard() {
                         colors={isOnline ? ['rgba(15, 23, 42, 0.9)', 'rgba(15, 23, 42, 0.6)', 'rgba(15, 23, 42, 0.4)'] : ['rgba(71, 85, 105, 0.9)', 'rgba(71, 85, 105, 0.6)', 'rgba(71, 85, 105, 0.4)']}
                         style={styles.heroGradient}
                     >
-                        <SafeAreaView edges={['top']} style={styles.topBar}>
+                        <View style={[styles.topBar, { paddingTop: insets.top }]}>
                             <View style={styles.heroTitleRow}>
                                 <TouchableOpacity onPress={() => setMenuOpen(true)}>
                                     <Image
@@ -124,7 +126,7 @@ export default function ProviderDashboard() {
                             </View>
                             <View style={styles.headerActions}>
                                 <TouchableOpacity style={[styles.statusPill, isOnline ? styles.pillOnline : styles.pillOffline]} onPress={toggleOnlineStatus}>
-                                    <View style={[styles.statusDot, { backgroundColor: isOnline ? '#16A34A' : '#94A3B8' }]} />
+                                    <View style={[styles.statusDot, { backgroundColor: isOnline ? theme.colors.success : theme.colors.textSubtle }]} />
                                     <Text style={styles.statusText}>
                                         {isOnline ? (t('goOnline') || "Online") : (t('goOffline') || "Offline")}
                                     </Text>
@@ -137,13 +139,13 @@ export default function ProviderDashboard() {
                                     <Ionicons name="menu" size={24} color="#fff" />
                                 </TouchableOpacity>
                             </View>
-                        </SafeAreaView>
+                        </View>
 
                         <View style={styles.balanceSection}>
                             <Text style={styles.balanceLabel}>{t('availableBalance')?.toUpperCase() || 'TOTAL EARNINGS'}</Text>
                             <Text style={styles.balanceAmount}>{stats.balance.toLocaleString()} CFA</Text>
                             <TouchableOpacity style={styles.secureBadge} onPress={() => router.push('/provider/earnings')}>
-                                <Ionicons name="wallet" size={12} color="#16A34A" />
+                                <Ionicons name="wallet" size={12} color={theme.colors.success} />
                                 <Text style={styles.secureText}>{t('openWallet') || "Open Wallet"}</Text>
                             </TouchableOpacity>
                         </View>
@@ -169,7 +171,7 @@ export default function ProviderDashboard() {
                 <View style={styles.quickActions}>
                     <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/provider/market')}>
                         <View style={styles.quickActionIcon}>
-                            <Ionicons name="search" size={24} color="#0F172A" />
+                            <Ionicons name="search" size={24} color={theme.colors.text} />
                         </View>
                         <Text style={styles.quickActionLabel}>Find Work</Text>
                     </TouchableOpacity>
@@ -261,7 +263,7 @@ export default function ProviderDashboard() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    container: { flex: 1, backgroundColor: theme.colors.background },
 
     // --- HERO ---
     heroContainer: { width: '100%', height: 340 },
@@ -312,41 +314,37 @@ const styles = StyleSheet.create({
     // --- QUICK ACTIONS ---
     quickActions: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 8 },
     quickActionBtn: { alignItems: 'center', gap: 8 },
-    quickActionIcon: { width: 56, height: 56, borderRadius: 16, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4 },
-    quickActionLabel: { fontSize: 12, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+    quickActionIcon: { width: 56, height: 56, borderRadius: theme.radii.md, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center', ...theme.shadow.soft },
+    quickActionLabel: { fontSize: 12, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
 
-    bodyContent: { paddingTop: 8, paddingHorizontal: 20 },
-    sectionHeader: { marginTop: 24, marginBottom: 16 },
-    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+    bodyContent: { paddingTop: 8, paddingHorizontal: theme.spacing.lg },
+    sectionHeader: { marginTop: theme.spacing.xl, marginBottom: theme.spacing.md },
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
 
-    feedGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+    feedGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
     feedCard: {
         width: '48%',
-        backgroundColor: '#fff',
-        padding: 20,
-        borderRadius: 24,
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.08,
-        shadowRadius: 20,
-        elevation: 6,
+        backgroundColor: theme.colors.surface,
+        padding: theme.spacing.lg,
+        borderRadius: theme.radii.xl,
+        ...theme.shadow.soft,
         borderWidth: 1,
-        borderColor: '#F1F5F9',
+        borderColor: theme.colors.border,
     },
-    feedCardIconWrap: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-    feedCardTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
-    feedCardSub: { fontSize: 12, color: '#64748B', marginTop: 4, fontWeight: '600' },
+    feedCardIconWrap: { width: 48, height: 48, borderRadius: theme.radii.md, backgroundColor: theme.colors.background, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.sm },
+    feedCardTitle: { fontSize: 15, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
+    feedCardSub: { fontSize: 12, color: theme.colors.textMuted, marginTop: 4, fontWeight: '600' },
 
-    tipCard: { marginVertical: 24, padding: 20, borderRadius: 24, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FEF3C7', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8 },
+    tipCard: { marginVertical: theme.spacing.xl, padding: theme.spacing.lg, borderRadius: theme.radii.xl, backgroundColor: theme.colors.warning + '15', borderWidth: 1, borderColor: theme.colors.warning + '40', ...theme.shadow.soft },
     tipContent: { flexDirection: 'row', gap: 16, alignItems: 'center' },
     tipTextWrap: { flex: 1 },
     tipTitle: { fontSize: 16, fontWeight: '800', color: '#B45309', marginBottom: 4 },
     tipText: { fontSize: 13, color: '#92400E', lineHeight: 20 },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
-    modalCard: { backgroundColor: '#fff', padding: 24, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingBottom: 40 },
-    modalHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-    modalTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 16, letterSpacing: -0.5 },
-    modalItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-    modalText: { fontSize: 16, fontWeight: '600', color: '#0F172A' },
+    modalOverlay: { flex: 1, backgroundColor: theme.colors.glassDark, justifyContent: 'flex-end' },
+    modalCard: { backgroundColor: theme.colors.surface, padding: theme.spacing.xl, borderTopLeftRadius: theme.radii.xl, borderTopRightRadius: theme.radii.xl, paddingBottom: 40 },
+    modalHandle: { width: 40, height: 4, backgroundColor: theme.colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: theme.spacing.lg },
+    modalTitle: { fontSize: 20, fontWeight: '800', color: theme.colors.text, marginBottom: theme.spacing.md, letterSpacing: -0.5 },
+    modalItem: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.md, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+    modalText: { fontSize: 16, fontWeight: '600', color: theme.colors.text },
 });

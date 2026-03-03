@@ -7,16 +7,19 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
 import BudgetProgress from '@/components/BudgetProgress';
+import { theme } from '@/constants/theme';
 
 const { width, height } = Dimensions.get('window');
 const HEADER_HEIGHT = 300;
 
 export default function ProjectDetailsScreen() {
+    const insets = useSafeAreaInsets();
     const { id } = useLocalSearchParams();
     const router = useRouter();
     const { t } = useLanguage();
@@ -188,14 +191,14 @@ export default function ProjectDetailsScreen() {
         <View style={styles.starRow}>
             {[1, 2, 3, 4, 5].map(num => (
                 <TouchableOpacity key={num} disabled={!interactive} onPress={() => setRating(num)}>
-                    <Ionicons name={num <= current ? "star" : "star-outline"} size={24} color="#FBBF24" />
+                    <Ionicons name={num <= current ? "star" : "star-outline"} size={24} color={theme.colors.warning} />
                 </TouchableOpacity>
             ))}
         </View>
     );
 
     if (loading || !project) {
-        return <View style={styles.center}><ActivityIndicator size="large" color="#0F172A" /></View>;
+        return <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.text} /></View>;
     }
 
     // Status Helpers
@@ -204,7 +207,7 @@ export default function ProjectDetailsScreen() {
     const isCompleted = project.status === 'completed';
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
             <StatusBar barStyle="light-content" />
 
             {/* --- HEADER --- */}
@@ -222,7 +225,7 @@ export default function ProjectDetailsScreen() {
                     </View>
                     <Text style={styles.headerTitle}>{project.title}</Text>
                     <View style={styles.locationRow}>
-                        <Ionicons name="location" size={16} color="#CBD5E1" />
+                        <Ionicons name="location" size={16} color={theme.colors.textSubtle} />
                         <Text style={styles.headerLoc}>{project.city}</Text>
                     </View>
                 </View>
@@ -480,7 +483,7 @@ export default function ProjectDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    container: { flex: 1, backgroundColor: theme.colors.background },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
     headerContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: HEADER_HEIGHT, overflow: 'hidden', zIndex: 0 },
@@ -502,17 +505,17 @@ const styles = StyleSheet.create({
     navBar: { position: 'absolute', top: 50, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 10 },
     navBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' },
 
-    body: { backgroundColor: '#F8FAFC', borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 24, paddingBottom: 40, minHeight: 800 },
+    body: { backgroundColor: theme.colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: theme.spacing.xl, paddingBottom: 40, minHeight: 800 },
 
     metricsContainer: { marginTop: -40, marginBottom: 24 },
-    glassRow: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 20, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 8, justifyContent: 'space-between' },
+    glassRow: { flexDirection: 'row', backgroundColor: theme.colors.surface, borderRadius: theme.radii.lg, padding: theme.spacing.md, ...theme.shadow.soft, justifyContent: 'space-between' },
     metricItem: { alignItems: 'center', flex: 1 },
-    metricLabel: { fontSize: 11, color: '#64748B', fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 },
-    metricValue: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
-    metricDivider: { width: 1, height: 24, backgroundColor: '#E2E8F0' },
+    metricLabel: { fontSize: 11, color: theme.colors.textMuted, fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 },
+    metricValue: { fontSize: 16, fontWeight: '800', color: theme.colors.text },
+    metricDivider: { width: 1, height: 24, backgroundColor: theme.colors.border },
 
-    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
-    subTitle: { fontSize: 14, fontWeight: '700', color: '#64748B', marginBottom: 12, textTransform: 'uppercase', marginTop: 10 },
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: theme.colors.text, marginBottom: theme.spacing.sm },
+    subTitle: { fontSize: 14, fontWeight: '700', color: theme.colors.textMuted, marginBottom: theme.spacing.sm, textTransform: 'uppercase', marginTop: theme.spacing.sm },
     description: { fontSize: 15, color: '#475569', lineHeight: 24, marginBottom: 20 },
     section: { marginBottom: 24 },
 
@@ -557,11 +560,11 @@ const styles = StyleSheet.create({
     callBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
 
     // Actions & Reviews
-    actionBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', flexDirection: 'row', padding: 20, gap: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-    actionPayBtn: { flex: 2, backgroundColor: '#0F172A', borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 50, gap: 8 },
-    actionPayText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-    actionDoneBtn: { flex: 1, backgroundColor: '#F0FDF4', borderRadius: 14, alignItems: 'center', justifyContent: 'center', height: 50, borderWidth: 1, borderColor: '#DCFCE7' },
-    actionDoneText: { color: '#16A34A', fontWeight: '700', fontSize: 16 },
+    actionBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: theme.colors.surface, flexDirection: 'row', padding: theme.spacing.lg, gap: theme.spacing.sm, borderTopWidth: 1, borderTopColor: theme.colors.border },
+    actionPayBtn: { flex: 2, backgroundColor: theme.colors.primary, borderRadius: theme.radii.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 50, gap: theme.spacing.sm },
+    actionPayText: { color: theme.colors.surface, fontWeight: '700', fontSize: 16 },
+    actionDoneBtn: { flex: 1, backgroundColor: theme.colors.success + '18', borderRadius: theme.radii.sm, alignItems: 'center', justifyContent: 'center', height: 50, borderWidth: 1, borderColor: theme.colors.success + '50' },
+    actionDoneText: { color: theme.colors.success, fontWeight: '700', fontSize: 16 },
 
     reviewDisplay: { marginTop: 10, padding: 16, backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' },
     reviewHeader: { fontWeight: '700', marginBottom: 8, color: '#0F172A' },
@@ -582,8 +585,8 @@ const styles = StyleSheet.create({
     modalBtns: { flexDirection: 'row', gap: 12, marginTop: 10 },
     cancelBtn: { flex: 1, padding: 16, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center' },
     cancelText: { fontWeight: '700', color: '#64748B' },
-    confirmBtn: { flex: 1, padding: 16, borderRadius: 14, backgroundColor: '#0EA5E9', alignItems: 'center' },
-    confirmText: { fontWeight: '700', color: '#fff' },
+    confirmBtn: { flex: 1, padding: theme.spacing.md, borderRadius: theme.radii.sm, backgroundColor: theme.colors.active, alignItems: 'center' },
+    confirmText: { fontWeight: '700', color: theme.colors.surface },
 
     // Zoom
     zoomOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' },

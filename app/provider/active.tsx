@@ -5,11 +5,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { useLanguage } from '@/context/LanguageContext'; // <--- Language Support
+import { useLanguage } from '@/context/LanguageContext';
+import { theme } from '@/constants/theme';
 
 export default function ActiveSites() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
     const { t } = useLanguage(); // <--- Hook for translations
@@ -124,7 +127,7 @@ export default function ActiveSites() {
                     <View style={styles.verticalLine} />
                     <View>
                         <Text style={styles.ticketLabel}>{t('yourBid') || "YOUR BID"}</Text>
-                        <Text style={[styles.ticketValue, {color: '#0F172A'}]}>
+                        <Text style={[styles.ticketValue, { color: theme.colors.text }]}>
                             {item.bid_amount?.toLocaleString()} CFA
                         </Text>
                     </View>
@@ -134,7 +137,7 @@ export default function ActiveSites() {
     );
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
             {/* --- NEW HEADER --- */}
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>{t('sitesTitle') || "My Sites"}</Text>
@@ -163,7 +166,7 @@ export default function ActiveSites() {
 
             {/* CONTENT LIST */}
             {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color="#0F172A" /></View>
+                <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.text} /></View>
             ) : (
                 <FlatList
                     data={activeTab === 'active' ? projects : applications}
@@ -173,7 +176,7 @@ export default function ActiveSites() {
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
-                            <Ionicons name={activeTab === 'active' ? "hammer-outline" : "document-text-outline"} size={48} color="#CBD5E1" />
+                            <Ionicons name={activeTab === 'active' ? "hammer-outline" : "document-text-outline"} size={48} color={theme.colors.textSubtle} />
                             <Text style={styles.emptyTitle}>
                                 {activeTab === 'active' ? (t('noActiveJobs') || "No Active Sites") : "No Applications"}
                             </Text>
@@ -191,15 +194,14 @@ export default function ActiveSites() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    container: { flex: 1, backgroundColor: theme.colors.background },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-    // --- NEW HEADER STYLES ---
     header: {
         paddingTop: 70,
-        paddingHorizontal: 24,
-        paddingBottom: 24,
-        backgroundColor: '#fff',
+        paddingHorizontal: theme.spacing.xl,
+        paddingBottom: theme.spacing.xl,
+        backgroundColor: theme.colors.surface,
         borderBottomLeftRadius: 32,
         borderBottomRightRadius: 32,
         shadowColor: '#000',
@@ -211,8 +213,8 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 34,
         fontWeight: '800',
-        color: '#0F172A',
-        marginBottom: 20,
+        color: theme.colors.text,
+        marginBottom: theme.spacing.lg,
         letterSpacing: -1
     },
 

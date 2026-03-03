@@ -6,9 +6,11 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { useLanguage } from '@/context/LanguageContext'; // <--- 1. Import Language
+import { useLanguage } from '@/context/LanguageContext';
+import { theme } from '@/constants/theme';
 
 type Transaction = {
     id: string;
@@ -20,9 +22,10 @@ type Transaction = {
 };
 
 export default function ProviderEarningsScreen() {
+    const insets = useSafeAreaInsets();
     const { user } = useAuth();
     const router = useRouter();
-    const { t } = useLanguage(); // <--- 2. Use Hook
+    const { t } = useLanguage();
 
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [balance, setBalance] = useState(0);
@@ -61,11 +64,11 @@ export default function ProviderEarningsScreen() {
 
     // --- RENDER ---
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
             <StatusBar barStyle="light-content" />
 
             {/* --- PREMIUM HEADER --- */}
-            <LinearGradient colors={['#0F172A', '#334155']} style={styles.header}>
+            <LinearGradient colors={[theme.colors.primary, theme.colors.primarySoft]} style={styles.header}>
                 <Text style={styles.headerTitle}>{t('walletTitle') || "My Earnings"}</Text>
 
                 <View style={styles.balanceRow}>
@@ -84,7 +87,7 @@ export default function ProviderEarningsScreen() {
                             {/* LOCAL TRUST FACTOR: */}
                             <Text style={styles.momoText}>MOMO / OM</Text>
                         </View>
-                        <Ionicons name="arrow-forward" size={16} color="#0F172A" />
+                        <Ionicons name="arrow-forward" size={16} color={theme.colors.text} />
                     </TouchableOpacity>
                 </View>
 
@@ -103,7 +106,7 @@ export default function ProviderEarningsScreen() {
                 <Text style={styles.sectionTitle}>{t('history') || "Transaction History"}</Text>
 
                 {loading ? (
-                    <ActivityIndicator color="#0F172A" style={{ marginTop: 20 }} />
+                    <ActivityIndicator color={theme.colors.text} style={{ marginTop: 20 }} />
                 ) : (
                     <ScrollView
                         showsVerticalScrollIndicator={false}
@@ -112,7 +115,7 @@ export default function ProviderEarningsScreen() {
                     >
                         {transactions.length === 0 ? (
                             <View style={styles.emptyState}>
-                                <Ionicons name="wallet-outline" size={48} color="#CBD5E1" />
+                                <Ionicons name="wallet-outline" size={48} color={theme.colors.textSubtle} />
                                 <Text style={styles.emptyText}>{t('noEarnings') || "No earnings yet."}</Text>
                                 <Text style={styles.emptySub}>{t('completeJobs') || "Complete jobs to see transactions."}</Text>
                             </View>
@@ -125,7 +128,7 @@ export default function ProviderEarningsScreen() {
                                             <Ionicons
                                                 name={isIncome ? "arrow-down" : "arrow-up"}
                                                 size={20}
-                                                color={isIncome ? "#16A34A" : "#EF4444"}
+                                                color={isIncome ? theme.colors.success : theme.colors.danger}
                                             />
                                         </View>
                                         <View style={{ flex: 1 }}>
@@ -153,52 +156,45 @@ export default function ProviderEarningsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    container: { flex: 1, backgroundColor: theme.colors.background },
 
-    // Header
     header: {
         paddingTop: 70,
-        paddingBottom: 20,
-        paddingHorizontal: 24,
+        paddingBottom: theme.spacing.lg,
+        paddingHorizontal: theme.spacing.xl,
         borderBottomLeftRadius: 32,
         borderBottomRightRadius: 32,
-        shadowColor: '#000',
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        elevation: 5
+        ...theme.shadow.soft,
     },
-    headerTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 24, textAlign: 'center', opacity: 0.9 },
+    headerTitle: { color: theme.colors.surface, fontSize: 18, fontWeight: '700', marginBottom: theme.spacing.xl, textAlign: 'center', opacity: 0.9 },
 
     balanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
-    balanceLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 4, textTransform: 'uppercase' },
-    balanceValue: { color: '#fff', fontSize: 32, fontWeight: '800' },
+    balanceLabel: { color: theme.colors.textSubtle, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 4, textTransform: 'uppercase' },
+    balanceValue: { color: theme.colors.surface, fontSize: 32, fontWeight: '800' },
 
-    withdrawBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-    withdrawText: { color: '#0F172A', fontWeight: '800', fontSize: 13 },
-    momoText: { fontSize: 8, color: '#F59E0B', fontWeight: '800', letterSpacing: 0.5 },
+    withdrawBtn: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, backgroundColor: theme.colors.surface, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radii.pill },
+    withdrawText: { color: theme.colors.text, fontWeight: '800', fontSize: 13 },
+    momoText: { fontSize: 8, color: theme.colors.warning, fontWeight: '800', letterSpacing: 0.5 },
 
-    // Chart
-    chartContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 50, paddingHorizontal: 10 },
+    chartContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 50, paddingHorizontal: theme.spacing.sm },
     chartBarWrapper: { height: '100%', justifyContent: 'flex-end', width: 6 },
-    chartBar: { width: '100%', backgroundColor: '#fff', borderRadius: 4 },
+    chartBar: { width: '100%', backgroundColor: theme.colors.surface, borderRadius: 4 },
 
-    // Body
-    body: { flex: 1, padding: 24 },
-    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
+    body: { flex: 1, padding: theme.spacing.xl },
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: theme.colors.text, marginBottom: theme.spacing.md },
 
-    // Card
-    card: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 12, gap: 16, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 8, elevation: 2, borderWidth: 1, borderColor: '#F1F5F9' },
+    card: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.surface, padding: theme.spacing.md, borderRadius: theme.radii.md, marginBottom: theme.spacing.sm, gap: theme.spacing.md, ...theme.shadow.soft, borderWidth: 1, borderColor: theme.colors.border },
     iconBox: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-    bgGreen: { backgroundColor: '#DCFCE7' },
-    bgRed: { backgroundColor: '#FEF2F2' },
+    bgGreen: { backgroundColor: theme.colors.success + '25' },
+    bgRed: { backgroundColor: theme.colors.danger + '18' },
 
-    cardTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-    cardDate: { fontSize: 12, color: '#64748B', marginTop: 2 },
+    cardTitle: { fontSize: 15, fontWeight: '700', color: theme.colors.text },
+    cardDate: { fontSize: 12, color: theme.colors.textMuted, marginTop: 2 },
     amount: { fontSize: 16, fontWeight: '700' },
-    textGreen: { color: '#16A34A' },
-    textRed: { color: '#EF4444' },
+    textGreen: { color: theme.colors.success },
+    textRed: { color: theme.colors.danger },
 
-    emptyState: { alignItems: 'center', marginTop: 60, gap: 10 },
-    emptyText: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-    emptySub: { color: '#64748B' },
+    emptyState: { alignItems: 'center', marginTop: 60, gap: theme.spacing.sm },
+    emptyText: { fontSize: 18, fontWeight: '700', color: theme.colors.text },
+    emptySub: { color: theme.colors.textMuted },
 });

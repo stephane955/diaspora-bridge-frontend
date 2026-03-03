@@ -8,12 +8,14 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context'; //
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
+import { theme } from '@/constants/theme';
 
 const { width, height } = Dimensions.get('window');
 
 export default function LoginScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -90,9 +92,9 @@ export default function LoginScreen() {
                 colors={['rgba(15, 23, 42, 0.6)', 'rgba(15, 23, 42, 0.9)']}
                 style={styles.gradient}
             >
-                {/* --- CLOSE BUTTON (Best Practice) --- */}
+                {/* --- CLOSE BUTTON --- */}
                 <TouchableOpacity
-                    style={styles.closeBtn}
+                    style={[styles.closeBtn, { top: insets.top + 8 }]}
                     onPress={handleClose}
                     activeOpacity={0.7}
                 >
@@ -100,7 +102,7 @@ export default function LoginScreen() {
                 </TouchableOpacity>
 
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-                    <ScrollView contentContainerStyle={styles.scrollContent}>
+                    <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}>
 
                         {/* BRANDING */}
                         <View style={styles.header}>

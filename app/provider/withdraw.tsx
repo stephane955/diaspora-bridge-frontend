@@ -44,14 +44,6 @@ export default function WithdrawScreen() {
 
     return (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Ionicons name="close" size={24} color="#0F172A" />
-                </TouchableOpacity>
-                <Text style={styles.title}>Withdraw Funds</Text>
-                <View style={{ width: 40 }} />
-            </View>
-
             <View style={styles.content}>
                 <Text style={styles.label}>Select Method</Text>
                 <View style={styles.methodRow}>

@@ -3,13 +3,14 @@ import {
     View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
     Alert, KeyboardAvoidingView, Platform, ScrollView, ImageBackground, Dimensions
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useLanguage } from '@/context/LanguageContext';
+import { theme } from '@/constants/theme';
 
 const { width, height } = Dimensions.get('window');
 
@@ -20,6 +21,7 @@ const CITIES = [
 ];
 
 export default function SignupScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { t } = useLanguage();
 
@@ -83,13 +85,13 @@ export default function SignupScreen() {
             source={{ uri: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?q=80&w=2831&auto=format&fit=crop' }}
             style={styles.bg}
         >
-            <LinearGradient colors={['rgba(15,23,42,0.6)', 'rgba(15,23,42,0.95)']} style={styles.gradient}>
+            <LinearGradient colors={[theme.colors.glassDark, theme.colors.primary]} style={styles.gradient}>
 
-                <SafeAreaView style={styles.safeHeader}>
+                <View style={[styles.safeHeader, { paddingTop: insets.top }]}>
                     <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
-                        <Ionicons name="close" size={24} color="#fff" />
+                        <Ionicons name="close" size={24} color={theme.colors.surface} />
                     </TouchableOpacity>
-                </SafeAreaView>
+                </View>
 
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
                     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>

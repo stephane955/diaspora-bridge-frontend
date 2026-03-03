@@ -248,6 +248,13 @@ export const translations = {
         support: "Help & Support",
         legal: "Terms & Privacy",
         version: "Version 1.0.2",
+
+        // --- MENU SCREEN ---
+        menuTitle: "Menu",
+        menuWallet: "My Wallet & Escrow",
+        menuProfile: "Profile & Verification",
+        menuSettings: "Settings",
+        menuLogout: "Log Out",
     },
     fr: {
         flag: "🇫🇷",
@@ -497,6 +504,12 @@ export const translations = {
         support: "Aide & Support",
         legal: "Conditions & Confidentialité",
         version: "Version 1.0.2",
+
+        menuTitle: "Menu",
+        menuWallet: "Mon portefeuille et séquestre",
+        menuProfile: "Profil et vérification",
+        menuSettings: "Paramètres",
+        menuLogout: "Se déconnecter",
     },
     es: {
         flag: "🇪🇸",
@@ -746,6 +759,12 @@ export const translations = {
         support: "Ayuda y Soporte",
         legal: "Términos y Privacidad",
         version: "Versión 1.0.2",
+
+        menuTitle: "Menú",
+        menuWallet: "Mi billetera y depósito",
+        menuProfile: "Perfil y verificación",
+        menuSettings: "Configuración",
+        menuLogout: "Cerrar sesión",
     },
     de: {
         flag: "🇩🇪",
@@ -938,6 +957,12 @@ export const translations = {
         support: "Hilfe & Support",
         legal: "AGB & Datenschutz",
         version: "Version 1.0.2",
+
+        menuTitle: "Menü",
+        menuWallet: "Mein Wallet & Treuhand",
+        menuProfile: "Profil & Verifizierung",
+        menuSettings: "Einstellungen",
+        menuLogout: "Abmelden",
     },
     it: {
         flag: "🇮🇹",
@@ -1130,5 +1155,11 @@ export const translations = {
         support: "Aiuto & Supporto",
         legal: "Termini & Privacy",
         version: "Versione 1.0.2",
+
+        menuTitle: "Menu",
+        menuWallet: "Il mio portafoglio e deposito",
+        menuProfile: "Profilo e verifica",
+        menuSettings: "Impostazioni",
+        menuLogout: "Esci",
     }
 };

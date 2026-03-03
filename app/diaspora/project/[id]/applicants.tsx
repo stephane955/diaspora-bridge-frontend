@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/context/LanguageContext';
-import NavigationBar from '@/components/NavigationBar';
+import { theme } from '@/constants/theme';
 
 export default function ApplicantsScreen() {
+    const insets = useSafeAreaInsets();
     const { id } = useLocalSearchParams();
     const router = useRouter();
     const { t } = useLanguage();
@@ -40,7 +42,7 @@ export default function ApplicantsScreen() {
                     key={num}
                     name={num <= current ? 'star' : 'star-outline'}
                     size={14}
-                    color="#FBBF24"
+                    color={theme.colors.warning}
                 />
             ))}
         </View>
@@ -84,11 +86,10 @@ export default function ApplicantsScreen() {
     };
 
     return (
-        <View style={styles.container}>
-            <NavigationBar title={t('applicantsTitle') || "Applicants"} showBack />
+        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
             {loading ? (
                 <View style={styles.center}>
-                    <ActivityIndicator size="large" color="#0EA5E9" />
+                    <ActivityIndicator size="large" color={theme.colors.active} />
                 </View>
             ) : (
                 <FlatList
@@ -123,7 +124,7 @@ export default function ApplicantsScreen() {
                                     disabled={hiringId !== null}
                                 >
                                     {hiringId === item.id ? (
-                                        <ActivityIndicator color="#fff" />
+                                        <ActivityIndicator color={theme.colors.surface} />
                                     ) : (
                                         <Text style={styles.hireText}>{t('hireAction') || "Hire"}</Text>
                                     )}
@@ -138,18 +139,18 @@ export default function ApplicantsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    container: { flex: 1, backgroundColor: theme.colors.background },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    listContent: { padding: 20, paddingBottom: 40 },
-    emptyState: { padding: 40, alignItems: 'center' },
-    emptyTitle: { fontSize: 16, fontWeight: '700', color: '#64748B' },
-    emptySub: { fontSize: 13, color: '#94A3B8', marginTop: 6, textAlign: 'center' },
-    card: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 12, gap: 12 },
-    avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E2E8F0' },
-    name: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-    ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
-    ratingText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
+    listContent: { padding: theme.spacing.lg, paddingBottom: 40 },
+    emptyState: { padding: theme.spacing.xxl, alignItems: 'center' },
+    emptyTitle: { fontSize: 16, fontWeight: '700', color: theme.colors.textMuted },
+    emptySub: { fontSize: 13, color: theme.colors.textSubtle, marginTop: theme.spacing.xs, textAlign: 'center' },
+    card: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.md, backgroundColor: theme.colors.surface, borderRadius: theme.radii.md, borderWidth: 1, borderColor: theme.colors.border, marginBottom: theme.spacing.sm, gap: theme.spacing.sm },
+    avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: theme.colors.border },
+    name: { fontSize: 15, fontWeight: '700', color: theme.colors.text },
+    ratingRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginTop: 4 },
+    ratingText: { fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' },
     starRow: { flexDirection: 'row', gap: 2 },
-    hireBtn: { backgroundColor: '#16A34A', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 18 },
-    hireText: { color: '#fff', fontWeight: '700', fontSize: 12 }
+    hireBtn: { backgroundColor: theme.colors.success, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radii.pill },
+    hireText: { color: theme.colors.surface, fontWeight: '700', fontSize: 12 }
 });

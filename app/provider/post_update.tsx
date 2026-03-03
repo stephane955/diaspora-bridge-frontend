@@ -79,15 +79,6 @@ export default function PostUpdateScreen() {
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             style={styles.container}
         >
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
-                    <Ionicons name="close" size={24} color="#0F172A" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Post Progress</Text>
-                <View style={{ width: 40 }} />
-            </View>
-
             <ScrollView contentContainerStyle={styles.content}>
 
                 {/* Image Section */}

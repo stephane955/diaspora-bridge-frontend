@@ -5,10 +5,13 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
+import { theme } from '@/constants/theme';
 
 export default function ProposalsScreen() {
+    const insets = useSafeAreaInsets();
     const { id } = useLocalSearchParams(); // Project ID
     const router = useRouter();
 
@@ -144,7 +147,7 @@ export default function ProposalsScreen() {
                     <View style={{ flex: 1 }}>
                         <Text style={styles.name}>{item.profiles?.full_name}</Text>
                         <View style={styles.ratingRow}>
-                            <Ionicons name="star" size={14} color="#FBBF24" />
+                            <Ionicons name="star" size={14} color={theme.colors.warning} />
                             <Text style={styles.rating}>{item.profiles?.rating || 'New'} • {item.profiles?.city}</Text>
                         </View>
                     </View>
@@ -183,7 +186,7 @@ export default function ProposalsScreen() {
                         disabled={!!hiringId}
                     >
                         {hiringId === item.id ? (
-                            <ActivityIndicator color="#fff" />
+                            <ActivityIndicator color={theme.colors.surface} />
                         ) : (
                             <Text style={styles.hireText}>HIRE FOR {item.bid_amount?.toLocaleString()}</Text>
                         )}
@@ -194,20 +197,9 @@ export default function ProposalsScreen() {
     };
 
     return (
-        <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={24} color="#0F172A" />
-                </TouchableOpacity>
-                <View>
-                    <Text style={styles.headerTitle}>Review Proposals</Text>
-                    <Text style={styles.headerSub}>Select the best provider</Text>
-                </View>
-            </View>
-
+        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
             {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color="#0F172A" /></View>
+                <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.text} /></View>
             ) : (
                 <FlatList
                     data={proposals}
@@ -216,7 +208,7 @@ export default function ProposalsScreen() {
                     contentContainerStyle={styles.list}
                     ListEmptyComponent={
                         <View style={styles.emptyState}>
-                            <Ionicons name="documents-outline" size={48} color="#CBD5E1" />
+                            <Ionicons name="documents-outline" size={48} color={theme.colors.textSubtle} />
                             <Text style={styles.emptyText}>No bids yet.</Text>
                             <Text style={styles.emptySub}>Wait for providers to apply.</Text>
                         </View>
@@ -228,42 +220,37 @@ export default function ProposalsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    container: { flex: 1, backgroundColor: theme.colors.background },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-    header: { flexDirection: 'row', alignItems: 'center', paddingTop: 60, paddingBottom: 20, paddingHorizontal: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', gap: 16 },
-    backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-    headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
-    headerSub: { fontSize: 13, color: '#64748B' },
+    list: { padding: theme.spacing.lg },
 
-    list: { padding: 20 },
+    card: { backgroundColor: theme.colors.surface, borderRadius: theme.radii.md, padding: theme.spacing.md, marginBottom: theme.spacing.md, ...theme.shadow.soft, borderWidth: 1, borderColor: theme.colors.border },
+    cardExpanded: { borderColor: theme.colors.active, borderWidth: 1 },
 
-    card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3, borderWidth: 1, borderColor: '#F1F5F9' },
-    cardExpanded: { borderColor: '#0EA5E9', borderWidth: 1 },
-
-    cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-    avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#E2E8F0' },
-    name: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+    cardHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
+    avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.border },
+    name: { fontSize: 16, fontWeight: '700', color: theme.colors.text },
     ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-    rating: { fontSize: 12, color: '#64748B' },
+    rating: { fontSize: 12, color: theme.colors.textMuted },
 
-    bidBadge: { backgroundColor: '#F0F9FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-    bidAmount: { fontSize: 14, fontWeight: '800', color: '#0284C7' },
+    bidBadge: { backgroundColor: theme.colors.activeSoft + '25', paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, borderRadius: theme.radii.xs },
+    bidAmount: { fontSize: 14, fontWeight: '800', color: theme.colors.active },
 
-    budgetRow: { marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-    overBudget: { color: '#EF4444', fontSize: 12, fontWeight: '600' },
-    underBudget: { color: '#16A34A', fontSize: 12, fontWeight: '600' },
+    budgetRow: { marginBottom: theme.spacing.sm, paddingBottom: theme.spacing.sm, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+    overBudget: { color: theme.colors.danger, fontSize: 12, fontWeight: '600' },
+    underBudget: { color: theme.colors.success, fontSize: 12, fontWeight: '600' },
 
-    letterContainer: { marginBottom: 16 },
-    letterLabel: { fontSize: 12, fontWeight: '700', color: '#94A3B8', marginBottom: 4, textTransform: 'uppercase' },
-    letterText: { fontSize: 14, color: '#334155', lineHeight: 22 },
-    readMore: { fontSize: 12, color: '#0EA5E9', fontWeight: '600', marginTop: 4 },
+    letterContainer: { marginBottom: theme.spacing.md },
+    letterLabel: { fontSize: 12, fontWeight: '700', color: theme.colors.textSubtle, marginBottom: 4, textTransform: 'uppercase' },
+    letterText: { fontSize: 14, color: theme.colors.text, lineHeight: 22 },
+    readMore: { fontSize: 12, color: theme.colors.active, fontWeight: '600', marginTop: 4 },
 
-    hireBtn: { backgroundColor: '#0F172A', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+    hireBtn: { backgroundColor: theme.colors.primary, paddingVertical: theme.spacing.md, borderRadius: theme.radii.sm, alignItems: 'center' },
     hireBtnDisabled: { opacity: 0.7 },
-    hireText: { color: '#fff', fontWeight: '700', fontSize: 14, letterSpacing: 0.5 },
+    hireText: { color: theme.colors.surface, fontWeight: '700', fontSize: 14, letterSpacing: 0.5 },
 
-    emptyState: { alignItems: 'center', marginTop: 60, gap: 10 },
-    emptyText: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-    emptySub: { color: '#64748B' },
+    emptyState: { alignItems: 'center', marginTop: 60, gap: theme.spacing.sm },
+    emptyText: { fontSize: 18, fontWeight: '700', color: theme.colors.text },
+    emptySub: { color: theme.colors.textMuted },
 });

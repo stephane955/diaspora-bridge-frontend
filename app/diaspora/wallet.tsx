@@ -3,14 +3,17 @@ import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
     RefreshControl, ActivityIndicator, StatusBar, Alert
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { theme } from '@/constants/theme';
 
 export default function ClientWalletScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
     const { t } = useLanguage();
@@ -67,17 +70,8 @@ export default function ClientWalletScreen() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
             <StatusBar barStyle="light-content" />
-
-            {/* HEADER */}
-            <View style={styles.navBar}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
-                    <Ionicons name="arrow-back" size={24} color="#0F172A" />
-                </TouchableOpacity>
-                <Text style={styles.navTitle}>{t('clientDashboard.myWallet') || "My Wallet"}</Text>
-                <View style={{ width: 40 }} />
-            </View>
 
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
@@ -169,12 +163,8 @@ export default function ClientWalletScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
-    navBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 60, paddingHorizontal: 20, paddingBottom: 10 },
-    iconBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-    navTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-
-    scrollContent: { padding: 20, paddingBottom: 100 },
+    container: { flex: 1, backgroundColor: theme.colors.background },
+    scrollContent: { padding: theme.spacing.lg, paddingBottom: 100 },
 
     // CARD STYLE (Client Specific)
     masterCard: { width: '100%', borderRadius: 24, padding: 24, marginBottom: 30, shadowColor: '#2563EB', shadowOpacity: 0.3, shadowRadius: 15, elevation: 5 },
@@ -198,18 +188,18 @@ const styles = StyleSheet.create({
     actionText: { color: '#475569', fontWeight: '600', fontSize: 12 },
 
     // HISTORY LIST
-    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 15 },
-    listContainer: { backgroundColor: '#fff', borderRadius: 24, padding: 8 },
-    txnItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', gap: 15 },
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: theme.colors.text, marginBottom: 15 },
+    listContainer: { backgroundColor: theme.colors.surface, borderRadius: theme.radii.lg, padding: theme.spacing.xs },
+    txnItem: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.md, borderBottomWidth: 1, borderBottomColor: theme.colors.border, gap: 15 },
     txnIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
     inIcon: { backgroundColor: '#DCFCE7' },
     outIcon: { backgroundColor: '#F1F5F9' },
-    txnTitle: { color: '#0F172A', fontWeight: '700', fontSize: 14 },
-    txnSub: { color: '#94A3B8', fontSize: 11 },
+    txnTitle: { color: theme.colors.text, fontWeight: '700', fontSize: 14 },
+    txnSub: { color: theme.colors.textSubtle, fontSize: 11 },
     txnAmount: { fontWeight: '700', fontSize: 15 },
-    textGreen: { color: '#16A34A' },
-    textNeutral: { color: '#64748B' },
+    textGreen: { color: theme.colors.success },
+    textNeutral: { color: theme.colors.textMuted },
 
-    emptyState: { alignItems: 'center', padding: 40 },
-    emptyText: { color: '#94A3B8', fontSize: 14 }
+    emptyState: { alignItems: 'center', padding: theme.spacing.xl },
+    emptyText: { color: theme.colors.textSubtle, fontSize: 14 }
 });

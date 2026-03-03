@@ -5,9 +5,11 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { theme } from '@/constants/theme';
 
 const LANGUAGES = [
     { code: 'en', label: 'English', flag: '🇺🇸' },
@@ -16,6 +18,7 @@ const LANGUAGES = [
 ];
 
 export default function ProviderSettingsScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user, signOut } = useAuth();
     const { t, setLanguage, language } = useLanguage();
@@ -70,21 +73,13 @@ export default function ProviderSettingsScreen() {
 
     return (
         <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={24} color="#0F172A" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>{t('settingsTitle')}</Text>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.scroll}>
+            <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 80 }]}>
 
                 {/* --- SECTION 1: AVAILABILITY --- */}
                 <Text style={styles.sectionTitle}>{t('availability')}</Text>
                 <View style={styles.card}>
                     <View style={styles.row}>
-                        <View style={styles.rowIconBg}><Ionicons name="power" size={20} color="#22C55E" /></View>
+                        <View style={styles.rowIconBg}><Ionicons name="power" size={20} color={theme.colors.success} /></View>
                         <View style={{flex: 1}}>
                             <Text style={styles.rowTitle}>{t('onlineStatus')}</Text>
                             <Text style={styles.rowSub}>{t('onlineDesc')}</Text>
@@ -92,8 +87,8 @@ export default function ProviderSettingsScreen() {
                         <Switch
                             value={isOnline}
                             onValueChange={toggleOnline}
-                            trackColor={{ false: '#E2E8F0', true: '#22C55E' }}
-                            thumbColor={'#fff'}
+                            trackColor={{ false: theme.colors.border, true: theme.colors.success }}
+                            thumbColor={theme.colors.surface}
                         />
                     </View>
                 </View>
@@ -103,19 +98,19 @@ export default function ProviderSettingsScreen() {
                 <View style={styles.card}>
                     {/* Language */}
                     <TouchableOpacity style={styles.row} onPress={cycleLanguage}>
-                        <View style={[styles.rowIconBg, {backgroundColor: '#EFF6FF'}]}><Ionicons name="globe-outline" size={20} color="#3B82F6" /></View>
+                        <View style={[styles.rowIconBg, { backgroundColor: theme.colors.activeSoft + '25' }]}><Ionicons name="globe-outline" size={20} color={theme.colors.active} /></View>
                         <View style={{flex: 1}}>
                             <Text style={styles.rowTitle}>{t('languageName')}</Text>
                             <Text style={styles.rowSub}>{LANGUAGES.find(l => l.code === language)?.label}</Text>
                         </View>
-                        <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+                        <Ionicons name="chevron-forward" size={20} color={theme.colors.textSubtle} />
                     </TouchableOpacity>
 
                     <View style={styles.divider} />
 
                     {/* Notifications */}
                     <View style={styles.row}>
-                        <View style={[styles.rowIconBg, {backgroundColor: '#FFF7ED'}]}><Ionicons name="notifications-outline" size={20} color="#F97316" /></View>
+                        <View style={[styles.rowIconBg, { backgroundColor: theme.colors.warning + '20' }]}><Ionicons name="notifications-outline" size={20} color={theme.colors.warning} /></View>
                         <View style={{flex: 1}}>
                             <Text style={styles.rowTitle}>{t('notifications')}</Text>
                             <Text style={styles.rowSub}>{t('pushNotifs')}</Text>
@@ -123,8 +118,8 @@ export default function ProviderSettingsScreen() {
                         <Switch
                             value={notificationsEnabled}
                             onValueChange={setNotificationsEnabled}
-                            trackColor={{ false: '#E2E8F0', true: '#F97316' }}
-                            thumbColor={'#fff'}
+                            trackColor={{ false: theme.colors.border, true: theme.colors.warning }}
+                            thumbColor={theme.colors.surface}
                         />
                     </View>
                 </View>
@@ -133,17 +128,17 @@ export default function ProviderSettingsScreen() {
                 <Text style={styles.sectionTitle}>{t('general')}</Text>
                 <View style={styles.card}>
                     <TouchableOpacity style={styles.row}>
-                        <View style={[styles.rowIconBg, {backgroundColor: '#F1F5F9'}]}><Ionicons name="help-buoy-outline" size={20} color="#64748B" /></View>
+                        <View style={[styles.rowIconBg, { backgroundColor: theme.colors.background }]}><Ionicons name="help-buoy-outline" size={20} color={theme.colors.textMuted} /></View>
                         <Text style={[styles.rowTitle, {flex:1}]}>{t('support')}</Text>
-                        <Ionicons name="open-outline" size={20} color="#CBD5E1" />
+                        <Ionicons name="open-outline" size={20} color={theme.colors.textSubtle} />
                     </TouchableOpacity>
 
                     <View style={styles.divider} />
 
                     <TouchableOpacity style={styles.row}>
-                        <View style={[styles.rowIconBg, {backgroundColor: '#F1F5F9'}]}><Ionicons name="document-text-outline" size={20} color="#64748B" /></View>
+                        <View style={[styles.rowIconBg, { backgroundColor: theme.colors.background }]}><Ionicons name="document-text-outline" size={20} color={theme.colors.textMuted} /></View>
                         <Text style={[styles.rowTitle, {flex:1}]}>{t('legal')}</Text>
-                        <Ionicons name="open-outline" size={20} color="#CBD5E1" />
+                        <Ionicons name="open-outline" size={20} color={theme.colors.textSubtle} />
                     </TouchableOpacity>
                 </View>
 
@@ -164,26 +159,22 @@ export default function ProviderSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
-    header: { flexDirection: 'row', alignItems: 'center', paddingTop: 60, paddingHorizontal: 20, paddingBottom: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-    backBtn: { marginRight: 16 },
-    headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
+    container: { flex: 1, backgroundColor: theme.colors.background },
+    scroll: { padding: theme.spacing.xl },
+    sectionTitle: { fontSize: 14, fontWeight: '700', color: theme.colors.textSubtle, marginBottom: theme.spacing.sm, marginTop: theme.spacing.sm, textTransform: 'uppercase' },
 
-    scroll: { padding: 24, paddingBottom: 60 },
-    sectionTitle: { fontSize: 14, fontWeight: '700', color: '#94A3B8', marginBottom: 12, marginTop: 12, textTransform: 'uppercase' },
+    card: { backgroundColor: theme.colors.surface, borderRadius: theme.radii.md, overflow: 'hidden', borderWidth: 1, borderColor: theme.colors.border, ...theme.shadow.soft },
+    row: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.md, gap: theme.spacing.sm },
+    rowIconBg: { width: 36, height: 36, borderRadius: 10, backgroundColor: theme.colors.success + '20', alignItems: 'center', justifyContent: 'center' },
+    rowTitle: { fontSize: 16, fontWeight: '600', color: theme.colors.text },
+    rowSub: { fontSize: 13, color: theme.colors.textSubtle, marginTop: 2 },
+    divider: { height: 1, backgroundColor: theme.colors.border, marginLeft: 64 },
 
-    card: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#F1F5F9' },
-    row: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-    rowIconBg: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F0FDF4', alignItems: 'center', justifyContent: 'center' },
-    rowTitle: { fontSize: 16, fontWeight: '600', color: '#0F172A' },
-    rowSub: { fontSize: 13, color: '#94A3B8', marginTop: 2 },
-    divider: { height: 1, backgroundColor: '#F1F5F9', marginLeft: 64 },
+    logoutBtn: { marginTop: theme.spacing.xl, backgroundColor: theme.colors.danger + '18', padding: theme.spacing.md, borderRadius: theme.radii.sm, alignItems: 'center' },
+    logoutText: { color: theme.colors.danger, fontWeight: '700', fontSize: 16 },
 
-    logoutBtn: { marginTop: 32, backgroundColor: '#FEF2F2', padding: 16, borderRadius: 12, alignItems: 'center' },
-    logoutText: { color: '#EF4444', fontWeight: '700', fontSize: 16 },
+    deleteBtn: { marginTop: theme.spacing.sm, alignItems: 'center', padding: theme.spacing.sm },
+    deleteText: { color: theme.colors.textSubtle, fontSize: 14, textDecorationLine: 'underline' },
 
-    deleteBtn: { marginTop: 12, alignItems: 'center', padding: 10 },
-    deleteText: { color: '#94A3B8', fontSize: 14, textDecorationLine: 'underline' },
-
-    versionText: { textAlign: 'center', color: '#CBD5E1', fontSize: 12, marginTop: 20 },
+    versionText: { textAlign: 'center', color: theme.colors.textSubtle, fontSize: 12, marginTop: theme.spacing.lg },
 });

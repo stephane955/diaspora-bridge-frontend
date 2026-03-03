@@ -7,11 +7,13 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur'; // Optional: for premium glass effect
+import { BlurView } from 'expo-blur';
+import { theme } from '@/constants/theme';
 
 const CITIES = [
     "Douala", "Yaoundé", "Bamenda", "Bafoussam",
@@ -20,6 +22,7 @@ const CITIES = [
 ];
 
 export default function NewProjectScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
     const { t } = useLanguage();
@@ -78,21 +81,12 @@ export default function NewProjectScreen() {
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.container}
+            style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
         >
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
             >
-                {/* --- HEADER --- */}
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                        <Ionicons name="chevron-back" size={24} color="#0F172A" />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>{t('tabPostJob' as any) || "Create Project"}</Text>
-                    <View style={{ width: 44 }} />
-                </View>
-
                 {/* --- IMAGE PICKER --- */}
                 <TouchableOpacity onPress={pickImage} activeOpacity={0.9} style={styles.imagePickerContainer}>
                     {image ? (
@@ -108,7 +102,7 @@ export default function NewProjectScreen() {
                         <View style={styles.placeholderWrapper}>
                             <LinearGradient colors={['#F8FAFC', '#F1F5F9']} style={styles.placeholderGradient}>
                                 <View style={styles.iconCircle}>
-                                    <Ionicons name="add" size={32} color="#0EA5E9" />
+                                    <Ionicons name="add" size={32} color={theme.colors.active} />
                                 </View>
                                 <Text style={styles.placeholderText}>Add a project photo</Text>
                             </LinearGradient>
@@ -125,7 +119,7 @@ export default function NewProjectScreen() {
                         <TextInput
                             style={styles.input}
                             placeholder="e.g. Modern Villa Design"
-                            placeholderTextColor="#94A3B8"
+                            placeholderTextColor={theme.colors.textSubtle}
                             value={title}
                             onChangeText={setTitle}
                         />
@@ -136,7 +130,7 @@ export default function NewProjectScreen() {
                             <Text style={styles.label}>{t('project.city' as any) || "Location"}</Text>
                             <TouchableOpacity style={styles.selectBtn} onPress={() => setShowCityPicker(true)}>
                                 <Text style={city ? styles.selectText : styles.placeholderSelect}>{city || "Select City"}</Text>
-                                <Ionicons name="location" size={16} color="#0EA5E9" />
+                                <Ionicons name="location" size={16} color={theme.colors.active} />
                             </TouchableOpacity>
                         </View>
                         <View style={[styles.flex1, { marginLeft: 16 }]}>
@@ -159,7 +153,7 @@ export default function NewProjectScreen() {
                         <TextInput
                             style={[styles.input, styles.textArea]}
                             placeholder="What needs to be done?"
-                            placeholderTextColor="#94A3B8"
+                            placeholderTextColor={theme.colors.textSubtle}
                             multiline
                             value={description}
                             onChangeText={setDescription}
@@ -174,17 +168,17 @@ export default function NewProjectScreen() {
                         style={styles.mainButtonContainer}
                     >
                         <LinearGradient
-                            colors={['#0EA5E9', '#2563EB']}
+                            colors={[theme.colors.active, theme.colors.primary]}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 0 }}
                             style={styles.submitBtn}
                         >
                             {loading ? (
-                                <ActivityIndicator color="#fff" />
+                                <ActivityIndicator color={theme.colors.surface} />
                             ) : (
                                 <>
                                     <Text style={styles.submitText}>Publish Project</Text>
-                                    <Ionicons name="rocket" size={20} color="#fff" />
+                                    <Ionicons name="rocket" size={20} color={theme.colors.surface} />
                                 </>
                             )}
                         </LinearGradient>
@@ -206,7 +200,7 @@ export default function NewProjectScreen() {
                                     onPress={() => { setCity(item); setShowCityPicker(false); }}
                                 >
                                     <Text style={[styles.cityText, city === item && styles.citySelected]}>{item}</Text>
-                                    {city === item && <Ionicons name="checkmark-circle" size={22} color="#0EA5E9" />}
+                                    {city === item && <Ionicons name="checkmark-circle" size={22} color={theme.colors.active} />}
                                 </TouchableOpacity>
                             )}
                         />
@@ -218,49 +212,46 @@ export default function NewProjectScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#FFFFFF' },
+    container: { flex: 1, backgroundColor: theme.colors.surface },
     scrollContent: { paddingBottom: 40 },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 60, paddingHorizontal: 24, paddingBottom: 20 },
-    headerTitle: { fontSize: 22, fontWeight: '900', color: '#0F172A', letterSpacing: -0.5 },
-    backBtn: { width: 45, height: 45, borderRadius: 15, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
 
-    imagePickerContainer: { marginHorizontal: 24, height: 200, borderRadius: 28, marginBottom: 10 },
+    imagePickerContainer: { marginHorizontal: theme.spacing.xl, height: 200, borderRadius: theme.radii.xl, marginBottom: theme.spacing.sm },
     previewImage: { width: '100%', height: '100%' },
     imageOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    glassBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.25)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
-    editText: { color: '#fff', fontWeight: '700', marginLeft: 8 },
+    glassBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.glass, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radii.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
+    editText: { color: theme.colors.surface, fontWeight: '700', marginLeft: theme.spacing.sm },
 
-    placeholderWrapper: { flex: 1, borderRadius: 28, borderWidth: 2, borderColor: '#F1F5F9', borderStyle: 'dashed', overflow: 'hidden' },
+    placeholderWrapper: { flex: 1, borderRadius: theme.radii.xl, borderWidth: 2, borderColor: theme.colors.border, borderStyle: 'dashed', overflow: 'hidden' },
     placeholderGradient: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    iconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#0EA5E9', shadowOpacity: 0.1, shadowRadius: 10 },
-    placeholderText: { marginTop: 12, fontSize: 15, fontWeight: '600', color: '#64748B' },
+    iconCircle: { width: 56, height: 56, borderRadius: theme.radii.xl, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center', ...theme.shadow.soft },
+    placeholderText: { marginTop: theme.spacing.sm, fontSize: 15, fontWeight: '600', color: theme.colors.textMuted },
 
-    formCard: { paddingHorizontal: 24, paddingTop: 20 },
-    sectionTitle: { fontSize: 14, fontWeight: '800', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 20 },
-    inputGroup: { marginBottom: 24 },
-    label: { fontSize: 14, fontWeight: '700', color: '#334155', marginBottom: 10 },
-    input: { backgroundColor: '#F8FAFC', height: 58, borderRadius: 18, paddingHorizontal: 20, fontSize: 16, color: '#0F172A', borderWidth: 1, borderColor: '#E2E8F0' },
-    textArea: { height: 120, paddingTop: 18, textAlignVertical: 'top' },
+    formCard: { paddingHorizontal: theme.spacing.xl, paddingTop: theme.spacing.lg },
+    sectionTitle: { fontSize: 14, fontWeight: '800', color: theme.colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1, marginBottom: theme.spacing.lg },
+    inputGroup: { marginBottom: theme.spacing.xl },
+    label: { fontSize: 14, fontWeight: '700', color: theme.colors.text, marginBottom: theme.spacing.sm },
+    input: { backgroundColor: theme.colors.background, height: 58, borderRadius: theme.radii.lg, paddingHorizontal: theme.spacing.lg, fontSize: 16, color: theme.colors.text, borderWidth: 1, borderColor: theme.colors.border },
+    textArea: { height: 120, paddingTop: theme.spacing.lg, textAlignVertical: 'top' },
 
-    row: { flexDirection: 'row', marginBottom: 24 },
+    row: { flexDirection: 'row', marginBottom: theme.spacing.xl },
     flex1: { flex: 1 },
-    selectBtn: { backgroundColor: '#F8FAFC', height: 58, borderRadius: 18, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#E2E8F0' },
-    selectText: { fontSize: 16, color: '#0F172A', fontWeight: '600' },
-    placeholderSelect: { fontSize: 16, color: '#94A3B8' },
+    selectBtn: { backgroundColor: theme.colors.background, height: 58, borderRadius: theme.radii.lg, paddingHorizontal: theme.spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: theme.colors.border },
+    selectText: { fontSize: 16, color: theme.colors.text, fontWeight: '600' },
+    placeholderSelect: { fontSize: 16, color: theme.colors.textSubtle },
 
-    budgetContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', height: 58, borderRadius: 18, borderWidth: 1, borderColor: '#E2E8F0', paddingRight: 20 },
-    budgetInput: { flex: 1, paddingHorizontal: 20, fontSize: 18, color: '#0F172A', fontWeight: '700' },
-    currency: { fontSize: 14, fontWeight: '800', color: '#0EA5E9' },
+    budgetContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.background, height: 58, borderRadius: theme.radii.lg, borderWidth: 1, borderColor: theme.colors.border, paddingRight: theme.spacing.lg },
+    budgetInput: { flex: 1, paddingHorizontal: theme.spacing.lg, fontSize: 18, color: theme.colors.text, fontWeight: '700' },
+    currency: { fontSize: 14, fontWeight: '800', color: theme.colors.active },
 
-    mainButtonContainer: { marginTop: 10, shadowColor: "#2563EB", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 10 },
-    submitBtn: { height: 62, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
-    submitText: { color: '#fff', fontSize: 18, fontWeight: '800' },
+    mainButtonContainer: { marginTop: theme.spacing.sm, ...theme.shadow.soft },
+    submitBtn: { height: 62, borderRadius: theme.radii.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm },
+    submitText: { color: theme.colors.surface, fontSize: 18, fontWeight: '800' },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-    modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 35, borderTopRightRadius: 35, padding: 24, height: '70%' },
-    modalBar: { width: 40, height: 5, backgroundColor: '#E2E8F0', alignSelf: 'center', borderRadius: 10, marginBottom: 20 },
-    modalTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 20, textAlign: 'center' },
-    cityOption: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#F8FAFC', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    cityText: { fontSize: 17, color: '#475569', fontWeight: '500' },
-    citySelected: { color: '#0EA5E9', fontWeight: '800' }
+    modalOverlay: { flex: 1, backgroundColor: theme.colors.glassDark, justifyContent: 'flex-end' },
+    modalContent: { backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radii.xl, borderTopRightRadius: theme.radii.xl, padding: theme.spacing.xl, height: '70%' },
+    modalBar: { width: 40, height: 5, backgroundColor: theme.colors.border, alignSelf: 'center', borderRadius: 10, marginBottom: theme.spacing.lg },
+    modalTitle: { fontSize: 20, fontWeight: '800', color: theme.colors.text, marginBottom: theme.spacing.lg, textAlign: 'center' },
+    cityOption: { paddingVertical: theme.spacing.lg, borderBottomWidth: 1, borderBottomColor: theme.colors.background, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    cityText: { fontSize: 17, color: theme.colors.textMuted, fontWeight: '500' },
+    citySelected: { color: theme.colors.active, fontWeight: '800' }
 });

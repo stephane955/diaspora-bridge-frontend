@@ -1,112 +1,141 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-    KeyboardAvoidingView, Platform, Image, Alert, ActivityIndicator, SafeAreaView
+    View,
+    Text,
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
+    KeyboardAvoidingView,
+    Platform,
+    ActivityIndicator,
+    Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { theme } from '@/constants/theme';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { FlashList } from '@shopify/flash-list';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { lightFeedback } from '@/utils/haptics';
 import { Message, Project } from '@/types/models';
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+
+type MessageRow = Message;
 
 export default function ChatScreen() {
-    const { id } = useLocalSearchParams(); // Project ID
+    const insets = useSafeAreaInsets();
+    const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuth();
     const { t } = useLanguage();
     const router = useRouter();
 
-    const [messages, setMessages] = useState<Message[]>([]);
+    const projectId = typeof id === 'string' ? id : id?.[0];
+    const [messages, setMessages] = useState<MessageRow[]>([]);
     const [text, setText] = useState('');
     const [uploading, setUploading] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [projectTitle, setProjectTitle] = useState('');
+    const [projectTitle, setProjectTitle] = useState('Chat');
 
-    const flatListRef = useRef<FlatList<Message>>(null);
+    const listRef = useRef<FlashList<MessageRow>>(null);
 
-    // 1. Load Initial Data
+    const fetchMessages = useCallback(async () => {
+        if (!projectId) return;
+        const { data, error } = await supabase
+            .from<MessageRow>('messages')
+            .select('*')
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('fetchMessages:', error);
+            setLoading(false);
+            return;
+        }
+        setMessages(data ?? []);
+        setLoading(false);
+    }, [projectId]);
+
     useEffect(() => {
-        const projectId = typeof id === 'string' ? id : id?.[0];
         if (!projectId) return;
 
-        // Fetch Project Title
-        supabase.from<Project>('projects').select('title').eq('id', projectId).single()
-            .then(({ data }) => { if(data) setProjectTitle(data.title); });
+        supabase
+            .from<Project>('projects')
+            .select('title')
+            .eq('id', projectId)
+            .single()
+            .then(({ data }) => {
+                if (data?.title) setProjectTitle(data.title);
+            });
 
-        // Fetch History
         fetchMessages();
+    }, [projectId, fetchMessages]);
 
-        // 2. Realtime Subscription
-        const channel = supabase.channel(`chat:${projectId}`)
+    useEffect(() => {
+        if (!projectId) return;
+
+        const channel = supabase
+            .channel(`chat:${projectId}`)
             .on(
                 'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'messages', filter: `project_id=eq.${projectId}` },
-                (payload) => {
-                    setMessages(prev => [payload.new as Message, ...prev]);
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: `project_id=eq.${projectId}`,
+                },
+                (payload: RealtimePostgresChangesPayload<MessageRow>) => {
+                    const newRow = payload.new as MessageRow;
+                    setMessages((prev) => [...prev, newRow]);
                 }
             )
             .subscribe();
 
-        return () => { supabase.removeChannel(channel); };
-    }, [id]);
-
-    const fetchMessages = async () => {
-        const projectId = typeof id === 'string' ? id : id?.[0];
-        if (!projectId) return;
-        const { data } = await supabase
-            .from<Message>('messages')
-            .select('*')
-            .eq('project_id', projectId)
-            .order('created_at', { ascending: false }); // Newest first for inverted list
-
-        if (data) setMessages(data);
-        setLoading(false);
-    };
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [projectId]);
 
     const sendMessage = async () => {
-        if (!text.trim()) return;
+        const trimmed = text.trim();
+        if (!trimmed || !projectId || !user?.id) return;
 
-        const messageContent = text.trim();
-        setText(''); // Clear UI immediately
+        setText('');
+        lightFeedback();
 
-        const projectId = typeof id === 'string' ? id : id?.[0];
-        if (!projectId) return;
-        const { error } = await supabase.from<Message>('messages').insert({
+        const { error } = await supabase.from<MessageRow>('messages').insert({
             project_id: projectId,
-            sender_id: user?.id,
-            content: messageContent // Matches DB column 'content'
+            sender_id: user.id,
+            content: trimmed,
         });
 
         if (error) {
-            Alert.alert("Error", "Failed to send message");
-            console.error(error);
+            console.error('sendMessage:', error);
+            setText(trimmed);
         }
     };
 
     const pickImage = async () => {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-            Alert.alert(t('permissionNeededTitle'), "We need access to your photos to send images.");
-            return;
-        }
+        if (!permission.granted) return;
 
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            quality: 0.5, // Optimize for chat speed
+            quality: 0.5,
         });
 
         if (result.canceled) return;
 
         try {
             setUploading(true);
+            lightFeedback();
             const asset = result.assets[0];
             const ext = asset.uri.split('.').pop() || 'jpg';
-            const projectId = typeof id === 'string' ? id : id?.[0];
-            if (!projectId) return;
+            if (!projectId || !user?.id) return;
             const path = `${projectId}/${Date.now()}.${ext}`;
 
-            // Upload
             const response = await fetch(asset.uri);
             const arrayBuffer = await response.arrayBuffer();
             const { error: uploadError } = await supabase.storage
@@ -115,38 +144,35 @@ export default function ChatScreen() {
 
             if (uploadError) throw uploadError;
 
-            // Get URL
             const { data: publicData } = supabase.storage.from('chat-images').getPublicUrl(path);
 
-            // Send Message
-            await supabase.from<Message>('messages').insert({
+            await supabase.from<MessageRow>('messages').insert({
                 project_id: projectId,
-                sender_id: user?.id,
-                content: '📷 Image', // Fallback text
-                image_url: publicData.publicUrl
+                sender_id: user.id,
+                content: '📷 Image',
+                image_url: publicData.publicUrl,
             });
-
-        } catch (error) {
-            const message = error instanceof Error ? error.message : "Upload failed.";
-            Alert.alert("Upload Failed", message);
+        } catch (e) {
+            console.error('Image upload:', e);
         } finally {
             setUploading(false);
         }
     };
 
-    const renderMessage = ({ item }: { item: Message }) => {
+    const handleBack = () => {
+        lightFeedback();
+        router.back();
+    };
+
+    const renderMessage = ({ item }: { item: MessageRow }) => {
         const isMe = item.sender_id === user?.id;
         return (
             <View style={[styles.msgWrapper, isMe ? styles.myMsgWrapper : styles.theirMsgWrapper]}>
-
-                {/* Image Bubble */}
                 {!!item.image_url && (
-                    <View style={[styles.bubble, isMe ? styles.myBubble : styles.theirBubble, { padding: 4 }]}>
+                    <View style={[styles.bubble, isMe ? styles.myBubble : styles.theirBubble, styles.imageBubble]}>
                         <Image source={{ uri: item.image_url }} style={styles.msgImage} />
                     </View>
                 )}
-
-                {/* Text Bubble (only if not just an image, or if it has content) */}
                 {(!item.image_url || (item.content && item.content !== '📷 Image')) && (
                     <View style={[styles.bubble, isMe ? styles.myBubble : styles.theirBubble]}>
                         <Text style={[styles.msgText, isMe ? styles.myText : styles.theirText]}>
@@ -154,8 +180,6 @@ export default function ChatScreen() {
                         </Text>
                     </View>
                 )}
-
-                {/* Timestamp */}
                 <Text style={styles.timeText}>
                     {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </Text>
@@ -164,99 +188,221 @@ export default function ChatScreen() {
     };
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={24} color="#0F172A" />
-                </TouchableOpacity>
-                <View style={{flex: 1, alignItems: 'center'}}>
-                    <Text style={styles.headerTitle} numberOfLines={1}>{projectTitle || 'Chat'}</Text>
-                    <Text style={styles.headerSub}>{t('projectHubTitle') || 'Project Discussion'}</Text>
-                </View>
-                <TouchableOpacity style={styles.backBtn}>
-                    <Ionicons name="ellipsis-horizontal" size={24} color="#0F172A" />
-                </TouchableOpacity>
-            </View>
-
-            {/* Chat List */}
-            {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color="#0EA5E9" /></View>
-            ) : (
-                <FlatList
-                    ref={flatListRef}
-                    data={messages}
-                    inverted // Scroll from bottom
-                    keyExtractor={item => item.id}
-                    renderItem={renderMessage}
-                    contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
-                    keyboardShouldPersistTaps="handled"
-                />
-            )}
-
-            {/* Input Area */}
+        <View style={[styles.safe, { flex: 1, backgroundColor: theme.colors.primary, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
             <KeyboardAvoidingView
+                style={styles.keyboardView}
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
-                <View style={styles.inputContainer}>
-                    <TouchableOpacity onPress={pickImage} disabled={uploading} style={styles.iconBtn}>
+                {/* Header — custom (layout has headerShown: false) */}
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.8}>
+                        <Ionicons name="arrow-back" size={24} color={theme.colors.surface} />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle} numberOfLines={1}>
+                        {projectTitle}
+                    </Text>
+                    <TouchableOpacity
+                        onPress={pickImage}
+                        disabled={uploading}
+                        style={styles.headerAction}
+                        activeOpacity={0.8}
+                    >
                         {uploading ? (
-                            <ActivityIndicator size="small" color="#94A3B8" />
+                            <ActivityIndicator size="small" color={theme.colors.textSubtle} />
                         ) : (
-                            <Ionicons name="camera-outline" size={24} color="#64748B" />
+                            <Ionicons name="camera-outline" size={22} color={theme.colors.surface} />
                         )}
                     </TouchableOpacity>
+                </View>
 
+                {/* Chat — Slate background */}
+                <View style={styles.chatArea}>
+                    {loading ? (
+                        <View style={styles.loadingWrap}>
+                            <ActivityIndicator size="large" color="#0EA5E9" />
+                        </View>
+                    ) : (
+                        <FlashList
+                            ref={listRef}
+                            data={messages}
+                            renderItem={renderMessage}
+                            estimatedItemSize={72}
+                            keyExtractor={(item) => item.id}
+                            contentContainerStyle={styles.listContent}
+                            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+                            keyboardShouldPersistTaps="handled"
+                        />
+                    )}
+                </View>
+
+                {/* Input */}
+                <View style={styles.inputRow}>
                     <TextInput
                         style={styles.input}
-                        placeholder={t('typeMessage') || "Type a message..."}
+                        placeholder={t('typeMessage') || 'Type a message...'}
                         placeholderTextColor="#94A3B8"
                         value={text}
                         onChangeText={setText}
                         multiline
                         maxLength={500}
                     />
-
                     <TouchableOpacity
-                        style={[styles.sendBtn, !text.trim() && { backgroundColor: '#E2E8F0' }]}
+                        style={[styles.sendBtn, !text.trim() && styles.sendBtnDisabled]}
                         onPress={sendMessage}
+                        onPressIn={() => text.trim() && lightFeedback()}
                         disabled={!text.trim()}
+                        activeOpacity={0.8}
                     >
-                        <Ionicons name="arrow-up" size={20} color={text.trim() ? "#fff" : "#94A3B8"} />
+                        <Ionicons
+                            name="arrow-up"
+                            size={20}
+                            color={text.trim() ? theme.colors.surface : theme.colors.textSubtle}
+                        />
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E2E8F0', paddingTop: Platform.OS === 'android' ? 40 : 10 },
-    backBtn: { padding: 8 },
-    headerTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', maxWidth: 200 },
-    headerSub: { fontSize: 11, color: '#64748B' },
-
-    msgWrapper: { marginBottom: 16, maxWidth: '80%' },
-    myMsgWrapper: { alignSelf: 'flex-end', alignItems: 'flex-end' },
-    theirMsgWrapper: { alignSelf: 'flex-start', alignItems: 'flex-start' },
-
-    bubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
-    myBubble: { backgroundColor: '#0EA5E9', borderBottomRightRadius: 4 },
-    theirBubble: { backgroundColor: '#fff', borderBottomLeftRadius: 4, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 2, shadowOffset: {width:0, height:1} },
-
-    msgText: { fontSize: 15, lineHeight: 22 },
-    myText: { color: '#fff' },
-    theirText: { color: '#0F172A' },
-
-    msgImage: { width: 200, height: 150, borderRadius: 14, backgroundColor: '#E2E8F0' },
-
-    timeText: { fontSize: 10, color: '#94A3B8', marginTop: 4, marginHorizontal: 4 },
-
-    inputContainer: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F1F5F9', gap: 10 },
-    input: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, maxHeight: 100, borderWidth: 1, borderColor: '#E2E8F0', color: '#0F172A' },
-    iconBtn: { padding: 10, paddingBottom: 12 },
-    sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#0EA5E9', alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+    safe: {
+        flex: 1,
+        backgroundColor: '#0F172A',
+    },
+    keyboardView: {
+        flex: 1,
+        backgroundColor: '#F8FAFC',
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 12,
+        paddingVertical: 14,
+        paddingTop: Platform.OS === 'android' ? 14 : 10,
+        backgroundColor: '#0F172A',
+    },
+    backBtn: {
+        padding: 8,
+        marginLeft: 4,
+    },
+    headerTitle: {
+        flex: 1,
+        fontSize: 17,
+        fontWeight: '700',
+        color: '#F8FAFC',
+        textAlign: 'center',
+        marginHorizontal: 8,
+    },
+    headerAction: {
+        padding: 8,
+        minWidth: 40,
+        alignItems: 'flex-end',
+    },
+    chatArea: {
+        flex: 1,
+        backgroundColor: '#F8FAFC',
+    },
+    loadingWrap: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    listContent: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        paddingBottom: 24,
+    },
+    msgWrapper: {
+        marginBottom: 14,
+        maxWidth: '82%',
+    },
+    myMsgWrapper: {
+        alignSelf: 'flex-end',
+        alignItems: 'flex-end',
+    },
+    theirMsgWrapper: {
+        alignSelf: 'flex-start',
+        alignItems: 'flex-start',
+    },
+    bubble: {
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 18,
+    },
+    imageBubble: {
+        padding: 4,
+    },
+    myBubble: {
+        backgroundColor: '#0EA5E9',
+        borderBottomRightRadius: 4,
+    },
+    theirBubble: {
+        backgroundColor: '#FFFFFF',
+        borderBottomLeftRadius: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.06,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    msgText: {
+        fontSize: 15,
+        lineHeight: 22,
+    },
+    myText: {
+        color: '#FFFFFF',
+    },
+    theirText: {
+        color: '#0F172A',
+    },
+    msgImage: {
+        width: 200,
+        height: 150,
+        borderRadius: 14,
+        backgroundColor: '#E2E8F0',
+    },
+    timeText: {
+        fontSize: 10,
+        color: '#94A3B8',
+        marginTop: 4,
+        marginHorizontal: 4,
+    },
+    inputRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        paddingBottom: Platform.OS === 'ios' ? 10 : 12,
+        backgroundColor: '#FFFFFF',
+        borderTopWidth: 1,
+        borderTopColor: '#E2E8F0',
+        gap: 10,
+    },
+    input: {
+        flex: 1,
+        backgroundColor: '#F8FAFC',
+        borderRadius: 20,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        fontSize: 15,
+        maxHeight: 100,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        color: '#0F172A',
+    },
+    sendBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#0EA5E9',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 2,
+    },
+    sendBtnDisabled: {
+        backgroundColor: '#E2E8F0',
+    },
 });

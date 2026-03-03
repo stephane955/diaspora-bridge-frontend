@@ -1,34 +1,46 @@
+import React from 'react';
 import { Tabs } from 'expo-router';
+import { useLanguage } from '@/context/LanguageContext';
 import GlassTabBar from '@/components/GlassTabBar';
+import { theme } from '@/constants/theme';
+
+// All .tsx screens under app/provider/ (except _layout) must be listed here.
+// Only index, market, active, earnings, profile are visible in the tab bar; all others get href: null.
 
 export default function ProviderLayout() {
+    const { t } = useLanguage();
+
     return (
         <Tabs
             tabBar={(props) => <GlassTabBar {...props} theme="dark" />}
             screenOptions={{
-                headerShown: false,
+                headerShown: true,
+                headerStyle: { backgroundColor: theme.colors.primary },
+                headerTintColor: theme.colors.surface,
+                headerTitleStyle: { fontWeight: '700', fontSize: 18 },
+                headerTitleAlign: 'center',
+                headerShadowVisible: false,
+                sceneContainerStyle: { backgroundColor: theme.colors.background },
                 tabBarStyle: { display: 'none' },
             }}
         >
-            {/* --- THE 5 MAIN TABS --- */}
-            <Tabs.Screen name="index" />      {/* Tab 1: Hub (Dashboard) */}
-            <Tabs.Screen name="market" />     {/* Tab 2: Find Work */}
-            <Tabs.Screen name="active" />     {/* Tab 3: My Sites (Active & Applied) */}
-            <Tabs.Screen name="earnings" />   {/* Tab 4: Wallet */}
-            <Tabs.Screen name="profile" />    {/* Tab 5: Identity */}
+            {/* === VISIBLE IN GLASS TAB BAR (5 only) === */}
+            <Tabs.Screen name="index" options={{ title: t('providerDashboardTitle') ?? 'Home' }} />
+            <Tabs.Screen name="market" options={{ title: t('marketTitle') ?? 'Market' }} />
+            <Tabs.Screen name="active" options={{ title: t('tabActive') ?? 'Sites' }} />
+            <Tabs.Screen name="earnings" options={{ title: t('walletTitle') ?? 'Wallet' }} />
+            <Tabs.Screen name="profile" options={{ title: t('tabProfile') ?? 'Profile' }} />
 
-            {/* --- HIDDEN SCREENS (Navigated to, but not tabs) --- */}
-            <Tabs.Screen name="job/[id]" options={{ href: null }} />
-            <Tabs.Screen name="project/[id]" options={{ href: null }} />
-            <Tabs.Screen name="post_update" options={{ href: null }} />
-            <Tabs.Screen name="payout-setup" options={{ href: null }} />
-            <Tabs.Screen name="verification" options={{ href: null }} />
-            <Tabs.Screen name="request-payout" options={{ href: null }} />
-
-            {/* Ignored/Deprecated files (Hide them to prevent errors) */}
-            <Tabs.Screen name="home" options={{ href: null }} />
-            <Tabs.Screen name="withdraw" options={{ href: null }} />
-            <Tabs.Screen name="requests" options={{ href: null }} />
+            {/* === HIDDEN (href: null) — every other file in app/provider/ === */}
+            <Tabs.Screen name="requests" options={{ href: null, title: 'Requests' }} />
+            <Tabs.Screen name="settings" options={{ href: null, title: t('settingsTitle') ?? 'Settings' }} />
+            <Tabs.Screen name="payout-setup" options={{ href: null, title: 'Payout Setup' }} />
+            <Tabs.Screen name="verification" options={{ href: null, title: t('verifyTitle') ?? 'Verification' }} />
+            <Tabs.Screen name="post_update" options={{ href: null, title: 'Post Update' }} />
+            <Tabs.Screen name="withdraw" options={{ href: null, title: t('withdrawTitle') ?? 'Withdraw' }} />
+            <Tabs.Screen name="request-payout" options={{ href: null, title: 'Request Payout' }} />
+            <Tabs.Screen name="job/[id]" options={{ href: null, title: '' }} />
+            <Tabs.Screen name="project/[id]" options={{ href: null, title: '' }} />
         </Tabs>
     );
 }

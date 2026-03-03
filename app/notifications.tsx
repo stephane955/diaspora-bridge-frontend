@@ -3,14 +3,17 @@ import {
     View, Text, StyleSheet, FlatList, TouchableOpacity,
     ActivityIndicator, RefreshControl, StatusBar
 } from 'react-native';
-import { useRouter, Stack } from 'expo-router'; // <--- Import Stack
+import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { theme } from '@/constants/theme';
 
 export default function NotificationsScreen() {
+    const insets = useSafeAreaInsets();
     const { user } = useAuth();
     const { t } = useLanguage();
     const router = useRouter();
@@ -73,11 +76,11 @@ export default function NotificationsScreen() {
 
     const getIcon = (type: string) => {
         switch (type) {
-            case 'payment': return { name: 'wallet', color: '#16A34A', bg: '#DCFCE7' };
-            case 'withdrawal': return { name: 'cash', color: '#F59E0B', bg: '#FFF7ED' };
-            case 'job_offer': return { name: 'briefcase', color: '#3B82F6', bg: '#EFF6FF' };
-            case 'alert': return { name: 'alert-circle', color: '#EF4444', bg: '#FEF2F2' };
-            default: return { name: 'notifications', color: '#64748B', bg: '#F1F5F9' };
+            case 'payment': return { name: 'wallet', color: theme.colors.success, bg: theme.colors.success + '25' };
+            case 'withdrawal': return { name: 'cash', color: theme.colors.warning, bg: theme.colors.warning + '20' };
+            case 'job_offer': return { name: 'briefcase', color: theme.colors.active, bg: theme.colors.activeSoft + '25' };
+            case 'alert': return { name: 'alert-circle', color: theme.colors.danger, bg: theme.colors.danger + '18' };
+            default: return { name: 'notifications', color: theme.colors.textMuted, bg: theme.colors.background };
         }
     };
 
@@ -89,25 +92,25 @@ export default function NotificationsScreen() {
             <StatusBar barStyle="light-content" />
 
             {/* 2. YOUR CUSTOM GRADIENT HEADER */}
-            <LinearGradient colors={['#0F172A', '#334155']} style={styles.header}>
+            <LinearGradient colors={[theme.colors.primary, theme.colors.primarySoft]} style={[styles.header, { paddingTop: insets.top }]}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={24} color="#fff" />
+                    <Ionicons name="arrow-back" size={24} color={theme.colors.surface} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>{t('notificationsTitle') || "Notifications"}</Text>
                 <View style={{width: 40}} />
             </LinearGradient>
 
             {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color="#0F172A" /></View>
+                <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.text} /></View>
             ) : (
                 <FlatList
                     data={notifications}
                     keyExtractor={(item) => item.id.toString()}
-                    contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0F172A" />}
+                    contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 80 }}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.text} />}
                     ListEmptyComponent={
                         <View style={styles.empty}>
-                            <Ionicons name="notifications-off-outline" size={48} color="#CBD5E1" />
+                            <Ionicons name="notifications-off-outline" size={48} color={theme.colors.textSubtle} />
                             <Text style={styles.emptyText}>{t('noNotifications') || "No new alerts."}</Text>
                         </View>
                     }
@@ -134,7 +137,7 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    container: { flex: 1, backgroundColor: theme.colors.background },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
     header: {

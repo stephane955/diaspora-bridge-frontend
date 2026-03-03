@@ -7,8 +7,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import Animated, { useSharedValue, useAnimatedStyle, withDelay, withTiming } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '@/context/LanguageContext';
+import { theme } from '@/constants/theme';
 
 const { width } = Dimensions.get('window');
 
@@ -22,6 +23,7 @@ const LANGUAGES = [
 ];
 
 export default function LandingScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { language, setLanguage, t, getFlag } = useLanguage();
     const [isLangMenuOpen, setLangMenuOpen] = useState(false);
@@ -58,13 +60,13 @@ export default function LandingScreen() {
                     colors={['rgba(15,23,42,0.3)', 'rgba(15,23,42,0.85)', '#0F172A']}
                     style={styles.gradient}
                 >
-                    <SafeAreaView style={styles.safeArea}>
+                    <View style={[styles.safeArea, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
 
                         {/* --- HEADER --- */}
                         <View style={styles.header}>
                             {/* Logo */}
                             <BlurView intensity={20} tint="light" style={styles.logoBadge}>
-                                <Ionicons name="business" size={20} color="#38BDF8" />
+                                <Ionicons name="business" size={20} color={theme.colors.activeSoft} />
                                 <Text style={styles.brandText}>{t('brandName')}</Text>
                             </BlurView>
 
@@ -112,11 +114,11 @@ export default function LandingScreen() {
                             {/* Trust Badges */}
                             <View style={styles.badges}>
                                 <View style={styles.badge}>
-                                    <Ionicons name="shield-checkmark" size={14} color="#4ADE80" />
+                                    <Ionicons name="shield-checkmark" size={14} color={theme.colors.success} />
                                     <Text style={styles.badgeText}>{t('secure')}</Text>
                                 </View>
                                 <View style={styles.badge}>
-                                    <Ionicons name="globe" size={14} color="#38BDF8" />
+                                    <Ionicons name="globe" size={14} color={theme.colors.activeSoft} />
                                     <Text style={styles.badgeText}>Global</Text>
                                 </View>
                             </View>
@@ -130,7 +132,7 @@ export default function LandingScreen() {
                                 >
                                     <Text style={styles.primaryText}>{t('enterDashboard')}</Text>
                                     <View style={styles.arrowCircle}>
-                                        <Ionicons name="arrow-forward" size={18} color="#0F172A" />
+                                        <Ionicons name="arrow-forward" size={18} color={theme.colors.primary} />
                                     </View>
                                 </TouchableOpacity>
 
@@ -146,7 +148,7 @@ export default function LandingScreen() {
 
                         </Animated.View>
 
-                    </SafeAreaView>
+                    </View>
                 </LinearGradient>
             </ImageBackground>
         </View>
@@ -154,7 +156,7 @@ export default function LandingScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0F172A' },
+    container: { flex: 1, backgroundColor: theme.colors.primary },
     bg: { flex: 1, width: '100%', height: '100%' },
     gradient: { flex: 1 },
     safeArea: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 24, paddingBottom: 30 },

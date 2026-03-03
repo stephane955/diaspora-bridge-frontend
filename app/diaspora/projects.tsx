@@ -7,11 +7,14 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { theme } from '@/constants/theme';
 
 export default function MyProjectsScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
     const { t } = useLanguage();
@@ -68,7 +71,7 @@ export default function MyProjectsScreen() {
                         {/* Header: Status Badge */}
                         <View style={styles.cardHeader}>
                             <BlurView intensity={20} tint="light" style={styles.statusBadge}>
-                                <View style={[styles.statusDot, { backgroundColor: isActive ? '#4ADE80' : '#F59E0B' }]} />
+                                <View style={[styles.statusDot, { backgroundColor: isActive ? theme.colors.success : theme.colors.warning }]} />
                                 <Text style={styles.statusText}>
                                     {isActive ? "ACTIVE SITE" : "PENDING PROVIDER"}
                                 </Text>
@@ -80,7 +83,7 @@ export default function MyProjectsScreen() {
                             <Text style={styles.projectTitle} numberOfLines={1}>{item.title}</Text>
 
                             <View style={styles.locationRow}>
-                                <Ionicons name="location" size={14} color="#CBD5E1" />
+                                <Ionicons name="location" size={14} color={theme.colors.textSubtle} />
                                 <Text style={styles.locationText}>{item.city}</Text>
                             </View>
 
@@ -106,20 +109,11 @@ export default function MyProjectsScreen() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
             <StatusBar barStyle="dark-content" />
 
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={24} color="#0F172A" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>{t('tabHome') || "My Projects"}</Text>
-                <View style={{ width: 44 }} />
-            </View>
-
             {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color="#0EA5E9" /></View>
+                <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.active} /></View>
             ) : (
                 <FlatList
                     data={projects}
@@ -136,11 +130,11 @@ export default function MyProjectsScreen() {
                             activeOpacity={0.8}
                         >
                             <LinearGradient
-                                colors={['#F0F9FF', '#E0F2FE']}
+                                colors={[theme.colors.activeSoft + '40', theme.colors.activeSoft + '30']}
                                 style={styles.createGradient}
                             >
                                 <View style={styles.createIcon}>
-                                    <Ionicons name="add" size={28} color="#0284C7" />
+                                    <Ionicons name="add" size={28} color={theme.colors.active} />
                                 </View>
                                 <View>
                                     <Text style={styles.createTitle}>{t('tabPostJob')}</Text>
@@ -151,7 +145,7 @@ export default function MyProjectsScreen() {
                     }
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
-                            <Ionicons name="folder-open-outline" size={48} color="#CBD5E1" />
+                            <Ionicons name="folder-open-outline" size={48} color={theme.colors.textSubtle} />
                             <Text style={styles.emptyText}>{t('clientDashboard.noProjects')}</Text>
                         </View>
                     }
@@ -162,44 +156,37 @@ export default function MyProjectsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    container: { flex: 1, backgroundColor: theme.colors.background },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-    // Header
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 60, paddingHorizontal: 20, paddingBottom: 20, backgroundColor: '#fff' },
-    backBtn: { width: 44, height: 44, backgroundColor: '#F1F5F9', borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-    headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
+    listContent: { padding: theme.spacing.lg, paddingBottom: 100 },
 
-    listContent: { padding: 20, paddingBottom: 100 },
+    createBtn: { marginBottom: theme.spacing.xl, ...theme.shadow.soft },
+    createGradient: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.lg, borderRadius: theme.radii.lg, gap: theme.spacing.md, borderWidth: 1, borderColor: theme.colors.activeSoft + '80' },
+    createIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center' },
+    createTitle: { fontSize: 16, fontWeight: '800', color: theme.colors.text },
+    createSub: { fontSize: 13, color: theme.colors.textMuted },
 
-    // Create Button (Modern Dashed Look replaced with Soft Gradient Card)
-    createBtn: { marginBottom: 24, shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 2 },
-    createGradient: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 20, gap: 16, borderWidth: 1, borderColor: '#BAE6FD' },
-    createIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-    createTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
-    createSub: { fontSize: 13, color: '#64748B' },
-
-    // Project Card
-    cardContainer: { height: 260, marginBottom: 20, borderRadius: 24, shadowColor: "#0F172A", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 8, backgroundColor: '#fff' },
+    cardContainer: { height: 260, marginBottom: theme.spacing.lg, borderRadius: theme.radii.xl, ...theme.shadow.soft, backgroundColor: theme.colors.surface },
     cardImage: { width: '100%', height: '100%' },
-    cardOverlay: { flex: 1, borderRadius: 24, padding: 20, justifyContent: 'space-between' },
+    cardOverlay: { flex: 1, borderRadius: theme.radii.xl, padding: theme.spacing.lg, justifyContent: 'space-between' },
 
     cardHeader: { flexDirection: 'row', justifyContent: 'flex-end' },
-    statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 6, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.2)' },
+    statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, borderRadius: theme.radii.pill, gap: theme.spacing.xs, overflow: 'hidden', backgroundColor: theme.colors.glass },
     statusDot: { width: 8, height: 8, borderRadius: 4 },
-    statusText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+    statusText: { fontSize: 11, fontWeight: '800', color: theme.colors.surface },
 
     cardFooter: { gap: 4 },
-    projectTitle: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
-    locationText: { color: '#E2E8F0', fontSize: 14, fontWeight: '600' },
+    projectTitle: { fontSize: 22, fontWeight: '800', color: theme.colors.surface, letterSpacing: -0.5 },
+    locationRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.sm },
+    locationText: { color: theme.colors.textSubtle, fontSize: 14, fontWeight: '600' },
 
-    divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginBottom: 12 },
+    divider: { height: 1, backgroundColor: theme.colors.glass, marginBottom: theme.spacing.sm },
 
     metaRow: { flexDirection: 'row', justifyContent: 'space-between' },
-    metaLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 },
-    metaValue: { color: '#fff', fontSize: 15, fontWeight: '700' },
+    metaLabel: { color: theme.colors.textSubtle, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 },
+    metaValue: { color: theme.colors.surface, fontSize: 15, fontWeight: '700' },
 
-    emptyContainer: { alignItems: 'center', marginTop: 40, gap: 10 },
-    emptyText: { color: '#94A3B8', fontSize: 16 }
+    emptyContainer: { alignItems: 'center', marginTop: theme.spacing.xxl, gap: theme.spacing.sm },
+    emptyText: { color: theme.colors.textSubtle, fontSize: 16 }
 });

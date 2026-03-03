@@ -116,13 +116,6 @@ export default function PayoutSetupScreen() {
 
     return (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={24} color="#0F172A" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Withdraw Funds</Text>
-            </View>
-
             <ScrollView contentContainerStyle={styles.content}>
                 <Text style={styles.subTitle}>Select Method</Text>
 

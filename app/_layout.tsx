@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import { View, ActivityIndicator } from 'react-native';
+import { theme } from '@/constants/theme';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -56,8 +57,8 @@ function InitialLayout() {
 
     if (!isMounted || loading) {
         return (
-            <View style={{ flex: 1, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' }}>
-                <ActivityIndicator color="#0EA5E9" />
+            <View style={{ flex: 1, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator color={theme.colors.active} />
             </View>
         );
     }
@@ -72,9 +73,11 @@ function InitialLayout() {
             {/* Protected Routes */}
             <Stack.Screen name="diaspora" options={{ headerShown: false }} />
             <Stack.Screen name="provider" options={{ headerShown: false }} />
+            <Stack.Screen name="admin" options={{ headerShown: false }} />
 
             {/* Shared/Modal Routes */}
             <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="notifications" options={{ headerShown: false }} />
             <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Info' }} />
             <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         </Stack>

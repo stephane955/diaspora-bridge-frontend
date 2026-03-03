@@ -1,24 +1,22 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useAuth } from './AuthContext';
-
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
-type EventRow = {
+type ProjectUpdateRow = {
     id: string | number;
+    project_id: string;
     title: string;
     created_at: string;
-    status: 'approved' | 'pending_approval';
     description: string;
     image_url: string | null;
 };
 
-// 1. Define the shape of a "Timeline Event"
+// 1. Define the shape of a "Timeline Event" (aligned with project_updates)
 type TimelineEvent = {
     id: string;
+    projectId: string;
     title: string;
-    date: string; // "Created At" formatted as a string
-    status: 'approved' | 'pending_approval';
+    date: string;
     description: string;
     image: string | null;
     isLatest: boolean;
@@ -27,8 +25,7 @@ type TimelineEvent = {
 // 2. Define what the Context holds
 type GlobalContextType = {
     events: TimelineEvent[];
-    // We removed 'id', 'date', and 'isLatest' from input because Database handles those!
-    addEvent: (event: { title: string; description: string; status: 'pending_approval' | 'approved'; image: string | null }) => void;
+    addEvent: (event: { projectId: string; title: string; description: string; image: string | null }) => void;
     loading: boolean;
 };
 
@@ -46,7 +43,7 @@ export const GlobalProvider = ({ children }: { children: React.ReactNode }) => {
     const fetchEvents = async () => {
         try {
         const { data, error } = await supabase
-            .from<EventRow>('events')
+            .from<ProjectUpdateRow>('project_updates')
             .select('*')
             .order('created_at', { ascending: false });
 
@@ -54,9 +51,9 @@ export const GlobalProvider = ({ children }: { children: React.ReactNode }) => {
 
             const formattedEvents: TimelineEvent[] = (data || []).map((item, index) => ({
                 id: item.id.toString(),
+                projectId: item.project_id,
                 title: item.title,
                 date: new Date(item.created_at).toLocaleString(),
-                status: item.status,
                 description: item.description,
                 image: item.image_url,
                 isLatest: index === 0,
@@ -64,7 +61,7 @@ export const GlobalProvider = ({ children }: { children: React.ReactNode }) => {
 
             setEvents(formattedEvents);
         } catch (error) {
-            console.log('Error fetching events:', error);
+            console.log('Error fetching project_updates:', error);
         } finally {
             setLoading(false);
         }
@@ -74,15 +71,14 @@ export const GlobalProvider = ({ children }: { children: React.ReactNode }) => {
     useEffect(() => {
         fetchEvents();
 
-        // Fix for the TypeScript error: "postgres_changes" type matching
-        const channel = supabase.channel('events-changes');
+        const channel = supabase.channel('project_updates-changes');
 
         channel
             .on(
                 'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'events' },
-                (payload: RealtimePostgresChangesPayload<EventRow>) => {
-                    console.log('New event received!', payload);
+                { event: 'INSERT', schema: 'public', table: 'project_updates' },
+                (payload: RealtimePostgresChangesPayload<ProjectUpdateRow>) => {
+                    console.log('New project update received!', payload);
                     fetchEvents(); // Refresh list when new item arrives
                 }
             )
@@ -94,23 +90,20 @@ export const GlobalProvider = ({ children }: { children: React.ReactNode }) => {
     }, []);
 
     // --- ADD DATA ---
-    const addEvent = async (newEvent: { title: string; description: string; status: string; image: string | null }) => {
-        // Optimistic update (optional, but good for UI speed)
-        // For now, we rely on the Realtime listener to update the list
-
+    const addEvent = async (newEvent: { projectId: string; title: string; description: string; image: string | null }) => {
         try {
-            const { error } = await supabase.from('events').insert([
+            const { error } = await supabase.from('project_updates').insert([
                 {
+                    project_id: newEvent.projectId,
                     title: newEvent.title,
                     description: newEvent.description,
-                    status: newEvent.status,
                     image_url: newEvent.image,
                 },
             ]);
 
             if (error) throw error;
         } catch (error) {
-            console.error('Error adding event:', error);
+            console.error('Error adding project update:', error);
             alert('Failed to save to cloud.');
         }
     };

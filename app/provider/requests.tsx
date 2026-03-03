@@ -10,7 +10,6 @@ import { mediumFeedback, successFeedback } from '@/utils/haptics';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Project } from '@/types/models';
-import ProviderNavigation from '@/components/ProviderNavigation';
 
 export default function RequestsScreen() {
     const { user } = useAuth();
@@ -161,18 +160,6 @@ export default function RequestsScreen() {
         <View style={styles.container}>
             <StatusBar barStyle="dark-content" />
 
-            {/* --- PREMIUM HEADER --- */}
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.headerDate}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
-                    <Text style={styles.headerTitle}>New Opportunities</Text>
-                    <Text style={styles.headerSub}>You have <Text style={{color: '#0EA5E9', fontWeight:'800'}}>{requests.length}</Text> new leads waiting.</Text>
-                </View>
-                <TouchableOpacity style={styles.filterBtn}>
-                    <Ionicons name="options-outline" size={22} color="#0F172A" />
-                </TouchableOpacity>
-            </View>
-
             {loading ? (
                 <View style={styles.center}><ActivityIndicator size="large" color="#0EA5E9" /></View>
             ) : (
@@ -183,6 +170,13 @@ export default function RequestsScreen() {
                     contentContainerStyle={styles.listContent}
                     onRefresh={onRefresh}
                     refreshing={refreshing}
+                    ListHeaderComponent={
+                        <View style={styles.listHeader}>
+                            <Text style={styles.headerDate}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
+                            <Text style={styles.headerTitle}>New Opportunities</Text>
+                            <Text style={styles.headerSub}>You have <Text style={styles.headerCount}>{requests.length}</Text> new leads waiting.</Text>
+                        </View>
+                    }
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
                             <Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/7486/7486744.png' }} style={styles.emptyImg} />
@@ -192,8 +186,6 @@ export default function RequestsScreen() {
                     }
                 />
             )}
-
-            <ProviderNavigation />
         </View>
     );
 }
@@ -207,6 +199,8 @@ const styles = StyleSheet.create({
     headerDate: { fontSize: 11, fontWeight: '700', color: '#94A3B8', marginBottom: 4, letterSpacing: 1 },
     headerTitle: { fontSize: 26, fontWeight: '800', color: '#0F172A', lineHeight: 32 },
     headerSub: { fontSize: 14, color: '#64748B', marginTop: 4 },
+    headerCount: { color: '#0EA5E9', fontWeight: '800' },
+    listHeader: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20 },
     filterBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginTop: 10 },
 
     listContent: { padding: 20, paddingBottom: 100 },

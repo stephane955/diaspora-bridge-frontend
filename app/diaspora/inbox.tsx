@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import NavigationBar from '@/components/NavigationBar';
 import NotificationItem from '@/components/NotificationItem';
-import GlassNavigation from '@/components/GlassNavigation';
+import { theme } from '@/constants/theme';
 
 export default function InboxScreen() {
+    const insets = useSafeAreaInsets();
     const { user } = useAuth();
     const [notifications, setNotifications] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -25,46 +26,32 @@ export default function InboxScreen() {
         setRefreshing(false);
     }, [user]);
 
-    // Function to update database
     const markAllAsRead = async () => {
         if (!user || notifications.length === 0) return;
-
         const hasUnread = notifications.some(n => !n.is_read);
         if (!hasUnread) return;
-
         await supabase
             .from('notifications')
             .update({ is_read: true })
             .eq('user_id', user.id)
             .eq('is_read', false);
-
-        // Update local state so the dots disappear immediately
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     };
 
+    useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
     useEffect(() => {
-        fetchNotifications();
-    }, [fetchNotifications]);
-
-    // Automatically mark as read after 2 seconds of viewing the screen
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            markAllAsRead();
-        }, 2000);
-        return () => clearTimeout(timer);
+        const t = setTimeout(() => { markAllAsRead(); }, 2000);
+        return () => clearTimeout(t);
     }, [notifications]);
 
-    const onRefresh = () => {
-        setRefreshing(true);
-        fetchNotifications();
-    };
+    const onRefresh = () => { setRefreshing(true); fetchNotifications(); };
 
     return (
-        <View style={styles.container}>
-            <NavigationBar title="Inbox" subtitle="Your project alerts" showBack={false} />
-
+        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
             {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color="#0EA5E9" /></View>
+                <View style={styles.center}>
+                    <ActivityIndicator size="large" color={theme.colors.active} />
+                </View>
             ) : (
                 <FlatList
                     data={notifications}
@@ -79,15 +66,13 @@ export default function InboxScreen() {
                     }
                 />
             )}
-
-            <GlassNavigation />
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    container: { flex: 1, backgroundColor: theme.colors.background },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    empty: { padding: 40, alignItems: 'center' },
-    emptyText: { color: '#94A3B8', fontSize: 16, fontWeight: '500' }
+    empty: { padding: theme.spacing.xl, alignItems: 'center' },
+    emptyText: { color: theme.colors.textSubtle, fontSize: 16, fontWeight: '500' },
 });
