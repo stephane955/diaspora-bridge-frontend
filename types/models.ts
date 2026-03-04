@@ -85,3 +85,38 @@ export type EarningsEntry = {
     created_at: string;
     description?: string | null;
 };
+
+export type ProjectObserver = {
+    id: string;
+    project_id: string;
+    user_id: string | null;
+    invite_token: string;
+    email?: string | null;
+    created_at: string;
+};
+
+export type ProjectContract = {
+    id: string;
+    project_id: string;
+    pdf_url: string | null;
+    client_signed_at: string | null;
+    provider_signed_at: string | null;
+    client_signature_url: string | null;
+    provider_signature_url: string | null;
+    created_at: string;
+    updated_at: string;
+};
+
+export type ProjectDispute = {
+    id: string;
+    project_id: string;
+    milestone_id: string;
+    opened_by: string | null;
+    resolved_by: string | null;
+    resolution: string | null;
+    status: 'open' | 'resolved';
+    created_at: string;
+    resolved_at: string | null;
+};
+
+export type ProjectAccessRole = 'owner' | 'provider' | 'observer' | null;

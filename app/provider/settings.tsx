@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
 
 const LANGUAGES = [
@@ -73,7 +74,8 @@ export default function ProviderSettingsScreen() {
 
     return (
         <View style={styles.container}>
-            <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 80 }]}>
+            <NavigationBar title={t('settingsTitle') ?? 'Settings'} showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+            <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}>
 
                 {/* --- SECTION 1: AVAILABILITY --- */}
                 <Text style={styles.sectionTitle}>{t('availability')}</Text>
@@ -160,7 +162,7 @@ export default function ProviderSettingsScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
-    scroll: { padding: theme.spacing.xl },
+    scroll: { paddingTop: theme.spacing.md },
     sectionTitle: { fontSize: 14, fontWeight: '700', color: theme.colors.textSubtle, marginBottom: theme.spacing.sm, marginTop: theme.spacing.sm, textTransform: 'uppercase' },
 
     card: { backgroundColor: theme.colors.surface, borderRadius: theme.radii.md, overflow: 'hidden', borderWidth: 1, borderColor: theme.colors.border, ...theme.shadow.soft },

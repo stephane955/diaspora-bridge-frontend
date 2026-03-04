@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TouchableOpacity, Image,
-    ImageBackground, ScrollView, Pressable, ListRenderItem, Modal, StatusBar, ActivityIndicator
+    ImageBackground, ScrollView, Pressable, ListRenderItem, Modal, StatusBar
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,8 +13,10 @@ import { useAuth } from '@/context/AuthContext';
 import { theme } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/context/LanguageContext';
+import NavigationBar from '@/components/NavigationBar';
+import PulseLoader from '@/components/PulseLoader';
+import { mediumFeedback } from '@/utils/haptics';
 
-// --- COMPONENTS ---
 import ProjectStories from '@/components/ProjectStories';
 
 export default function DiasporaDashboard() {
@@ -133,14 +135,23 @@ export default function DiasporaDashboard() {
     };
 
     if (loading) {
-        return <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.text} /></View>;
+        return <View style={styles.center}><PulseLoader /></View>;
     }
 
     return (
         <View style={[styles.container, { paddingBottom: insets.bottom }]}>
             <StatusBar barStyle="light-content" />
+            <NavigationBar
+                title={profile?.full_name?.split(' ')[0] || t('tabHome') || 'Home'}
+                subtitle="Building dreams abroad"
+                showBack={false}
+                onRefresh={() => router.push('/diaspora/inbox')}
+                onMenuPress={() => setMenuOpen(true)}
+                dynamicColor={theme.colors.active}
+                showNotifDot
+            />
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: theme.spacing.lg }}>
 
                 {/* --- HERO SECTION --- */}
                 <ImageBackground
@@ -151,32 +162,6 @@ export default function DiasporaDashboard() {
                         colors={['rgba(15, 23, 42, 0.9)', 'rgba(15, 23, 42, 0.6)', 'rgba(15, 23, 42, 0.4)']}
                         style={styles.heroGradient}
                     >
-                        <View style={[styles.topBar, { paddingTop: insets.top }]}>
-                            <View style={styles.heroTitleRow}>
-                                <TouchableOpacity onPress={() => setMenuOpen(true)}>
-                                    <Image
-                                        source={{ uri: profile?.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=client' }}
-                                        style={styles.avatar}
-                                    />
-                                </TouchableOpacity>
-                                <View>
-                                    <Text style={styles.helloText}>{t('welcomeBack')}</Text>
-                                    <Text style={styles.userName}>
-                                        {profile?.full_name?.split(' ')[0] || "Client"}
-                                    </Text>
-                                </View>
-                            </View>
-                            <View style={styles.headerActions}>
-                                <TouchableOpacity style={styles.glassIconBtn} onPress={() => router.push('/notifications')}>
-                                    <Ionicons name="notifications" size={20} color="#fff" />
-                                    <View style={styles.redDot} />
-                                </TouchableOpacity>
-                                <TouchableOpacity style={styles.glassIconBtn} onPress={() => setMenuOpen(true)}>
-                                    <Ionicons name="menu" size={24} color="#fff" />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-
                         <View style={styles.balanceSection}>
                             <Text style={styles.balanceLabel}>TOTAL SECURED ESCROW</Text>
                             <Text style={styles.balanceAmount}>{balance.toLocaleString()} CFA</Text>
@@ -203,24 +188,24 @@ export default function DiasporaDashboard() {
                     </BlurView>
                 </View>
 
-                {/* --- QUICK ACTIONS --- */}
+                {/* --- QUICK ACTIONS (Colorful) --- */}
                 <View style={styles.quickActions}>
-                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/diaspora/new')}>
-                        <View style={styles.quickActionIcon}>
-                            <Ionicons name="add" size={24} color="#0F172A" />
-                        </View>
+                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/diaspora/new'); }} activeOpacity={0.7}>
+                        <LinearGradient colors={[theme.colors.active, theme.colors.activeSoft]} style={styles.quickActionIconColor}>
+                            <Ionicons name="add" size={24} color="#fff" />
+                        </LinearGradient>
                         <Text style={styles.quickActionLabel}>New Project</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/diaspora/wallet')}>
-                        <View style={styles.quickActionIcon}>
-                            <Ionicons name="wallet" size={22} color="#0F172A" />
-                        </View>
+                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/diaspora/wallet'); }} activeOpacity={0.7}>
+                        <LinearGradient colors={[theme.colors.emerald, theme.colors.emeraldSoft]} style={styles.quickActionIconColor}>
+                            <Ionicons name="wallet" size={22} color="#fff" />
+                        </LinearGradient>
                         <Text style={styles.quickActionLabel}>Deposit</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/diaspora/projects')}>
-                        <View style={styles.quickActionIcon}>
-                            <Ionicons name="person-add" size={22} color="#0F172A" />
-                        </View>
+                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/diaspora/projects'); }} activeOpacity={0.7}>
+                        <LinearGradient colors={['#6366F1', '#818CF8']} style={styles.quickActionIconColor}>
+                            <Ionicons name="person-add" size={22} color="#fff" />
+                        </LinearGradient>
                         <Text style={styles.quickActionLabel}>Hire Expert</Text>
                     </TouchableOpacity>
                 </View>
@@ -287,33 +272,56 @@ export default function DiasporaDashboard() {
                 </View>
             </ScrollView>
 
-            {/* Menu Modal */}
-            <Modal visible={menuOpen} transparent animationType="fade">
+            {/* Full Navigation Menu */}
+            <Modal visible={menuOpen} transparent animationType="slide">
                 <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setMenuOpen(false)}>
                     <View style={styles.modalCard}>
                         <View style={styles.modalHandle} />
-                        <Text style={styles.modalTitle}>{t('accountMenuTitle')}</Text>
+                        <Text style={styles.modalTitle}>Navigate</Text>
 
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { setMenuOpen(false); router.push('/diaspora/profile'); }}>
-                            <View style={styles.modalIconBox}><Ionicons name="person-outline" size={20} color="#0F172A" /></View>
-                            <Text style={styles.modalText}>{t('tabProfile')}</Text>
+                        <Text style={styles.modalSection}>Projects</Text>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/diaspora/projects'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.active + '18' }]}><Ionicons name="folder-open" size={20} color={theme.colors.active} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>My Projects</Text><Text style={styles.modalSub}>View all your active & past projects</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
                         </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { setMenuOpen(false); router.push('/diaspora/wallet'); }}>
-                            <View style={styles.modalIconBox}><Ionicons name="wallet-outline" size={20} color="#0F172A" /></View>
-                            <Text style={styles.modalText}>My Wallet</Text>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/diaspora/new'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.emerald + '18' }]}><Ionicons name="add-circle" size={20} color={theme.colors.emerald} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Post New Project</Text><Text style={styles.modalSub}>Find local talent for your next build</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/diaspora/timeline'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.warning + '18' }]}><Ionicons name="time" size={20} color={theme.colors.warning} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Timeline</Text><Text style={styles.modalSub}>Track milestones and progress</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
                         </TouchableOpacity>
 
                         <View style={styles.divider} />
+                        <Text style={styles.modalSection}>Account</Text>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/diaspora/profile'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: '#6366F118' }]}><Ionicons name="person" size={20} color="#6366F1" /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>{t('tabProfile')}</Text><Text style={styles.modalSub}>Edit info, payment methods</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/diaspora/wallet'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.active + '18' }]}><Ionicons name="wallet" size={20} color={theme.colors.active} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Wallet & Escrow</Text><Text style={styles.modalSub}>Funds, transactions, top-up</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/diaspora/settings'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.surfaceAlt }]}><Ionicons name="settings" size={20} color={theme.colors.textMuted} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Settings</Text><Text style={styles.modalSub}>Language, notifications, preferences</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
+                        </TouchableOpacity>
 
+                        <View style={styles.divider} />
                         <TouchableOpacity
                             style={styles.modalItem}
-                            onPress={async () => { setMenuOpen(false); await signOut(); router.replace('/login'); }}
+                            onPress={async () => { mediumFeedback(); setMenuOpen(false); await signOut(); router.replace('/login'); }}
+                            activeOpacity={0.7}
                         >
-                            <View style={[styles.modalIconBox, {backgroundColor: '#FEF2F2'}]}>
-                                <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-                            </View>
-                            <Text style={[styles.modalText, {color: '#EF4444'}]}>{t('signOut')}</Text>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.danger + '15' }]}><Ionicons name="log-out-outline" size={20} color={theme.colors.danger} /></View>
+                            <Text style={[styles.modalText, { color: theme.colors.danger }]}>{t('signOut')}</Text>
                         </TouchableOpacity>
                     </View>
                 </TouchableOpacity>
@@ -365,7 +373,7 @@ const styles = StyleSheet.create({
     // --- QUICK ACTIONS ---
     quickActions: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 8 },
     quickActionBtn: { alignItems: 'center', gap: 8 },
-    quickActionIcon: { width: 56, height: 56, borderRadius: theme.radii.md, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center', ...theme.shadow.soft },
+    quickActionIconColor: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', ...theme.shadow.glow },
     quickActionLabel: { fontSize: 12, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
 
     bodyContent: { paddingTop: 8 },
@@ -405,11 +413,13 @@ const styles = StyleSheet.create({
 
     // --- MODAL ---
     modalOverlay: { flex: 1, backgroundColor: theme.colors.glassDark, justifyContent: 'flex-end' },
-    modalCard: { backgroundColor: theme.colors.surface, padding: theme.spacing.xl, borderTopLeftRadius: theme.radii.xl, borderTopRightRadius: theme.radii.xl, gap: theme.spacing.sm },
-    modalHandle: { width: 40, height: 4, backgroundColor: theme.colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: theme.spacing.sm },
-    modalTitle: { fontSize: 20, fontWeight: '800', color: theme.colors.text, marginBottom: theme.spacing.sm },
-    modalItem: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.md },
-    modalIconBox: { width: 40, height: 40, borderRadius: theme.radii.sm, backgroundColor: theme.colors.background, alignItems: 'center', justifyContent: 'center' },
-    modalText: { fontSize: 16, fontWeight: '600', color: theme.colors.text },
-    divider: { height: 1, backgroundColor: theme.colors.border, marginVertical: theme.spacing.sm },
+    modalCard: { backgroundColor: theme.colors.surface, padding: theme.spacing.xl, borderTopLeftRadius: theme.radii.xl, borderTopRightRadius: theme.radii.xl, paddingBottom: 40 },
+    modalHandle: { width: 40, height: 4, backgroundColor: theme.colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: theme.spacing.md },
+    modalTitle: { fontSize: 22, ...theme.typography.title, color: theme.colors.text, marginBottom: 4 },
+    modalSection: { fontSize: 11, ...theme.typography.label, color: theme.colors.textSubtle, marginTop: theme.spacing.md, marginBottom: 4 },
+    modalItem: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: 12 },
+    modalIconBox: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+    modalText: { fontSize: 15, fontWeight: '700', color: theme.colors.text },
+    modalSub: { fontSize: 12, color: theme.colors.textMuted, marginTop: 1 },
+    divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border, marginVertical: 4 },
 });

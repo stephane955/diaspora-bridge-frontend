@@ -11,7 +11,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
+import { mediumFeedback } from '@/utils/haptics';
 
 export default function ProviderDashboard() {
     const insets = useSafeAreaInsets();
@@ -96,10 +98,19 @@ export default function ProviderDashboard() {
     return (
         <View style={[styles.container, { paddingBottom: insets.bottom }]}>
             <StatusBar barStyle="light-content" />
+            <NavigationBar
+                title={profile?.full_name?.split(' ')[0] || t('providerDashboardTitle') || 'Home'}
+                subtitle={isOnline ? "Online & available" : "Currently offline"}
+                showBack={false}
+                onRefresh={() => router.push('/provider/inbox')}
+                onMenuPress={() => setMenuOpen(true)}
+                dynamicColor={isOnline ? theme.colors.emerald : theme.colors.textSubtle}
+                showNotifDot={stats.pendingRequests > 0}
+            />
 
             <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 120 }}
+                contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: theme.spacing.lg }}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.surface} />}
             >
                 {/* --- HERO SECTION --- */}
@@ -111,36 +122,6 @@ export default function ProviderDashboard() {
                         colors={isOnline ? ['rgba(15, 23, 42, 0.9)', 'rgba(15, 23, 42, 0.6)', 'rgba(15, 23, 42, 0.4)'] : ['rgba(71, 85, 105, 0.9)', 'rgba(71, 85, 105, 0.6)', 'rgba(71, 85, 105, 0.4)']}
                         style={styles.heroGradient}
                     >
-                        <View style={[styles.topBar, { paddingTop: insets.top }]}>
-                            <View style={styles.heroTitleRow}>
-                                <TouchableOpacity onPress={() => setMenuOpen(true)}>
-                                    <Image
-                                        source={{ uri: profile?.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=provider' }}
-                                        style={styles.avatar}
-                                    />
-                                </TouchableOpacity>
-                                <View>
-                                    <Text style={styles.helloText}>{t('welcomeBack')}</Text>
-                                    <Text style={styles.userName}>{profile?.full_name?.split(' ')[0] || t('providerFallback')}</Text>
-                                </View>
-                            </View>
-                            <View style={styles.headerActions}>
-                                <TouchableOpacity style={[styles.statusPill, isOnline ? styles.pillOnline : styles.pillOffline]} onPress={toggleOnlineStatus}>
-                                    <View style={[styles.statusDot, { backgroundColor: isOnline ? theme.colors.success : theme.colors.textSubtle }]} />
-                                    <Text style={styles.statusText}>
-                                        {isOnline ? (t('goOnline') || "Online") : (t('goOffline') || "Offline")}
-                                    </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={styles.glassIconBtn} onPress={() => router.push('/notifications')}>
-                                    <Ionicons name="notifications" size={20} color="#fff" />
-                                    <View style={styles.redDot} />
-                                </TouchableOpacity>
-                                <TouchableOpacity style={styles.glassIconBtn} onPress={() => setMenuOpen(true)}>
-                                    <Ionicons name="menu" size={24} color="#fff" />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-
                         <View style={styles.balanceSection}>
                             <Text style={styles.balanceLabel}>{t('availableBalance')?.toUpperCase() || 'TOTAL EARNINGS'}</Text>
                             <Text style={styles.balanceAmount}>{stats.balance.toLocaleString()} CFA</Text>
@@ -167,24 +148,24 @@ export default function ProviderDashboard() {
                     </BlurView>
                 </View>
 
-                {/* --- QUICK ACTIONS --- */}
+                {/* --- QUICK ACTIONS (Colorful) --- */}
                 <View style={styles.quickActions}>
-                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/provider/market')}>
-                        <View style={styles.quickActionIcon}>
-                            <Ionicons name="search" size={24} color={theme.colors.text} />
-                        </View>
+                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/provider/market'); }} activeOpacity={0.7}>
+                        <LinearGradient colors={[theme.colors.active, theme.colors.activeSoft]} style={styles.quickActionIconColor}>
+                            <Ionicons name="search" size={24} color="#fff" />
+                        </LinearGradient>
                         <Text style={styles.quickActionLabel}>Find Work</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/provider/request-payout')}>
-                        <View style={styles.quickActionIcon}>
-                            <Ionicons name="wallet" size={22} color="#0F172A" />
-                        </View>
+                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/provider/request-payout'); }} activeOpacity={0.7}>
+                        <LinearGradient colors={[theme.colors.emerald, theme.colors.emeraldSoft]} style={styles.quickActionIconColor}>
+                            <Ionicons name="wallet" size={22} color="#fff" />
+                        </LinearGradient>
                         <Text style={styles.quickActionLabel}>Withdraw</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/provider/active')}>
-                        <View style={styles.quickActionIcon}>
-                            <Ionicons name="briefcase" size={22} color="#0F172A" />
-                        </View>
+                    <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/provider/active'); }} activeOpacity={0.7}>
+                        <LinearGradient colors={['#6366F1', '#818CF8']} style={styles.quickActionIconColor}>
+                            <Ionicons name="briefcase" size={22} color="#fff" />
+                        </LinearGradient>
                         <Text style={styles.quickActionLabel}>My Sites</Text>
                     </TouchableOpacity>
                 </View>
@@ -196,34 +177,34 @@ export default function ProviderDashboard() {
                     </View>
 
                     <View style={styles.feedGrid}>
-                        <TouchableOpacity style={styles.feedCard} onPress={() => router.push('/provider/market')}>
-                            <View style={styles.feedCardIconWrap}>
-                                <Ionicons name="search" size={24} color="#0EA5E9" />
-                            </View>
+                        <TouchableOpacity style={styles.feedCard} onPress={() => { mediumFeedback(); router.push('/provider/market'); }} activeOpacity={0.7}>
+                            <LinearGradient colors={[theme.colors.active + '20', theme.colors.active + '08']} style={styles.feedCardIconWrap}>
+                                <Ionicons name="search" size={24} color={theme.colors.active} />
+                            </LinearGradient>
                             <Text style={styles.feedCardTitle}>{t('marketTitle')}</Text>
                             <Text style={styles.feedCardSub}>Browse jobs</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.feedCard} onPress={() => router.push('/provider/requests')}>
-                            <View style={styles.feedCardIconWrap}>
-                                <Ionicons name="mail-unread" size={24} color="#F59E0B" />
-                            </View>
+                        <TouchableOpacity style={styles.feedCard} onPress={() => { mediumFeedback(); router.push('/provider/requests'); }} activeOpacity={0.7}>
+                            <LinearGradient colors={[theme.colors.warning + '20', theme.colors.warning + '08']} style={styles.feedCardIconWrap}>
+                                <Ionicons name="mail-unread" size={24} color={theme.colors.warning} />
+                            </LinearGradient>
                             <Text style={styles.feedCardTitle}>{t('requestsTab')}</Text>
-                            <Text style={styles.feedCardSub}>{stats.pendingRequests} Pending</Text>
+                            <Text style={[styles.feedCardSub, stats.pendingRequests > 0 && { color: theme.colors.warning, fontWeight: '800' }]}>{stats.pendingRequests} Pending</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.feedCard} onPress={() => router.push('/provider/active')}>
-                            <View style={styles.feedCardIconWrap}>
-                                <Ionicons name="briefcase" size={24} color="#16A34A" />
-                            </View>
+                        <TouchableOpacity style={styles.feedCard} onPress={() => { mediumFeedback(); router.push('/provider/active'); }} activeOpacity={0.7}>
+                            <LinearGradient colors={[theme.colors.emerald + '20', theme.colors.emerald + '08']} style={styles.feedCardIconWrap}>
+                                <Ionicons name="briefcase" size={24} color={theme.colors.emerald} />
+                            </LinearGradient>
                             <Text style={styles.feedCardTitle}>{t('sitesTitle')}</Text>
                             <Text style={styles.feedCardSub}>Update progress</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.feedCard} onPress={() => router.push('/provider/profile')}>
-                            <View style={styles.feedCardIconWrap}>
-                                <Ionicons name="person" size={24} color="#64748B" />
-                            </View>
+                        <TouchableOpacity style={styles.feedCard} onPress={() => { mediumFeedback(); router.push('/provider/profile'); }} activeOpacity={0.7}>
+                            <LinearGradient colors={['#6366F120', '#6366F108']} style={styles.feedCardIconWrap}>
+                                <Ionicons name="person" size={24} color="#6366F1" />
+                            </LinearGradient>
                             <Text style={styles.feedCardTitle}>{t('tabProfile')}</Text>
                             <Text style={styles.feedCardSub}>Verification & Info</Text>
                         </TouchableOpacity>
@@ -241,19 +222,65 @@ export default function ProviderDashboard() {
                 </View>
             </ScrollView>
 
-            {/* --- MENU MODAL --- */}
-            <Modal visible={menuOpen} transparent animationType="fade">
+            {/* --- FULL NAVIGATION MENU --- */}
+            <Modal visible={menuOpen} transparent animationType="slide">
                 <TouchableOpacity style={styles.modalOverlay} onPress={() => setMenuOpen(false)} activeOpacity={1}>
                     <View style={styles.modalCard}>
                         <View style={styles.modalHandle} />
-                        <Text style={styles.modalTitle}>{t('accountMenuTitle')}</Text>
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { setMenuOpen(false); router.push('/provider/settings'); }}>
-                            <Ionicons name="settings-outline" size={20} color="#0F172A" />
-                            <Text style={styles.modalText}>{t('accountSettings')}</Text>
+                        <Text style={styles.modalTitle}>Navigate</Text>
+
+                        <Text style={styles.modalSection}>Work</Text>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/provider/market'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.active + '18' }]}><Ionicons name="search" size={20} color={theme.colors.active} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Find Work</Text><Text style={styles.modalSub}>Browse available jobs near you</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { setMenuOpen(false); handleSignOut(); }}>
-                            <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-                            <Text style={[styles.modalText, { color: '#EF4444' }]}>{t('signOut')}</Text>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/provider/active'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.emerald + '18' }]}><Ionicons name="briefcase" size={20} color={theme.colors.emerald} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Active Sites</Text><Text style={styles.modalSub}>Upload progress, manage milestones</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/provider/requests'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.warning + '18' }]}><Ionicons name="mail-unread" size={20} color={theme.colors.warning} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Requests</Text><Text style={styles.modalSub}>{stats.pendingRequests} pending invitations</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
+                        </TouchableOpacity>
+
+                        <View style={styles.divider} />
+                        <Text style={styles.modalSection}>Money</Text>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/provider/earnings'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.emerald + '18' }]}><Ionicons name="cash" size={20} color={theme.colors.emerald} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Earnings</Text><Text style={styles.modalSub}>Balance, transactions, withdraw</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/provider/payout-setup'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: '#6366F118' }]}><Ionicons name="card" size={20} color="#6366F1" /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Payout Setup</Text><Text style={styles.modalSub}>MOMO, OM, bank details</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
+                        </TouchableOpacity>
+
+                        <View style={styles.divider} />
+                        <Text style={styles.modalSection}>Account</Text>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/provider/profile'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.active + '18' }]}><Ionicons name="person" size={20} color={theme.colors.active} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>{t('tabProfile')}</Text><Text style={styles.modalSub}>Skills, portfolio, verification</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/provider/verification'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.emerald + '18' }]}><Ionicons name="shield-checkmark" size={20} color={theme.colors.emerald} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Verification</Text><Text style={styles.modalSub}>ID check, trust badge</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/provider/settings'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.surfaceAlt }]}><Ionicons name="settings" size={20} color={theme.colors.textMuted} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Settings</Text><Text style={styles.modalSub}>Language, notifications</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
+                        </TouchableOpacity>
+
+                        <View style={styles.divider} />
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); handleSignOut(); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.danger + '15' }]}><Ionicons name="log-out-outline" size={20} color={theme.colors.danger} /></View>
+                            <Text style={[styles.modalText, { color: theme.colors.danger }]}>{t('signOut')}</Text>
                         </TouchableOpacity>
                     </View>
                 </TouchableOpacity>
@@ -314,7 +341,7 @@ const styles = StyleSheet.create({
     // --- QUICK ACTIONS ---
     quickActions: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 8 },
     quickActionBtn: { alignItems: 'center', gap: 8 },
-    quickActionIcon: { width: 56, height: 56, borderRadius: theme.radii.md, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center', ...theme.shadow.soft },
+    quickActionIconColor: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', ...theme.shadow.glow },
     quickActionLabel: { fontSize: 12, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
 
     bodyContent: { paddingTop: 8, paddingHorizontal: theme.spacing.lg },
@@ -331,7 +358,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: theme.colors.border,
     },
-    feedCardIconWrap: { width: 48, height: 48, borderRadius: theme.radii.md, backgroundColor: theme.colors.background, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.sm },
+    feedCardIconWrap: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.sm },
     feedCardTitle: { fontSize: 15, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
     feedCardSub: { fontSize: 12, color: theme.colors.textMuted, marginTop: 4, fontWeight: '600' },
 
@@ -342,9 +369,13 @@ const styles = StyleSheet.create({
     tipText: { fontSize: 13, color: '#92400E', lineHeight: 20 },
 
     modalOverlay: { flex: 1, backgroundColor: theme.colors.glassDark, justifyContent: 'flex-end' },
-    modalCard: { backgroundColor: theme.colors.surface, padding: theme.spacing.xl, borderTopLeftRadius: theme.radii.xl, borderTopRightRadius: theme.radii.xl, paddingBottom: 40 },
-    modalHandle: { width: 40, height: 4, backgroundColor: theme.colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: theme.spacing.lg },
-    modalTitle: { fontSize: 20, fontWeight: '800', color: theme.colors.text, marginBottom: theme.spacing.md, letterSpacing: -0.5 },
-    modalItem: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.md, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
-    modalText: { fontSize: 16, fontWeight: '600', color: theme.colors.text },
+    modalCard: { backgroundColor: theme.colors.surface, padding: theme.spacing.xl, borderTopLeftRadius: theme.radii.xl, borderTopRightRadius: theme.radii.xl, paddingBottom: 40, maxHeight: '85%' },
+    modalHandle: { width: 40, height: 4, backgroundColor: theme.colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: theme.spacing.md },
+    modalTitle: { fontSize: 22, ...theme.typography.title, color: theme.colors.text, marginBottom: 4 },
+    modalSection: { fontSize: 11, ...theme.typography.label, color: theme.colors.textSubtle, marginTop: theme.spacing.md, marginBottom: 4 },
+    modalItem: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: 12 },
+    modalIconBox: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+    modalText: { fontSize: 15, fontWeight: '700', color: theme.colors.text },
+    modalSub: { fontSize: 12, color: theme.colors.textMuted, marginTop: 1 },
+    divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border, marginVertical: 4 },
 });

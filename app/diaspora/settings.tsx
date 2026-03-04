@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '@/context/LanguageContext';
 import { lightFeedback } from '@/utils/haptics';
+import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
 
 const LANGUAGES = [
@@ -28,10 +29,11 @@ export default function ClientSettingsScreen() {
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+            <NavigationBar title={t('menuSettings') ?? 'Settings'} showBack dynamicColor={theme.colors.active} />
             <ScrollView
                 style={styles.scroll}
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}
                 showsVerticalScrollIndicator={false}
             >
                 <Text style={styles.sectionTitle}>{t('preferences') ?? 'Preferences'}</Text>

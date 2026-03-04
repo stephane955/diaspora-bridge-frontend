@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, TextInput, TouchableOpacity,
-    ActivityIndicator, Modal, Alert, KeyboardAvoidingView, Platform, Share
+    Modal, Alert, KeyboardAvoidingView, Platform, Share, Animated
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,8 +9,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import NavigationBar from '@/components/NavigationBar';
+import PulseLoader from '@/components/PulseLoader';
+import ScreenGradient from '@/components/ScreenGradient';
+import { theme } from '@/constants/theme';
+import { mediumFeedback, successFeedback, lightFeedback } from '@/utils/haptics';
 
-// --- PERFORMANCE UPGRADES ---
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 
@@ -18,6 +23,7 @@ const CITIES = ["All", "Douala", "Yaoundé", "Bamenda", "Kribi", "Limbe", "Bafou
 const blurhash = 'L6PZfSi_.AyE_3t7t7R**0o#DgR4';
 
 export default function MarketScreen() {
+    const insets = useSafeAreaInsets();
     const { user } = useAuth();
     const router = useRouter();
     const { t } = useLanguage();
@@ -95,10 +101,11 @@ export default function MarketScreen() {
 
     useFocusEffect(useCallback(() => { fetchMarketData(); }, [fetchMarketData]));
 
-    // --- ACTIONS ---
+    const successScale = useRef(new Animated.Value(0)).current;
+    const [showSuccess, setShowSuccess] = useState(false);
 
-    // 1. SHARE LOGIC (New)
     const handleShareJob = async (job: any) => {
+        lightFeedback();
         try {
             await Share.share({
                 message: `${t('brandName') || "Diaspora Bridge"}: Check out this job in ${job.city}!\n\n*${job.title}*\nBudget: ${job.budget?.toLocaleString()} CFA\n\nApply now on the app!`
@@ -109,6 +116,7 @@ export default function MarketScreen() {
     };
 
     const handleHideJob = (jobId: string) => {
+        mediumFeedback();
         Alert.alert(t('hide') || "Hide Job", "Remove this from your feed?", [
             { text: t('cancel') || "Cancel", style: "cancel" },
             {
@@ -162,10 +170,16 @@ export default function MarketScreen() {
                 if (error.code === '23505') Alert.alert("Already Applied", "You have already bid on this job.");
                 else throw error;
             } else {
-                Alert.alert(t('success'), "Proposal sent! Check 'My Sites' -> 'Applied' tab.");
-                setSelectedJob(null);
-                setBidAmount('');
-                setCoverLetter('');
+                successFeedback();
+                setShowSuccess(true);
+                Animated.spring(successScale, { toValue: 1, friction: 4, useNativeDriver: true }).start();
+                setTimeout(() => {
+                    setShowSuccess(false);
+                    successScale.setValue(0);
+                    setSelectedJob(null);
+                    setBidAmount('');
+                    setCoverLetter('');
+                }, 1800);
             }
         } catch (err: any) {
             Alert.alert("Error", err.message);
@@ -184,8 +198,8 @@ export default function MarketScreen() {
         return (
             <TouchableOpacity
                 style={styles.card}
-                activeOpacity={0.95}
-                onPress={() => setSelectedJob(item)}
+                activeOpacity={0.7}
+                onPress={() => { mediumFeedback(); setSelectedJob(item); }}
             >
                 {/* 1. Full Bleed Image */}
                 <Image
@@ -251,7 +265,8 @@ export default function MarketScreen() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+            <NavigationBar title={t('marketTitle') ?? 'Market'} showBack={false} onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
 
             {/* --- PREMIUM HEADER --- */}
             <View style={styles.headerContainer}>
@@ -311,14 +326,14 @@ export default function MarketScreen() {
 
             {/* --- LIST --- */}
             {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color="#0F172A" /></View>
+                <View style={styles.center}><PulseLoader /></View>
             ) : (
                 <View style={styles.listContainer}>
                     <FlashList
                         data={jobs}
                         renderItem={renderJob}
                         estimatedItemSize={240}
-                        contentContainerStyle={{ paddingBottom: 100, paddingTop: 20 }}
+                        contentContainerStyle={{ paddingBottom: 120, paddingTop: theme.spacing.lg, paddingHorizontal: theme.spacing.lg }}
                         ListEmptyComponent={
                             <View style={styles.emptyState}>
                                 <Ionicons name="briefcase-outline" size={48} color="#CBD5E1" />
@@ -367,9 +382,16 @@ export default function MarketScreen() {
                             onChangeText={setCoverLetter}
                         />
 
-                        <TouchableOpacity style={styles.submitBtn} onPress={handleApply} disabled={applying}>
-                            {applying ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>{t('common.submit') || "Send Proposal"}</Text>}
+                        <TouchableOpacity style={styles.submitBtn} onPress={handleApply} disabled={applying} activeOpacity={0.7}>
+                            {applying ? <PulseLoader size={24} color="#fff" /> : <Text style={styles.submitText}>{t('common.submit') || "Send Proposal"}</Text>}
                         </TouchableOpacity>
+
+                        {showSuccess && (
+                            <Animated.View style={[styles.successOverlay, { transform: [{ scale: successScale }] }]}>
+                                <Ionicons name="checkmark-circle" size={64} color={theme.colors.emerald} />
+                                <Text style={styles.successText}>Proposal Sent!</Text>
+                            </Animated.View>
+                        )}
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
@@ -518,6 +540,21 @@ const styles = StyleSheet.create({
     jobBudget: { fontSize: 14, color: '#64748B', marginBottom: 20 },
     label: { fontSize: 13, fontWeight: '700', color: '#64748B', marginBottom: 8, marginTop: 16, textTransform: 'uppercase' },
     modalInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 16, padding: 16, fontSize: 16, color: '#0F172A' },
-    submitBtn: { backgroundColor: '#0F172A', padding: 18, borderRadius: 18, alignItems: 'center', marginTop: 30 },
-    submitText: { color: '#fff', fontWeight: '800', fontSize: 16 }
+    submitBtn: { backgroundColor: theme.colors.primary, height: 54, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 30 },
+    submitText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+
+    successOverlay: {
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        borderRadius: theme.radii.xl,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+    },
+    successText: {
+        fontSize: 22,
+        ...theme.typography.title,
+        color: theme.colors.emerald,
+    },
 });

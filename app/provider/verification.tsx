@@ -3,16 +3,22 @@ import {
     View, Text, StyleSheet, TouchableOpacity, Image,
     ScrollView, Alert, ActivityIndicator
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient'; // <--- PREMIUM LOOK
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from '@/lib/supabase';
+import { uploadKycDocument } from '@/lib/storage';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import NavigationBar from '@/components/NavigationBar';
+import { theme } from '@/constants/theme';
+import { getAndClearVerificationScanResult } from '@/utils/verificationScanResult';
 
 export default function VerificationScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
     const { t } = useLanguage();
@@ -25,6 +31,27 @@ export default function VerificationScreen() {
     const [status, setStatus] = useState('unverified');
 
     useEffect(() => { checkStatus(); }, [user]);
+
+    useFocusEffect(
+        React.useCallback(() => {
+            const result = getAndClearVerificationScanResult();
+            if (!result) return;
+            (async () => {
+                try {
+                    const manip = await ImageManipulator.manipulateAsync(
+                        result.uri,
+                        [{ resize: { width: 800 } }],
+                        { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
+                    );
+                    if (result.type === 'front') setFrontImage(manip.uri);
+                    if (result.type === 'back') setBackImage(manip.uri);
+                } catch {
+                    if (result.type === 'front') setFrontImage(result.uri);
+                    if (result.type === 'back') setBackImage(result.uri);
+                }
+            })();
+        }, [])
+    );
 
     const checkStatus = async () => {
         if (!user) return;
@@ -74,20 +101,13 @@ export default function VerificationScreen() {
             const manipResult = await ImageManipulator.manipulateAsync(
                 result.assets[0].uri,
                 [{ resize: { width: 800 } }],
-                { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG }
+                { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
             );
 
             if (type === 'front') setFrontImage(manipResult.uri);
             if (type === 'back') setBackImage(manipResult.uri);
             if (type === 'selfie') setSelfie(manipResult.uri);
         }
-    };
-
-    const uploadToSupabase = async (uri: string, path: string) => {
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        const { error } = await supabase.storage.from('verifications').upload(path, blob);
-        if (error) throw error;
     };
 
     const handleSubmit = async () => {
@@ -100,17 +120,35 @@ export default function VerificationScreen() {
         try {
             const timestamp = Date.now();
             const userId = user?.id;
+            if (!userId) throw new Error('Not signed in');
 
-            await uploadToSupabase(frontImage, `${userId}/front_${timestamp}.jpg`);
-            await uploadToSupabase(backImage, `${userId}/back_${timestamp}.jpg`);
-            await uploadToSupabase(selfie, `${userId}/selfie_${timestamp}.jpg`);
+            const frontPath = `${userId}/front_${timestamp}.jpg`;
+            const backPath = `${userId}/back_${timestamp}.jpg`;
+            const selfiePath = `${userId}/selfie_${timestamp}.jpg`;
 
-            const { error } = await supabase
+            await uploadKycDocument(frontImage, userId, `front_${timestamp}.jpg`);
+            await uploadKycDocument(backImage, userId, `back_${timestamp}.jpg`);
+            await uploadKycDocument(selfie, userId, `selfie_${timestamp}.jpg`);
+
+            const now = new Date().toISOString();
+            const { error: profileError } = await supabase
                 .from('profiles')
-                .update({ verification_status: 'pending' })
+                .update({
+                    verification_status: 'pending',
+                    verification_submitted_at: now,
+                    verification_document_paths: { front: frontPath, back: backPath, selfie: selfiePath },
+                })
                 .eq('id', userId);
 
-            if (error) throw error;
+            if (profileError) throw profileError;
+
+            await supabase.from('notifications').insert({
+                user_id: userId,
+                type: 'verification',
+                title: t('verificationSubmitted') || 'Verification submitted',
+                message: t('verificationSubmittedMessage') || "We'll review your documents shortly.",
+                is_read: false,
+            });
 
             setStatus('pending');
             Alert.alert(t('success'), "Documents submitted! Returning to profile.");
@@ -124,25 +162,10 @@ export default function VerificationScreen() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+            <NavigationBar title={t('verifyTitle') ?? 'Verification'} showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
 
-            {/* --- PREMIUM GRADIENT HEADER --- */}
-            <LinearGradient colors={['#0F172A', '#334155']} style={styles.header}>
-                <View style={styles.headerTop}>
-                    <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
-                        <Ionicons name="arrow-back" size={24} color="#fff" />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>{t('verifyTitle') || "Identity Verification"}</Text>
-                    <View style={{width: 40}} />
-                </View>
-                {/* Visual Trust Indicator */}
-                <View style={styles.headerBadgeContainer}>
-                    <Ionicons name="shield-checkmark" size={32} color="#4ADE80" />
-                    <Text style={styles.headerSub}>{t('verifySub') || "Secure your account"}</Text>
-                </View>
-            </LinearGradient>
-
-            <ScrollView contentContainerStyle={styles.scroll}>
+            <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 120, paddingHorizontal: 20 }]}>
 
                 {status === 'verified' ? (
                     <View style={styles.stateBox}>
@@ -169,6 +192,10 @@ export default function VerificationScreen() {
                                     <View style={styles.iconBg}><Ionicons name="id-card-outline" size={28} color="#0F172A" /></View>
                                     <Text style={styles.cardLabel}>{t('idFront') || "ID Front"}</Text>
                                     <Text style={styles.cardHint}>Tap to upload</Text>
+                                    <TouchableOpacity style={styles.scanLink} onPress={() => router.push('/provider/verification-scan?type=front')}>
+                                        <Ionicons name="scan-outline" size={14} color="#0EA5E9" />
+                                        <Text style={styles.scanLinkText}>Scan with camera</Text>
+                                    </TouchableOpacity>
                                 </View>
                             )}
                             {frontImage && <View style={styles.checkBadge}><Ionicons name="checkmark" size={14} color="#fff" /></View>}
@@ -183,6 +210,10 @@ export default function VerificationScreen() {
                                     <View style={styles.iconBg}><Ionicons name="card-outline" size={28} color="#0F172A" /></View>
                                     <Text style={styles.cardLabel}>{t('idBack') || "ID Back"}</Text>
                                     <Text style={styles.cardHint}>Tap to upload</Text>
+                                    <TouchableOpacity style={styles.scanLink} onPress={() => router.push('/provider/verification-scan?type=back')}>
+                                        <Ionicons name="scan-outline" size={14} color="#0EA5E9" />
+                                        <Text style={styles.scanLinkText}>Scan with camera</Text>
+                                    </TouchableOpacity>
                                 </View>
                             )}
                             {backImage && <View style={styles.checkBadge}><Ionicons name="checkmark" size={14} color="#fff" /></View>}
@@ -207,20 +238,25 @@ export default function VerificationScreen() {
                             <Text style={styles.infoText}>Documents are encrypted. Only used for verification.</Text>
                         </View>
 
+                        {(!frontImage || !backImage || !selfie) && (
+                            <Text style={styles.addAllHint}>{t('addAllThreeToSubmit') || "Add all three photos above to submit for verification."}</Text>
+                        )}
+
                         <View style={{height: 100}} />
                     </>
                 )}
             </ScrollView>
 
-            {/* FLOATING FOOTER */}
-            {status === 'unverified' && (
+            {/* FLOATING FOOTER — Submit for verification only when all 3 docs uploaded */}
+            {status === 'unverified' && frontImage && backImage && selfie && (
                 <View style={styles.footer}>
+                    <Text style={styles.footerHint}>{t('adminWillVerify') || "An admin will verify your documents."}</Text>
                     <TouchableOpacity
                         style={[styles.submitBtn, uploading && styles.disabledBtn]}
                         onPress={handleSubmit}
                         disabled={uploading}
                     >
-                        {uploading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>{t('submitVerify') || "Submit"}</Text>}
+                        {uploading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>{t('submitForAdminVerify') || "Submit for admin verification"}</Text>}
                     </TouchableOpacity>
                 </View>
             )}
@@ -257,15 +293,19 @@ const styles = StyleSheet.create({
     iconBg: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
     cardLabel: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
     cardHint: { fontSize: 12, color: '#94A3B8' },
+    scanLink: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+    scanLinkText: { fontSize: 12, color: '#0EA5E9', fontWeight: '600' },
     previewImage: { width: '100%', height: '100%', resizeMode: 'cover' },
 
     checkBadge: { position: 'absolute', top: 12, right: 12, backgroundColor: '#22C55E', width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
 
     infoBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#EFF6FF', padding: 16, borderRadius: 16, marginTop: 8 },
     infoText: { flex: 1, fontSize: 12, color: '#3B82F6', fontWeight: '600' },
+    addAllHint: { fontSize: 13, color: '#94A3B8', textAlign: 'center', marginTop: 16 },
 
     // FOOTER
-    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24, paddingTop: 16, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+    footerHint: { fontSize: 13, color: '#64748B', textAlign: 'center', marginBottom: 12 },
     submitBtn: { backgroundColor: '#0F172A', paddingVertical: 18, borderRadius: 16, alignItems: 'center', shadowColor: '#0F172A', shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
     disabledBtn: { backgroundColor: '#94A3B8', shadowOpacity: 0 },
     submitText: { color: '#fff', fontWeight: '800', fontSize: 16 },

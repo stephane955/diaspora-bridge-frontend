@@ -11,7 +11,27 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { mediumFeedback } from '@/utils/haptics';
+import NavigationBar from '@/components/NavigationBar';
+import ScreenGradient from '@/components/ScreenGradient';
+import PulseLoader from '@/components/PulseLoader';
 import { theme } from '@/constants/theme';
+
+type HubItem = {
+    key: string;
+    href: string;
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    color: string;
+    bg: string;
+};
+
+const HUB_ITEMS: HubItem[] = [
+    { key: 'projects', href: '/diaspora/projects', label: 'My Projects', icon: 'folder-open-outline', color: theme.colors.active, bg: theme.colors.active + '18' },
+    { key: 'new', href: '/diaspora/new', label: 'Post New', icon: 'add-circle-outline', color: theme.colors.emerald, bg: theme.colors.emerald + '18' },
+    { key: 'timeline', href: '/diaspora/timeline', label: 'Timeline', icon: 'time-outline', color: theme.colors.warning, bg: theme.colors.warning + '18' },
+    { key: 'settings', href: '/diaspora/settings', label: 'Settings', icon: 'settings-outline', color: theme.colors.textMuted, bg: theme.colors.surfaceAlt },
+];
 
 export default function ClientProfileScreen() {
     const insets = useSafeAreaInsets();
@@ -96,21 +116,33 @@ export default function ClientProfileScreen() {
         }
     };
 
+    if (loading) {
+        return (
+            <ScreenGradient>
+                <NavigationBar title={t('tabProfile') ?? 'Profile'} showBack={false} onMenuPress={() => router.push('/diaspora/menu')} dynamicColor={theme.colors.active} />
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <PulseLoader />
+                </View>
+            </ScreenGradient>
+        );
+    }
+
     return (
-        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-            <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+        <ScreenGradient>
+            <NavigationBar title={t('tabProfile') ?? 'Profile'} showBack={false} onMenuPress={() => router.push('/diaspora/menu')} dynamicColor={theme.colors.active} />
+            <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]} showsVerticalScrollIndicator={false}>
 
                 {/* --- HERO HEADER --- */}
                 <ImageBackground
                     source={{ uri: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop' }}
                     style={styles.headerImage}
                 >
-                    <LinearGradient colors={[theme.colors.glassDark, theme.colors.background]} style={styles.gradient} />
+                    <LinearGradient colors={[theme.colors.glassDark, 'transparent']} style={styles.heroGrad} />
                 </ImageBackground>
 
                 {/* --- PROFILE CARD --- */}
                 <View style={styles.profileSection}>
-                    <TouchableOpacity onPress={changeAvatar} style={styles.avatarContainer}>
+                    <TouchableOpacity onPress={changeAvatar} style={styles.avatarContainer} activeOpacity={0.7}>
                         <Image
                             source={{ uri: profile?.avatar_url || 'https://i.pravatar.cc/150?u=fake' }}
                             style={styles.avatar}
@@ -135,12 +167,31 @@ export default function ClientProfileScreen() {
                     </View>
                 </View>
 
+                {/* --- COMMAND CENTER (2x2 Grid) --- */}
+                <View style={styles.hubSection}>
+                    <Text style={styles.sectionTitle}>Command Center</Text>
+                    <View style={styles.hubGrid}>
+                        {HUB_ITEMS.map((item) => (
+                            <TouchableOpacity
+                                key={item.key}
+                                style={styles.hubCard}
+                                onPress={() => { mediumFeedback(); router.push(item.href); }}
+                                activeOpacity={0.7}
+                            >
+                                <View style={[styles.hubIconWrap, { backgroundColor: item.bg }]}>
+                                    <Ionicons name={item.icon} size={26} color={item.color} />
+                                </View>
+                                <Text style={styles.hubLabel}>{item.label}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                </View>
+
                 {/* --- MENU OPTIONS --- */}
                 <View style={styles.menuContainer}>
                     <Text style={styles.sectionTitle}>{t('accountSettings')}</Text>
 
-                    {/* EDIT PROFILE BUTTON */}
-                    <TouchableOpacity style={styles.menuItem} onPress={() => setEditModalVisible(true)}>
+                    <TouchableOpacity style={styles.menuItem} onPress={() => { mediumFeedback(); setEditModalVisible(true); }} activeOpacity={0.7}>
                         <View style={[styles.iconBox, { backgroundColor: theme.colors.activeSoft + '25' }]}>
                             <Ionicons name="person" size={20} color={theme.colors.active} />
                         </View>
@@ -148,8 +199,7 @@ export default function ClientProfileScreen() {
                         <Ionicons name="chevron-forward" size={20} color={theme.colors.textSubtle} />
                     </TouchableOpacity>
 
-                    {/* PAYMENT METHODS BUTTON */}
-                    <TouchableOpacity style={styles.menuItem} onPress={() => setPaymentModalVisible(true)}>
+                    <TouchableOpacity style={styles.menuItem} onPress={() => { mediumFeedback(); setPaymentModalVisible(true); }} activeOpacity={0.7}>
                         <View style={[styles.iconBox, { backgroundColor: theme.colors.success + '20' }]}>
                             <Ionicons name="card" size={20} color={theme.colors.success} />
                         </View>
@@ -171,15 +221,15 @@ export default function ClientProfileScreen() {
 
                     <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t('support')}</Text>
 
-                    <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/modal')}>
-                        <View style={[styles.iconBox, { backgroundColor: theme.colors.background }]}>
+                    <TouchableOpacity style={styles.menuItem} onPress={() => { mediumFeedback(); router.push('/modal'); }} activeOpacity={0.7}>
+                        <View style={[styles.iconBox, { backgroundColor: theme.colors.surfaceAlt }]}>
                             <Ionicons name="help-circle" size={20} color={theme.colors.textMuted} />
                         </View>
                         <Text style={styles.menuText}>Help Center</Text>
                         <Ionicons name="chevron-forward" size={20} color={theme.colors.textSubtle} />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.menuItem} onPress={handleSignOut}>
+                    <TouchableOpacity style={styles.menuItem} onPress={handleSignOut} activeOpacity={0.7}>
                         <View style={[styles.iconBox, { backgroundColor: theme.colors.danger + '18' }]}>
                             <Ionicons name="log-out" size={20} color={theme.colors.danger} />
                         </View>
@@ -268,32 +318,60 @@ export default function ClientProfileScreen() {
                 </View>
             </Modal>
 
-        </View>
+        </ScreenGradient>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
+    scrollContent: { paddingHorizontal: theme.spacing.lg },
 
-    headerImage: { width: '100%', height: 220 },
-    gradient: { flex: 1, marginTop: 100 },
+    headerImage: { width: '100%', height: 200 },
+    heroGrad: { flex: 1 },
 
     profileSection: { alignItems: 'center', marginTop: -60, paddingHorizontal: theme.spacing.lg },
     avatarContainer: { position: 'relative', marginBottom: theme.spacing.md, ...theme.shadow.soft },
     avatar: { width: 110, height: 110, borderRadius: 55, borderWidth: 4, borderColor: theme.colors.surface },
     editBadge: { position: 'absolute', bottom: 4, right: 4, backgroundColor: theme.colors.primary, padding: theme.spacing.sm, borderRadius: theme.radii.pill, borderWidth: 2, borderColor: theme.colors.surface },
 
-    name: { fontSize: 24, fontWeight: '800', color: theme.colors.text, marginBottom: 4 },
+    name: { fontSize: 24, ...theme.typography.title, color: theme.colors.text, marginBottom: 4 },
     email: { fontSize: 14, color: theme.colors.textMuted, marginBottom: theme.spacing.md },
 
-    badgeRow: { flexDirection: 'row', gap: theme.spacing.sm },
-    verBadge: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, backgroundColor: theme.colors.success + '25', paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, borderRadius: theme.radii.pill, borderWidth: 1, borderColor: theme.colors.success + '55' },
+    badgeRow: { flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.xl },
+    verBadge: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, backgroundColor: theme.colors.success + '20', paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, borderRadius: theme.radii.pill, borderWidth: 1, borderColor: theme.colors.success + '40' },
     verText: { fontSize: 12, fontWeight: '700', color: theme.colors.success },
 
-    menuContainer: { padding: theme.spacing.xl },
-    sectionTitle: { fontSize: 14, fontWeight: '700', color: theme.colors.textSubtle, marginBottom: theme.spacing.sm, textTransform: 'uppercase', letterSpacing: 1 },
+    hubSection: { marginBottom: theme.spacing.xl },
+    hubGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 12,
+    },
+    hubCard: {
+        width: '47%',
+        backgroundColor: theme.colors.surface,
+        borderRadius: theme.radii.md,
+        paddingVertical: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        ...theme.shadow.soft,
+        shadowOpacity: 0.06,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.border,
+    },
+    hubIconWrap: {
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    hubLabel: { fontSize: 14, fontWeight: '700', color: theme.colors.text },
 
-    menuItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.surface, padding: theme.spacing.md, borderRadius: theme.radii.md, marginBottom: theme.spacing.sm, ...theme.shadow.soft, borderWidth: 1, borderColor: theme.colors.border },
+    menuContainer: { padding: theme.spacing.lg, paddingTop: 0 },
+    sectionTitle: { fontSize: 13, ...theme.typography.label, color: theme.colors.textSubtle, marginBottom: theme.spacing.sm },
+
+    menuItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.surface, padding: theme.spacing.md, borderRadius: theme.radii.md, marginBottom: theme.spacing.sm, ...theme.shadow.soft, shadowOpacity: 0.05, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border },
     iconBox: { width: 40, height: 40, borderRadius: theme.radii.sm, alignItems: 'center', justifyContent: 'center', marginRight: theme.spacing.md },
     menuText: { flex: 1, fontSize: 16, fontWeight: '600', color: theme.colors.text },
 
@@ -302,12 +380,12 @@ const styles = StyleSheet.create({
     modalOverlay: { flex: 1, backgroundColor: theme.colors.glassDark, justifyContent: 'flex-end' },
     modalContent: { backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radii.xl, borderTopRightRadius: theme.radii.xl, padding: theme.spacing.xl, paddingBottom: 40 },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.xl },
-    modalTitle: { fontSize: 20, fontWeight: '800', color: theme.colors.text },
+    modalTitle: { fontSize: 20, ...theme.typography.title, color: theme.colors.text },
 
     label: { fontSize: 14, fontWeight: '700', color: theme.colors.textMuted, marginBottom: theme.spacing.sm, marginTop: theme.spacing.sm },
     input: { backgroundColor: theme.colors.background, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radii.sm, padding: theme.spacing.md, fontSize: 16, color: theme.colors.text },
 
-    saveBtn: { backgroundColor: theme.colors.primary, height: 56, borderRadius: theme.radii.md, alignItems: 'center', justifyContent: 'center', marginTop: 30 },
+    saveBtn: { backgroundColor: theme.colors.primary, height: 54, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 30 },
     saveBtnText: { color: theme.colors.surface, fontSize: 16, fontWeight: '700' },
 
     cardItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: theme.spacing.md, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radii.md, marginBottom: theme.spacing.sm },
@@ -316,5 +394,5 @@ const styles = StyleSheet.create({
     cardExp: { fontSize: 12, color: theme.colors.textMuted },
     addCardBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: theme.spacing.md, borderWidth: 1, borderColor: theme.colors.active, borderStyle: 'dashed', borderRadius: theme.radii.md, gap: theme.spacing.sm, backgroundColor: theme.colors.activeSoft + '20' },
     addCardText: { color: theme.colors.active, fontWeight: '700' },
-    secureNote: { textAlign: 'center', color: theme.colors.textSubtle, fontSize: 12, marginTop: theme.spacing.lg, fontWeight: '500' }
+    secureNote: { textAlign: 'center', color: theme.colors.textSubtle, fontSize: 12, marginTop: theme.spacing.lg, fontWeight: '500' },
 });

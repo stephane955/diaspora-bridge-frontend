@@ -13,6 +13,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
 
 const CITIES = [
@@ -81,11 +82,12 @@ export default function NewProjectScreen() {
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+            style={[styles.container, { paddingBottom: insets.bottom }]}
         >
+            <NavigationBar title={t('tabPostJob') ?? 'New Project'} showBack dynamicColor={theme.colors.active} />
             <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}
             >
                 {/* --- IMAGE PICKER --- */}
                 <TouchableOpacity onPress={pickImage} activeOpacity={0.9} style={styles.imagePickerContainer}>
@@ -167,21 +169,11 @@ export default function NewProjectScreen() {
                         activeOpacity={0.8}
                         style={styles.mainButtonContainer}
                     >
-                        <LinearGradient
-                            colors={[theme.colors.active, theme.colors.primary]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.submitBtn}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color={theme.colors.surface} />
-                            ) : (
-                                <>
-                                    <Text style={styles.submitText}>Publish Project</Text>
-                                    <Ionicons name="rocket" size={20} color={theme.colors.surface} />
-                                </>
-                            )}
-                        </LinearGradient>
+                        {loading ? (
+                            <ActivityIndicator color={theme.colors.surface} />
+                        ) : (
+                            <Text style={styles.submitText}>Publish Project</Text>
+                        )}
                     </TouchableOpacity>
                 </View>
             </ScrollView>
@@ -213,9 +205,9 @@ export default function NewProjectScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.surface },
-    scrollContent: { paddingBottom: 40 },
+    scrollContent: {},
 
-    imagePickerContainer: { marginHorizontal: theme.spacing.xl, height: 200, borderRadius: theme.radii.xl, marginBottom: theme.spacing.sm },
+    imagePickerContainer: { height: 200, borderRadius: theme.radii.xl, marginBottom: theme.spacing.sm },
     previewImage: { width: '100%', height: '100%' },
     imageOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     glassBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.glass, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radii.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
@@ -226,7 +218,7 @@ const styles = StyleSheet.create({
     iconCircle: { width: 56, height: 56, borderRadius: theme.radii.xl, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center', ...theme.shadow.soft },
     placeholderText: { marginTop: theme.spacing.sm, fontSize: 15, fontWeight: '600', color: theme.colors.textMuted },
 
-    formCard: { paddingHorizontal: theme.spacing.xl, paddingTop: theme.spacing.lg },
+    formCard: { paddingTop: theme.spacing.lg },
     sectionTitle: { fontSize: 14, fontWeight: '800', color: theme.colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1, marginBottom: theme.spacing.lg },
     inputGroup: { marginBottom: theme.spacing.xl },
     label: { fontSize: 14, fontWeight: '700', color: theme.colors.text, marginBottom: theme.spacing.sm },
@@ -243,8 +235,7 @@ const styles = StyleSheet.create({
     budgetInput: { flex: 1, paddingHorizontal: theme.spacing.lg, fontSize: 18, color: theme.colors.text, fontWeight: '700' },
     currency: { fontSize: 14, fontWeight: '800', color: theme.colors.active },
 
-    mainButtonContainer: { marginTop: theme.spacing.sm, ...theme.shadow.soft },
-    submitBtn: { height: 62, borderRadius: theme.radii.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm },
+    mainButtonContainer: { marginTop: theme.spacing.sm, height: 54, borderRadius: 14, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', ...theme.shadow.soft },
     submitText: { color: theme.colors.surface, fontSize: 18, fontWeight: '800' },
 
     modalOverlay: { flex: 1, backgroundColor: theme.colors.glassDark, justifyContent: 'flex-end' },

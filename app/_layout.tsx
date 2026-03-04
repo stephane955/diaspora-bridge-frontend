@@ -1,16 +1,16 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
-import { View, ActivityIndicator } from 'react-native';
-import { theme } from '@/constants/theme';
+import { View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { GlobalProvider } from '@/context/GlobalContext';
 import { LanguageProvider } from '@/context/LanguageContext';
-import { usePushNotifications } from '@/hooks/usePushNotifications'; // <--- IMPORT
+import { ThemeProvider, useTheme } from '@/context/ThemeContext';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 function InitialLayout() {
     const { session, loading } = useAuth();
@@ -19,9 +19,17 @@ function InitialLayout() {
     const [isMounted, setIsMounted] = useState(false);
 
     // --- ACTIVATE NOTIFICATIONS ---
-    // This starts listening immediately. It will only save the token
-    // once 'session' (user) is available, which is handled inside the hook.
-    usePushNotifications();
+    // Deep-link: When notification is tapped, route by action (Approve → project with modal; else chat)
+    usePushNotifications((data) => {
+        const id = (data.project_id ?? data.chat_id ?? data.id) as string | undefined;
+        if (!id || typeof id !== 'string') return;
+        const openApproval = data.openApproval === true || data.openApproval === '1' || data.actionIdentifier === 'APPROVE';
+        if (openApproval) {
+            router.push(`/diaspora/project/${id}?openApproval=1`);
+        } else {
+            router.push(`/chat/${id}`);
+        }
+    });
 
     useEffect(() => {
         setIsMounted(true);
@@ -36,7 +44,8 @@ function InitialLayout() {
             segments.length === 0 ||
             segments[0] === 'index' ||
             segments[0] === 'login' ||
-            segments[0] === 'signup';
+            segments[0] === 'signup' ||
+            segments[0] === 'observer';
 
         // 1. If NOT logged in and trying to access a private page -> Send to Login
         if (!session && !inPublicGroup) {
@@ -44,10 +53,10 @@ function InitialLayout() {
             return;
         }
 
-        // 2. If logged in and on a public page -> Send to Dashboard
+        // 2. If logged in and on a public page -> Send to Dashboard (role from AuthContext = Supabase auth metadata)
         if (session && inPublicGroup) {
-            const role = session.user?.user_metadata?.role;
-            if (role === 'provider') {
+            const r = session.user?.user_metadata?.role ?? session.user?.raw_user_meta_data?.role;
+            if (r === 'provider') {
                 router.replace('/provider');
             } else {
                 router.replace('/diaspora');
@@ -56,15 +65,11 @@ function InitialLayout() {
     }, [router, segments, session, isMounted, loading]);
 
     if (!isMounted || loading) {
-        return (
-            <View style={{ flex: 1, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' }}>
-                <ActivityIndicator color={theme.colors.active} />
-            </View>
-        );
+        return <SplashPlaceholder />;
     }
 
     return (
-        <Stack>
+        <Stack screenOptions={{ headerShown: false }}>
             {/* Public Routes */}
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="login" options={{ headerShown: false }} />
@@ -73,7 +78,6 @@ function InitialLayout() {
             {/* Protected Routes */}
             <Stack.Screen name="diaspora" options={{ headerShown: false }} />
             <Stack.Screen name="provider" options={{ headerShown: false }} />
-            <Stack.Screen name="admin" options={{ headerShown: false }} />
 
             {/* Shared/Modal Routes */}
             <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
@@ -84,11 +88,19 @@ function InitialLayout() {
     );
 }
 
-export default function RootLayout() {
-    const colorScheme = useColorScheme();
-
+function SplashPlaceholder() {
+    const { theme } = useTheme();
     return (
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <View style={{ flex: 1, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.active, opacity: 0.6 }} />
+        </View>
+    );
+}
+
+function RootContent() {
+    const { isDark } = useTheme();
+    return (
+        <NavThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
             <LanguageProvider>
                 <AuthProvider>
                     <GlobalProvider>
@@ -96,7 +108,17 @@ export default function RootLayout() {
                     </GlobalProvider>
                 </AuthProvider>
             </LanguageProvider>
-            <StatusBar style="auto" />
-        </ThemeProvider>
+            <StatusBar style={isDark ? 'light' : 'auto'} />
+        </NavThemeProvider>
+    );
+}
+
+export default function RootLayout() {
+    return (
+        <SafeAreaProvider>
+            <ThemeProvider>
+                <RootContent />
+            </ThemeProvider>
+        </SafeAreaProvider>
     );
 }

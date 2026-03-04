@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/context/LanguageContext';
+import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
 
 export default function ApplicantsScreen() {
@@ -141,7 +142,7 @@ export default function ApplicantsScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    listContent: { padding: theme.spacing.lg, paddingBottom: 40 },
+    listContent: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: 120 },
     emptyState: { padding: theme.spacing.xxl, alignItems: 'center' },
     emptyTitle: { fontSize: 16, fontWeight: '700', color: theme.colors.textMuted },
     emptySub: { fontSize: 13, color: theme.colors.textSubtle, marginTop: theme.spacing.xs, textAlign: 'center' },

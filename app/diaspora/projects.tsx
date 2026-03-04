@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
 
 export default function MyProjectsScreen() {
@@ -109,8 +110,9 @@ export default function MyProjectsScreen() {
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
             <StatusBar barStyle="dark-content" />
+            <NavigationBar title={t('tabProjects') ?? 'Projects'} showBack dynamicColor={theme.colors.active} />
 
             {loading ? (
                 <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.active} /></View>
@@ -159,7 +161,7 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-    listContent: { padding: theme.spacing.lg, paddingBottom: 100 },
+    listContent: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: 120 },
 
     createBtn: { marginBottom: theme.spacing.xl, ...theme.shadow.soft },
     createGradient: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.lg, borderRadius: theme.radii.lg, gap: theme.spacing.md, borderWidth: 1, borderColor: theme.colors.activeSoft + '80' },

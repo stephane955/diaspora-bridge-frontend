@@ -14,7 +14,7 @@ export default function ProviderLayout() {
         <Tabs
             tabBar={(props) => <GlassTabBar {...props} theme="dark" />}
             screenOptions={{
-                headerShown: true,
+                headerShown: false,
                 headerStyle: { backgroundColor: theme.colors.primary },
                 headerTintColor: theme.colors.surface,
                 headerTitleStyle: { fontWeight: '700', fontSize: 18 },
@@ -24,8 +24,9 @@ export default function ProviderLayout() {
                 tabBarStyle: { display: 'none' },
             }}
         >
-            {/* === VISIBLE IN GLASS TAB BAR (5 only) === */}
+            {/* === VISIBLE IN GLASS TAB BAR === */}
             <Tabs.Screen name="index" options={{ title: t('providerDashboardTitle') ?? 'Home' }} />
+            <Tabs.Screen name="inbox" options={{ title: t('inboxTitle') ?? 'Inbox' }} />
             <Tabs.Screen name="market" options={{ title: t('marketTitle') ?? 'Market' }} />
             <Tabs.Screen name="active" options={{ title: t('tabActive') ?? 'Sites' }} />
             <Tabs.Screen name="earnings" options={{ title: t('walletTitle') ?? 'Wallet' }} />

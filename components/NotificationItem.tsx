@@ -15,6 +15,9 @@ export default function NotificationItem({
 }) {
     const getIcon = () => {
         switch(item.type) {
+            case 'chat':
+            case 'new_message':
+            case 'message': return { name: 'chatbubbles', color: '#0EA5E9', bg: '#EFF6FF' };
             case 'assignment': return { name: 'person-add', color: '#0EA5E9', bg: '#F0F9FF' };
             case 'payment': return { name: 'wallet', color: '#16A34A', bg: '#F0FDF4' };
             default: return { name: 'notifications', color: '#64748B', bg: '#F1F5F9' };

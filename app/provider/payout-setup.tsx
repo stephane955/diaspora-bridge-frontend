@@ -4,10 +4,13 @@ import {
     Alert, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import NavigationBar from '@/components/NavigationBar';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { z } from 'zod';
+import { theme } from '@/constants/theme';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
 
 // --- VALIDATION SCHEMA ---
@@ -18,6 +21,7 @@ const payoutSchema = z.object({
 });
 
 export default function PayoutSetupScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
 
@@ -115,8 +119,9 @@ export default function PayoutSetupScreen() {
     };
 
     return (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
-            <ScrollView contentContainerStyle={styles.content}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { paddingBottom: insets.bottom }]}>
+            <NavigationBar title="Payout Setup" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+            <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120, paddingHorizontal: 20 }]}>
                 <Text style={styles.subTitle}>Select Method</Text>
 
                 <View style={styles.methodRow}>

@@ -4,12 +4,34 @@ import {
     ImageBackground, Alert, ActivityIndicator, Modal, Pressable, TextInput, KeyboardAvoidingView, Platform, StatusBar
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native'; // Correct import
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { mediumFeedback } from '@/utils/haptics';
+import NavigationBar from '@/components/NavigationBar';
+import ScreenGradient from '@/components/ScreenGradient';
+import PulseLoader from '@/components/PulseLoader';
+import { theme } from '@/constants/theme';
+
+type HubItem = {
+    key: string;
+    href: string;
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    color: string;
+    bg: string;
+};
+
+const HUB_ITEMS: HubItem[] = [
+    { key: 'requests', href: '/provider/requests', label: 'Requests', icon: 'document-text-outline', color: theme.colors.active, bg: theme.colors.active + '18' },
+    { key: 'verification', href: '/provider/verification', label: 'Verification', icon: 'shield-checkmark-outline', color: theme.colors.emerald, bg: theme.colors.emerald + '18' },
+    { key: 'payout-setup', href: '/provider/payout-setup', label: 'Payouts', icon: 'card-outline', color: '#6366F1', bg: '#6366F118' },
+    { key: 'withdraw', href: '/provider/withdraw', label: 'Withdraw', icon: 'cash-outline', color: theme.colors.warning, bg: theme.colors.warning + '18' },
+    { key: 'settings', href: '/provider/settings', label: 'Settings', icon: 'settings-outline', color: theme.colors.textMuted, bg: theme.colors.surfaceAlt },
+];
 
 // --- CONSTANTS ---
 const LANGUAGES = [
@@ -107,12 +129,18 @@ export default function ProviderProfileScreen() {
         setMySkills(prev => prev.includes(skill) ? prev.filter(s => s !== skill) : [...prev, skill]);
     };
 
-    if (loading) return <View style={styles.center}><ActivityIndicator color="#0F172A" /></View>;
+    if (loading) return (
+        <ScreenGradient>
+            <NavigationBar title={t('tabProfile') ?? 'Profile'} showBack={false} onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+            <View style={styles.center}><PulseLoader color={theme.colors.emerald} /></View>
+        </ScreenGradient>
+    );
     const isVerified = profile?.verification_status === 'verified';
 
     return (
-        <View style={styles.container}>
+        <ScreenGradient>
             <StatusBar barStyle="light-content" />
+            <NavigationBar title={t('tabProfile') ?? 'Profile'} showBack={false} onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
 
             {/* ============================================================
                 1. FIXED HEADER SECTION (STATIC)
@@ -186,9 +214,29 @@ export default function ProviderProfileScreen() {
                ============================================================ */}
             <ScrollView
                 style={styles.scrollableContent}
-                contentContainerStyle={{ paddingBottom: 100, paddingTop: 10 }}
+                contentContainerStyle={{ paddingBottom: 120, paddingTop: theme.spacing.md, paddingHorizontal: theme.spacing.lg }}
                 showsVerticalScrollIndicator={false}
             >
+                {/* COMMAND CENTER (Icon Grid) */}
+                <View style={styles.hubSection}>
+                    <Text style={styles.hubTitle}>Command Center</Text>
+                    <View style={styles.hubGrid}>
+                        {HUB_ITEMS.map((item) => (
+                            <TouchableOpacity
+                                key={item.key}
+                                style={styles.hubCard}
+                                onPress={() => { mediumFeedback(); router.push(item.href); }}
+                                activeOpacity={0.7}
+                            >
+                                <View style={[styles.hubIconWrap, { backgroundColor: item.bg }]}>
+                                    <Ionicons name={item.icon} size={26} color={item.color} />
+                                </View>
+                                <Text style={styles.hubLabel}>{item.label}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                </View>
+
                 {/* BIO */}
                 {profile?.bio ? (
                     <View style={styles.sectionContainer}>
@@ -201,9 +249,9 @@ export default function ProviderProfileScreen() {
                 <View style={styles.menuContainer}>
                     <Text style={styles.menuTitle}>{t('accountSettings')}</Text>
 
-                    <TouchableOpacity style={styles.menuItem} onPress={handleVerificationPress}>
-                        <View style={[styles.iconBox, {backgroundColor: '#ECFDF5'}]}>
-                            <Ionicons name="shield-checkmark" size={20} color="#10B981" />
+                    <TouchableOpacity style={styles.menuItem} onPress={() => { mediumFeedback(); handleVerificationPress(); }} activeOpacity={0.7}>
+                        <View style={[styles.iconBox, {backgroundColor: theme.colors.emerald + '18'}]}>
+                            <Ionicons name="shield-checkmark" size={20} color={theme.colors.emerald} />
                         </View>
                         <View style={{flex: 1}}>
                             <Text style={styles.menuText}>{t('verificationStatus')}</Text>
@@ -212,9 +260,9 @@ export default function ProviderProfileScreen() {
                         <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.menuItem} onPress={() => setSkillsModalVisible(true)}>
-                        <View style={[styles.iconBox, {backgroundColor: '#EFF6FF'}]}>
-                            <Ionicons name="hammer" size={20} color="#3B82F6" />
+                    <TouchableOpacity style={styles.menuItem} onPress={() => { mediumFeedback(); setSkillsModalVisible(true); }} activeOpacity={0.7}>
+                        <View style={[styles.iconBox, {backgroundColor: theme.colors.active + '18'}]}>
+                            <Ionicons name="hammer" size={20} color={theme.colors.active} />
                         </View>
                         <View style={{flex: 1}}>
                             <Text style={styles.menuText}>{t('mySkills')}</Text>
@@ -223,9 +271,9 @@ export default function ProviderProfileScreen() {
                         <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.menuItem} onPress={() => setLangModalVisible(true)}>
-                        <View style={[styles.iconBox, {backgroundColor: '#F1F5F9'}]}>
-                            <Ionicons name="globe-outline" size={20} color="#64748B" />
+                    <TouchableOpacity style={styles.menuItem} onPress={() => { mediumFeedback(); setLangModalVisible(true); }} activeOpacity={0.7}>
+                        <View style={[styles.iconBox, {backgroundColor: theme.colors.surfaceAlt}]}>
+                            <Ionicons name="globe-outline" size={20} color={theme.colors.textMuted} />
                         </View>
                         <View style={{flex: 1}}>
                             <Text style={styles.menuText}>Language</Text>
@@ -234,11 +282,11 @@ export default function ProviderProfileScreen() {
                         <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.menuItem} onPress={handleSignOut}>
-                        <View style={[styles.iconBox, {backgroundColor: '#FEF2F2'}]}>
-                            <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+                    <TouchableOpacity style={styles.menuItem} onPress={() => { mediumFeedback(); handleSignOut(); }} activeOpacity={0.7}>
+                        <View style={[styles.iconBox, {backgroundColor: theme.colors.danger + '15'}]}>
+                            <Ionicons name="log-out-outline" size={20} color={theme.colors.danger} />
                         </View>
-                        <Text style={[styles.menuText, { color: '#EF4444' }]}>{t('signOut')}</Text>
+                        <Text style={[styles.menuText, { color: theme.colors.danger }]}>{t('signOut')}</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -344,12 +392,11 @@ export default function ProviderProfileScreen() {
                 </KeyboardAvoidingView>
             </Modal>
 
-        </View>
+        </ScreenGradient>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
     // --- STATIC HEADER (FIXED) ---
@@ -364,7 +411,7 @@ const styles = StyleSheet.create({
     avatar: { width: 84, height: 84, borderRadius: 42, borderWidth: 3, borderColor: '#fff' },
     verifiedTick: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#3B82F6', width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#0F172A' },
 
-    name: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 2 },
+    name: { fontSize: 24, ...theme.typography.title, color: '#fff', marginBottom: 2 },
     role: { color: '#CBD5E1', fontSize: 14, fontWeight: '600', marginBottom: 6 },
     locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     locationText: { color: '#94A3B8', fontSize: 13, fontWeight: '500' },
@@ -379,14 +426,43 @@ const styles = StyleSheet.create({
     // --- SCROLLABLE AREA ---
     scrollableContent: { flex: 1, backgroundColor: '#F8FAFC' },
 
+    hubSection: { marginTop: theme.spacing.xl },
+    hubTitle: { fontSize: 13, ...theme.typography.label, color: theme.colors.textSubtle, marginBottom: theme.spacing.sm },
+    hubGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 12,
+    },
+    hubCard: {
+        width: '30%',
+        backgroundColor: theme.colors.surface,
+        borderRadius: theme.radii.md,
+        paddingVertical: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        ...theme.shadow.soft,
+        shadowOpacity: 0.06,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.border,
+    },
+    hubIconWrap: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    hubLabel: { fontSize: 12, fontWeight: '700', color: theme.colors.text },
+
     // SECTIONS
-    sectionContainer: { marginTop: 24, paddingHorizontal: 24 },
+    sectionContainer: { marginTop: 24 },
     sectionHeader: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
     bioText: { fontSize: 14, color: '#475569', lineHeight: 22 },
 
     // MENU
     menuContainer: { marginTop: 32, paddingHorizontal: 24 },
-    menuTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
+    menuTitle: { fontSize: 18, ...theme.typography.title, color: theme.colors.text, marginBottom: 16 },
     menuItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 5 },
     iconBox: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
     menuText: { fontSize: 16, fontWeight: '700', color: '#334155' },
@@ -419,8 +495,8 @@ const styles = StyleSheet.create({
     disabledInput: { backgroundColor: '#F1F5F9', color: '#94A3B8' },
     helperText: { fontSize: 12, color: '#F59E0B', marginTop: 6 },
 
-    mainBtn: { backgroundColor: '#0F172A', padding: 16, borderRadius: 16, alignItems: 'center', marginTop: 24 },
-    saveBtn: { backgroundColor: '#0F172A', padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 30 },
+    mainBtn: { backgroundColor: theme.colors.primary, height: 54, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 24 },
+    saveBtn: { backgroundColor: theme.colors.primary, height: 54, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 30 },
     saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
     btnTxt: { color: '#fff', fontWeight: '700', fontSize: 16 },
     closeBtn: { alignItems: 'center', marginTop: 16 },

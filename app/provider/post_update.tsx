@@ -4,20 +4,38 @@ import {
     Image, ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import NavigationBar from '@/components/NavigationBar';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { theme } from '@/constants/theme';
+import { enqueue } from '@/utils/offlineQueue';
+import { checkProjectGeofence } from '@/utils/geofence';
 
 export default function PostUpdateScreen() {
     const router = useRouter();
-    const { projectId } = useLocalSearchParams(); // Gets ID from the previous screen
+    const insets = useSafeAreaInsets();
+    const { projectId } = useLocalSearchParams();
     const { user } = useAuth();
 
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [image, setImage] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
+    const [project, setProject] = useState<{ latitude?: number; longitude?: number } | null>(null);
+
+    React.useEffect(() => {
+        if (!projectId) return;
+        supabase
+            .from('projects')
+            .select('latitude, longitude')
+            .eq('id', projectId)
+            .single()
+            .then(({ data }) => setProject(data ?? null));
+    }, [projectId]);
 
     // 1. Pick Image
     const pickImage = async () => {
@@ -36,7 +54,13 @@ export default function PostUpdateScreen() {
         });
 
         if (!result.canceled) {
-            setImage(result.assets[0].uri);
+            const uri = result.assets[0].uri;
+            const manipulated = await ImageManipulator.manipulateAsync(
+                uri,
+                [{ resize: { width: 800 } }],
+                { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
+            );
+            setImage(manipulated.uri);
         }
     };
 
@@ -46,19 +70,38 @@ export default function PostUpdateScreen() {
         if (!description.trim()) return Alert.alert("Missing Description", "Please describe the work done.");
         if (!user || !projectId) return;
 
+        const geofence = await checkProjectGeofence(
+            project?.latitude ?? undefined,
+            project?.longitude ?? undefined,
+            500
+        );
+        if (!geofence.allowed) {
+            Alert.alert("Location check", geofence.message ?? "You must be at the project site to post updates.", [
+                { text: "OK" },
+                { text: "Post anyway", onPress: () => submitUpdate() },
+            ]);
+            return;
+        }
+
+        await submitUpdate();
+    };
+
+    const submitUpdate = async () => {
+        if (!user || !projectId) return;
         setUploading(true);
         try {
-            // A. Image Upload (Mock for now, easy to switch to real Storage)
-            // In a real app, you would upload `image` to Supabase Storage here.
-            const mockImageUrl = image ? image : null;
+            let imageUrl: string | null = null;
+            if (image) {
+                const { uploadProjectMedia } = await import('@/lib/storage');
+                imageUrl = await uploadProjectMedia(image, projectId, `update_${user.id}_${Date.now()}.jpg`);
+            }
 
-            // B. Insert into Database
             const { error } = await supabase.from('project_updates').insert({
                 project_id: projectId,
                 provider_id: user.id,
                 title: title,
                 description: description,
-                image_url: mockImageUrl,
+                image_url: imageUrl,
                 update_type: 'general'
             });
 
@@ -68,7 +111,23 @@ export default function PostUpdateScreen() {
             router.back();
 
         } catch (e: any) {
-            Alert.alert("Error", e.message);
+            const isNetwork = /network|fetch|failed to fetch/i.test(e?.message ?? '');
+            if (isNetwork && user && projectId) {
+                await enqueue({
+                    type: 'project_update',
+                    payload: {
+                        project_id: String(projectId),
+                        provider_id: user.id,
+                        title: title.trim(),
+                        description: description.trim(),
+                        image_url: image ?? null,
+                    },
+                });
+                Alert.alert("Saved offline", "Update will sync when you're back online.");
+                router.back();
+            } else {
+                Alert.alert("Error", e?.message ?? "Something went wrong.");
+            }
         } finally {
             setUploading(false);
         }
@@ -77,9 +136,10 @@ export default function PostUpdateScreen() {
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.container}
+            style={[styles.container, { paddingBottom: insets.bottom }]}
         >
-            <ScrollView contentContainerStyle={styles.content}>
+            <NavigationBar title="Post Update" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+            <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120, paddingHorizontal: 20 }]}>
 
                 {/* Image Section */}
                 <Text style={styles.label}>Visual Proof</Text>

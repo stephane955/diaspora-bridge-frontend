@@ -14,7 +14,7 @@ export default function DiasporaLayout() {
         <Tabs
             tabBar={(props) => <GlassTabBar {...props} theme="light" />}
             screenOptions={{
-                headerShown: true,
+                headerShown: false,
                 headerStyle: { backgroundColor: theme.colors.primary },
                 headerTintColor: theme.colors.surface,
                 headerTitleStyle: { fontWeight: '700', fontSize: 18 },

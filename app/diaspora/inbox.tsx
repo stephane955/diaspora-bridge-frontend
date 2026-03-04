@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter, Stack } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import NotificationItem from '@/components/NotificationItem';
+import ScreenGradient from '@/components/ScreenGradient';
+import PulseLoader from '@/components/PulseLoader';
+import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
+import { mediumFeedback } from '@/utils/haptics';
 
 export default function InboxScreen() {
+    const router = useRouter();
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
     const [notifications, setNotifications] = useState<any[]>([]);
@@ -40,39 +47,57 @@ export default function InboxScreen() {
 
     useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
     useEffect(() => {
-        const t = setTimeout(() => { markAllAsRead(); }, 2000);
-        return () => clearTimeout(t);
+        const timer = setTimeout(() => { markAllAsRead(); }, 2000);
+        return () => clearTimeout(timer);
     }, [notifications]);
 
     const onRefresh = () => { setRefreshing(true); fetchNotifications(); };
 
+    const handleNotificationPress = async (item: any) => {
+        mediumFeedback();
+        if (!item.is_read) {
+            await supabase.from('notifications').update({ is_read: true }).eq('id', item.id);
+            setNotifications(prev => prev.map(n => (n.id === item.id ? { ...n, is_read: true } : n)));
+        }
+        if (item.type === 'chat' || item.type === 'new_message' || item.type === 'message') {
+            if (item.project_id) router.push(`/chat/${item.project_id}`);
+            return;
+        }
+        if (item.project_id) router.push(`/diaspora/project/${item.project_id}`);
+    };
+
     return (
-        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <ScreenGradient>
+            <Stack.Screen options={{ headerShown: false }} />
+            <StatusBar barStyle="light-content" />
+            <NavigationBar title="Inbox" showBack onMenuPress={() => router.replace('/diaspora')} />
             {loading ? (
                 <View style={styles.center}>
-                    <ActivityIndicator size="large" color={theme.colors.active} />
+                    <PulseLoader />
                 </View>
             ) : (
                 <FlatList
                     data={notifications}
                     keyExtractor={(item) => item.id.toString()}
-                    renderItem={({ item }) => <NotificationItem item={item} />}
-                    contentContainerStyle={{ paddingBottom: 120 }}
+                    renderItem={({ item }) => <NotificationItem item={item} onPress={() => handleNotificationPress(item)} />}
+                    contentContainerStyle={{ paddingTop: 20, paddingBottom: (insets?.bottom ?? 0) + 120, paddingHorizontal: theme.spacing.lg }}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                     ListEmptyComponent={
                         <View style={styles.empty}>
-                            <Text style={styles.emptyText}>No notifications yet.</Text>
+                            <Ionicons name="notifications-off-outline" size={56} color={theme.colors.border} />
+                            <Text style={styles.emptyTitle}>All caught up!</Text>
+                            <Text style={styles.emptyText}>No new notifications right now.</Text>
                         </View>
                     }
                 />
             )}
-        </View>
+        </ScreenGradient>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    empty: { padding: theme.spacing.xl, alignItems: 'center' },
-    emptyText: { color: theme.colors.textSubtle, fontSize: 16, fontWeight: '500' },
+    empty: { paddingTop: 80, alignItems: 'center', gap: 8 },
+    emptyTitle: { fontSize: 18, ...theme.typography.title, color: theme.colors.text },
+    emptyText: { color: theme.colors.textMuted, fontSize: 14 },
 });

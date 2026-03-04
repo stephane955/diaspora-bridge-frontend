@@ -11,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
 import { theme } from '@/constants/theme';
+import { mediumFeedback, lightFeedback } from '@/utils/haptics';
 
 const { width, height } = Dimensions.get('window');
 
@@ -22,22 +23,24 @@ export default function LoginScreen() {
     const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<'diaspora' | 'provider'>('diaspora');
 
-
     const handleClose = () => {
+        lightFeedback();
         router.replace('/');
+    };
+
+    const switchRole = (role: 'diaspora' | 'provider') => {
+        mediumFeedback();
+        setActiveTab(role);
     };
 
     const onLogin = async () => {
         if (!email || !password) return Alert.alert('Error', 'Please enter email and password.');
 
+        mediumFeedback();
         setLoading(true);
 
         try {
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
-            });
-
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
             if (error) throw error;
 
             const savedRole = data.user?.user_metadata?.role;
@@ -48,14 +51,13 @@ export default function LoginScreen() {
                 router.replace('/diaspora');
             } else {
                 if (activeTab === 'provider') {
-                    await supabase.auth.updateUser({ data: { role: 'provider' }});
+                    await supabase.auth.updateUser({ data: { role: 'provider' } });
                     router.replace('/provider');
                 } else {
-                    await supabase.auth.updateUser({ data: { role: 'client' }});
+                    await supabase.auth.updateUser({ data: { role: 'client' } });
                     router.replace('/diaspora');
                 }
             }
-
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Login failed.';
             Alert.alert('Login Failed', message);
@@ -71,17 +73,14 @@ export default function LoginScreen() {
         }
         const redirectUrl = Linking.createURL('reset-password');
         setLoading(true);
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: redirectUrl,
-        });
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: redirectUrl });
         setLoading(false);
 
-        if (error) {
-            Alert.alert("Error", error.message);
-        } else {
-            Alert.alert("Check Email", "Password reset link sent to " + email);
-        }
+        if (error) Alert.alert("Error", error.message);
+        else Alert.alert("Check Email", "Password reset link sent to " + email);
     };
+
+    const isDiaspora = activeTab === 'diaspora';
 
     return (
         <ImageBackground
@@ -89,10 +88,9 @@ export default function LoginScreen() {
             style={styles.background}
         >
             <LinearGradient
-                colors={['rgba(15, 23, 42, 0.6)', 'rgba(15, 23, 42, 0.9)']}
+                colors={['rgba(15, 23, 42, 0.5)', 'rgba(15, 23, 42, 0.92)']}
                 style={styles.gradient}
             >
-                {/* --- CLOSE BUTTON --- */}
                 <TouchableOpacity
                     style={[styles.closeBtn, { top: insets.top + 8 }]}
                     onPress={handleClose}
@@ -103,43 +101,52 @@ export default function LoginScreen() {
 
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
                     <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}>
-
-                        {/* BRANDING */}
                         <View style={styles.header}>
                             <View style={styles.logoCircle}>
-                                <Ionicons name="business" size={32} color="#0EA5E9" />
+                                <Ionicons name="business" size={32} color={theme.colors.active} />
                             </View>
-                            <Text style={styles.brandName}>Diaspora<Text style={{color: '#0EA5E9'}}>Bridge</Text></Text>
+                            <Text style={styles.brandName}>Diaspora<Text style={{ color: theme.colors.active }}>Bridge</Text></Text>
                             <Text style={styles.tagline}>Build home, from anywhere.</Text>
                         </View>
 
-                        {/* GLASS CARD */}
                         <View style={styles.card}>
-                            {/* PORTAL SWITCHER */}
-                            <View style={styles.tabContainer}>
+                            {/* Unmistakable Role Toggle */}
+                            <View style={styles.roleToggleContainer}>
                                 <TouchableOpacity
-                                    style={[styles.tab, activeTab === 'diaspora' && styles.activeTab]}
-                                    onPress={() => setActiveTab('diaspora')}
+                                    style={[styles.roleCard, isDiaspora && styles.roleCardActive]}
+                                    onPress={() => switchRole('diaspora')}
+                                    activeOpacity={0.7}
                                 >
-                                    <Text style={[styles.tabText, activeTab === 'diaspora' && styles.activeTabText]}>Client Portal</Text>
+                                    <View style={[styles.roleIconCircle, isDiaspora && styles.roleIconActive]}>
+                                        <Ionicons name="globe-outline" size={24} color={isDiaspora ? '#fff' : theme.colors.textMuted} />
+                                    </View>
+                                    <Text style={[styles.roleLabel, isDiaspora && styles.roleLabelActive]}>Client</Text>
+                                    <Text style={[styles.roleDesc, isDiaspora && styles.roleDescActive]}>I hire talent</Text>
+                                    {isDiaspora && <View style={styles.activeIndicator} />}
                                 </TouchableOpacity>
+
                                 <TouchableOpacity
-                                    style={[styles.tab, activeTab === 'provider' && styles.activeTab]}
-                                    onPress={() => setActiveTab('provider')}
+                                    style={[styles.roleCard, !isDiaspora && styles.roleCardActive]}
+                                    onPress={() => switchRole('provider')}
+                                    activeOpacity={0.7}
                                 >
-                                    <Text style={[styles.tabText, activeTab === 'provider' && styles.activeTabText]}>Provider Login</Text>
+                                    <View style={[styles.roleIconCircle, !isDiaspora && styles.roleIconActiveProvider]}>
+                                        <Ionicons name="construct-outline" size={24} color={!isDiaspora ? '#fff' : theme.colors.textMuted} />
+                                    </View>
+                                    <Text style={[styles.roleLabel, !isDiaspora && styles.roleLabelActive]}>Provider</Text>
+                                    <Text style={[styles.roleDesc, !isDiaspora && styles.roleDescActive]}>I find work</Text>
+                                    {!isDiaspora && <View style={[styles.activeIndicator, { backgroundColor: theme.colors.emerald }]} />}
                                 </TouchableOpacity>
                             </View>
 
-                            {/* Inputs */}
                             <View style={styles.inputContainer}>
                                 <Text style={styles.inputLabel}>Email</Text>
                                 <View style={styles.inputWrapper}>
-                                    <Ionicons name="mail-outline" size={20} color="#94A3B8" style={{marginLeft: 12}} />
+                                    <Ionicons name="mail-outline" size={20} color={theme.colors.textSubtle} style={{ marginLeft: 12 }} />
                                     <TextInput
                                         style={styles.input}
                                         placeholder="name@example.com"
-                                        placeholderTextColor="#94A3B8"
+                                        placeholderTextColor={theme.colors.textSubtle}
                                         autoCapitalize="none"
                                         value={email}
                                         onChangeText={setEmail}
@@ -150,11 +157,11 @@ export default function LoginScreen() {
                             <View style={styles.inputContainer}>
                                 <Text style={styles.inputLabel}>Password</Text>
                                 <View style={styles.inputWrapper}>
-                                    <Ionicons name="lock-closed-outline" size={20} color="#94A3B8" style={{marginLeft: 12}} />
+                                    <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textSubtle} style={{ marginLeft: 12 }} />
                                     <TextInput
                                         style={styles.input}
                                         placeholder="••••••••"
-                                        placeholderTextColor="#94A3B8"
+                                        placeholderTextColor={theme.colors.textSubtle}
                                         secureTextEntry
                                         value={password}
                                         onChangeText={setPassword}
@@ -162,32 +169,29 @@ export default function LoginScreen() {
                                 </View>
                             </View>
 
-                            <TouchableOpacity
-                                onPress={handleResetPassword}
-                                style={styles.forgotBtn}
-                            >
+                            <TouchableOpacity onPress={handleResetPassword} style={styles.forgotBtn} activeOpacity={0.7}>
                                 <Text style={styles.forgotText}>Forgot Password?</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
-                                style={styles.loginBtn}
+                                style={[styles.loginBtn, !isDiaspora && styles.loginBtnProvider]}
                                 onPress={onLogin}
                                 disabled={loading}
+                                activeOpacity={0.7}
                             >
                                 {loading ? (
                                     <ActivityIndicator color="#fff" />
                                 ) : (
                                     <Text style={styles.loginBtnText}>
-                                        {activeTab === 'diaspora' ? 'Enter Dashboard' : 'Access Work Hub'}
+                                        {isDiaspora ? 'Enter Dashboard' : 'Access Work Hub'}
                                     </Text>
                                 )}
                             </TouchableOpacity>
 
-                            <TouchableOpacity onPress={() => router.push('/signup')} style={{ marginTop: 20 }}>
+                            <TouchableOpacity onPress={() => router.push('/signup')} style={{ marginTop: 20 }} activeOpacity={0.7}>
                                 <Text style={styles.footerText}>New here? <Text style={styles.link}>Create Account</Text></Text>
                             </TouchableOpacity>
                         </View>
-
                     </ScrollView>
                 </KeyboardAvoidingView>
             </LinearGradient>
@@ -196,11 +200,10 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-    background: { flex: 1, width: width, height: height },
+    background: { flex: 1, width, height },
     gradient: { flex: 1, justifyContent: 'center' },
     scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 20 },
 
-    // CLOSE BUTTON STYLE
     closeBtn: {
         position: 'absolute',
         top: 60,
@@ -209,45 +212,88 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: 'rgba(0,0,0,0.3)', // Darker background for visibility
+        backgroundColor: 'rgba(0,0,0,0.3)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.2)',
         alignItems: 'center',
         justifyContent: 'center',
     },
 
-    header: { alignItems: 'center', marginBottom: 40 },
+    header: { alignItems: 'center', marginBottom: 32 },
     logoCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-    brandName: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -1 },
-    tagline: { color: '#94A3B8', fontSize: 16, marginTop: 5 },
+    brandName: { fontSize: 32, ...theme.typography.title, color: '#fff' },
+    tagline: { color: theme.colors.textSubtle, fontSize: 16, marginTop: 5 },
 
     card: {
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        borderRadius: 24,
+        backgroundColor: 'rgba(255, 255, 255, 0.97)',
+        borderRadius: theme.radii.xl,
         padding: 24,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 20 },
+        ...theme.shadow.soft,
         shadowOpacity: 0.3,
         shadowRadius: 30,
-        elevation: 10
     },
 
-    tabContainer: { flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 12, padding: 4, marginBottom: 25 },
-    tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
-    activeTab: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-    tabText: { fontWeight: '600', color: '#64748B', fontSize: 13 },
-    activeTabText: { color: '#0F172A', fontWeight: '700' },
+    roleToggleContainer: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+    roleCard: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: 16,
+        paddingHorizontal: 12,
+        borderRadius: theme.radii.md,
+        backgroundColor: theme.colors.surfaceAlt,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    roleCardActive: {
+        backgroundColor: '#fff',
+        borderColor: theme.colors.active,
+        ...theme.shadow.glow,
+    },
+    roleIconCircle: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: theme.colors.surfaceAlt,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 8,
+    },
+    roleIconActive: { backgroundColor: theme.colors.active },
+    roleIconActiveProvider: { backgroundColor: theme.colors.emerald },
+    roleLabel: { fontSize: 15, fontWeight: '800', color: theme.colors.textMuted },
+    roleLabelActive: { color: theme.colors.text },
+    roleDesc: { fontSize: 11, color: theme.colors.textSubtle, marginTop: 2 },
+    roleDescActive: { color: theme.colors.textMuted },
+    activeIndicator: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: theme.colors.active,
+        marginTop: 8,
+    },
 
     inputContainer: { marginBottom: 16 },
-    inputLabel: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6, textTransform: 'uppercase' },
-    inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, height: 50 },
-    input: { flex: 1, height: '100%', paddingHorizontal: 12, fontSize: 16, color: '#0F172A' },
+    inputLabel: { fontSize: 12, ...theme.typography.label, color: '#475569', marginBottom: 6 },
+    inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.background, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radii.sm, height: 50 },
+    input: { flex: 1, height: '100%', paddingHorizontal: 12, fontSize: 16, color: theme.colors.text },
 
-    loginBtn: { height: 54, backgroundColor: '#0F172A', borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 10, shadowColor: '#0EA5E9', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 4 }, shadowRadius: 10 },
+    loginBtn: {
+        height: 54,
+        backgroundColor: theme.colors.primary,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 10,
+        ...theme.shadow.glow,
+    },
+    loginBtnProvider: {
+        backgroundColor: theme.colors.emerald,
+        shadowColor: theme.colors.emerald,
+    },
     loginBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-    footerText: { textAlign: 'center', color: '#64748B', fontSize: 14 },
-    link: { color: '#0EA5E9', fontWeight: '700' },
+    footerText: { textAlign: 'center', color: theme.colors.textMuted, fontSize: 14 },
+    link: { color: theme.colors.active, fontWeight: '700' },
     forgotBtn: { alignSelf: 'flex-end', marginBottom: 24, marginTop: 8 },
-    forgotText: { color: '#64748B', fontSize: 14, fontWeight: '600' },
+    forgotText: { color: theme.colors.textMuted, fontSize: 14, fontWeight: '600' },
 });

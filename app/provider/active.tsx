@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
 
 export default function ActiveSites() {
@@ -95,9 +96,18 @@ export default function ActiveSites() {
                     <Text style={styles.nextTaskLabel}>{t('nextTask') || "NEXT TASK"}</Text>
                     <Text style={styles.nextTaskValue}>{t('uploadProof') || "Upload Milestone Proof"}</Text>
                 </View>
-                <View style={styles.enterBtn}>
-                    <Text style={styles.enterText}>{t('open') || "Open"}</Text>
-                    <Ionicons name="arrow-forward" size={16} color="#fff" />
+                <View style={styles.actionBarBtns}>
+                    <TouchableOpacity
+                        style={styles.receiptBtn}
+                        onPress={() => router.push(`/provider/add-receipt?projectId=${item.id}`)}
+                    >
+                        <Ionicons name="receipt-outline" size={16} color="#fff" />
+                        <Text style={styles.enterText}>Receipt</Text>
+                    </TouchableOpacity>
+                    <View style={styles.enterBtn}>
+                        <Text style={styles.enterText}>{t('open') || "Open"}</Text>
+                        <Ionicons name="arrow-forward" size={16} color="#fff" />
+                    </View>
                 </View>
             </View>
         </TouchableOpacity>
@@ -138,7 +148,7 @@ export default function ActiveSites() {
 
     return (
         <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            {/* --- NEW HEADER --- */}
+            <NavigationBar title={t('tabActive') ?? 'Sites'} showBack={false} onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>{t('sitesTitle') || "My Sites"}</Text>
 
@@ -172,7 +182,7 @@ export default function ActiveSites() {
                     data={activeTab === 'active' ? projects : applications}
                     keyExtractor={(item) => item.id.toString()}
                     renderItem={activeTab === 'active' ? renderActive : renderApplied}
-                    contentContainerStyle={styles.listContent}
+                    contentContainerStyle={[styles.listContent, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
@@ -249,7 +259,7 @@ const styles = StyleSheet.create({
         color: '#0F172A'
     },
 
-    listContent: { padding: 20, paddingBottom: 100 },
+    listContent: { paddingTop: theme.spacing.md },
 
     // --- ACTIVE CARD STYLES ---
     activeCard: { backgroundColor: '#fff', borderRadius: 20, marginBottom: 20, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
@@ -269,6 +279,8 @@ const styles = StyleSheet.create({
     actionLeft: { gap: 2 },
     nextTaskLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8' },
     nextTaskValue: { fontSize: 13, fontWeight: '600', color: '#334155' },
+    actionBarBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    receiptBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.emerald, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, gap: 6 },
     enterBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, gap: 6 },
     enterText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 

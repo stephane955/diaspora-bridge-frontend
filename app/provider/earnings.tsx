@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    RefreshControl, ActivityIndicator, StatusBar
+    RefreshControl, StatusBar
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,7 +10,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import NavigationBar from '@/components/NavigationBar';
+import ScreenGradient from '@/components/ScreenGradient';
+import PulseLoader from '@/components/PulseLoader';
 import { theme } from '@/constants/theme';
+import { successFeedback, mediumFeedback } from '@/utils/haptics';
 
 type Transaction = {
     id: string;
@@ -32,11 +36,9 @@ export default function ProviderEarningsScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    // --- FETCH DATA ---
     const fetchEarnings = useCallback(async () => {
         if (!user) return;
         setLoading(true);
-
         try {
             const { data, error } = await supabase
                 .from('transactions')
@@ -45,10 +47,8 @@ export default function ProviderEarningsScreen() {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-
             if (data) {
                 setTransactions(data as any);
-                // Calculate balance (simple sum for now)
                 const total = data.reduce((acc, curr) => acc + Number(curr.amount), 0);
                 setBalance(total);
             }
@@ -62,131 +62,200 @@ export default function ProviderEarningsScreen() {
 
     useFocusEffect(useCallback(() => { fetchEarnings(); }, [fetchEarnings]));
 
-    // --- RENDER ---
+    // Live: when client releases escrow, project_expenses or transactions get new rows for this provider — refetch
+    useEffect(() => {
+        if (!user?.id) return;
+        const channel = supabase
+            .channel(`earnings:${user.id}`)
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'project_expenses', filter: `provider_id=eq.${user.id}` },
+                () => { fetchEarnings(); }
+            )
+            .subscribe();
+        return () => supabase.removeChannel(channel);
+    }, [user?.id, fetchEarnings]);
+
+    if (loading) {
+        return (
+            <ScreenGradient>
+                <NavigationBar title={t('walletTitle') ?? 'Earnings'} showBack={false} onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <PulseLoader color={theme.colors.emerald} />
+                </View>
+            </ScreenGradient>
+        );
+    }
+
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+        <ScreenGradient>
             <StatusBar barStyle="light-content" />
+            <NavigationBar title={t('walletTitle') ?? 'Earnings'} showBack={false} onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
 
-            {/* --- PREMIUM HEADER --- */}
-            <LinearGradient colors={[theme.colors.primary, theme.colors.primarySoft]} style={styles.header}>
-                <Text style={styles.headerTitle}>{t('walletTitle') || "My Earnings"}</Text>
-
-                <View style={styles.balanceRow}>
-                    <View>
-                        <Text style={styles.balanceLabel}>{t('totalBalance') || "TOTAL BALANCE"}</Text>
-                        <Text style={styles.balanceValue}>{balance.toLocaleString()} CFA</Text>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchEarnings(); }} />}
+            >
+                {/* Mesh Gradient Balance Card */}
+                <LinearGradient
+                    colors={[theme.colors.emerald, '#059669', '#047857']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.balanceCard}
+                >
+                    <View style={styles.cardPattern}>
+                        <View style={[styles.patternCircle, { top: -30, right: -10 }]} />
+                        <View style={[styles.patternCircle, { bottom: -20, left: -20, width: 100, height: 100 }]} />
                     </View>
 
-                    {/* WITHDRAW BUTTON with MOMO Branding */}
-                    <TouchableOpacity
-                        style={styles.withdrawBtn}
-                        onPress={() => router.push('/provider/payout-setup')}
-                    >
-                        <View>
-                            <Text style={styles.withdrawText}>{t('withdraw') || "Withdraw"}</Text>
-                            {/* LOCAL TRUST FACTOR: */}
-                            <Text style={styles.momoText}>MOMO / OM</Text>
-                        </View>
-                        <Ionicons name="arrow-forward" size={16} color={theme.colors.text} />
-                    </TouchableOpacity>
-                </View>
+                    <Text style={styles.balanceLabel}>{t('totalBalance') || "TOTAL BALANCE"}</Text>
+                    <Text style={styles.balanceValue}>{balance.toLocaleString()} CFA</Text>
 
-                {/* VISUAL CHART (Aesthetic only) */}
-                <View style={styles.chartContainer}>
-                    {[30, 50, 40, 70, 50, 80, 60, 90, 40].map((h, i) => (
-                        <View key={i} style={styles.chartBarWrapper}>
-                            <View style={[styles.chartBar, { height: `${h}%`, opacity: i === 7 ? 1 : 0.4 }]} />
-                        </View>
-                    ))}
-                </View>
-            </LinearGradient>
+                    <View style={styles.cardActions}>
+                        <TouchableOpacity
+                            style={styles.cardBtn}
+                            onPress={() => { successFeedback(); router.push('/provider/withdraw'); }}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons name="arrow-up-circle" size={18} color={theme.colors.emerald} />
+                            <Text style={styles.cardBtnText}>{t('withdraw') || "Withdraw"}</Text>
+                        </TouchableOpacity>
 
-            {/* --- TRANSACTION LIST --- */}
-            <View style={styles.body}>
+                        <TouchableOpacity
+                            style={styles.cardBtn}
+                            onPress={() => { mediumFeedback(); router.push('/provider/payout-setup'); }}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons name="card-outline" size={18} color={theme.colors.emerald} />
+                            <Text style={styles.cardBtnText}>Payout Setup</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Mini Chart */}
+                    <View style={styles.chartContainer}>
+                        {[30, 50, 40, 70, 50, 80, 60, 90, 40].map((h, i) => (
+                            <View key={i} style={styles.chartBarWrapper}>
+                                <View style={[styles.chartBar, { height: `${h}%`, opacity: i === 7 ? 1 : 0.35 }]} />
+                            </View>
+                        ))}
+                    </View>
+                </LinearGradient>
+
+                {/* Transaction History */}
                 <Text style={styles.sectionTitle}>{t('history') || "Transaction History"}</Text>
 
-                {loading ? (
-                    <ActivityIndicator color={theme.colors.text} style={{ marginTop: 20 }} />
+                {transactions.length === 0 ? (
+                    <View style={styles.emptyState}>
+                        <Ionicons name="wallet-outline" size={56} color={theme.colors.border} />
+                        <Text style={styles.emptyTitle}>{t('noEarnings') || "No earnings yet"}</Text>
+                        <Text style={styles.emptySub}>{t('completeJobs') || "Complete jobs to see transactions."}</Text>
+                        <TouchableOpacity
+                            style={styles.emptyBtn}
+                            onPress={() => { mediumFeedback(); router.push('/provider/market'); }}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.emptyBtnText}>Browse Available Jobs</Text>
+                        </TouchableOpacity>
+                    </View>
                 ) : (
-                    <ScrollView
-                        showsVerticalScrollIndicator={false}
-                        contentContainerStyle={{ paddingBottom: 100 }}
-                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchEarnings(); }} />}
-                    >
-                        {transactions.length === 0 ? (
-                            <View style={styles.emptyState}>
-                                <Ionicons name="wallet-outline" size={48} color={theme.colors.textSubtle} />
-                                <Text style={styles.emptyText}>{t('noEarnings') || "No earnings yet."}</Text>
-                                <Text style={styles.emptySub}>{t('completeJobs') || "Complete jobs to see transactions."}</Text>
+                    transactions.map((txn) => {
+                        const isIncome = txn.amount > 0;
+                        return (
+                            <View key={txn.id} style={styles.card}>
+                                <View style={[styles.iconBox, isIncome ? styles.bgGreen : styles.bgRed]}>
+                                    <Ionicons
+                                        name={isIncome ? "arrow-down" : "arrow-up"}
+                                        size={20}
+                                        color={isIncome ? theme.colors.success : theme.colors.danger}
+                                    />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.cardTitle}>
+                                        {txn.projects?.title || txn.description || "Transaction"}
+                                    </Text>
+                                    <Text style={styles.cardDate}>
+                                        {new Date(txn.created_at).toLocaleDateString(undefined, {
+                                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                        })}
+                                    </Text>
+                                </View>
+                                <Text style={[styles.amount, isIncome ? styles.textGreen : styles.textRed]}>
+                                    {isIncome ? "+" : ""}{Number(txn.amount).toLocaleString()}
+                                </Text>
                             </View>
-                        ) : (
-                            transactions.map((t) => {
-                                const isIncome = t.amount > 0;
-                                return (
-                                    <View key={t.id} style={styles.card}>
-                                        <View style={[styles.iconBox, isIncome ? styles.bgGreen : styles.bgRed]}>
-                                            <Ionicons
-                                                name={isIncome ? "arrow-down" : "arrow-up"}
-                                                size={20}
-                                                color={isIncome ? theme.colors.success : theme.colors.danger}
-                                            />
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.cardTitle}>
-                                                {t.projects?.title || t.description || "Transaction"}
-                                            </Text>
-                                            <Text style={styles.cardDate}>
-                                                {new Date(t.created_at).toLocaleDateString(undefined, {
-                                                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                                                })}
-                                            </Text>
-                                        </View>
-                                        <Text style={[styles.amount, isIncome ? styles.textGreen : styles.textRed]}>
-                                            {isIncome ? "+" : ""}{Number(t.amount).toLocaleString()}
-                                        </Text>
-                                    </View>
-                                );
-                            })
-                        )}
-                    </ScrollView>
+                        );
+                    })
                 )}
-            </View>
-        </View>
+            </ScrollView>
+        </ScreenGradient>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
+    scrollContent: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: 120 },
 
-    header: {
-        paddingTop: 70,
-        paddingBottom: theme.spacing.lg,
-        paddingHorizontal: theme.spacing.xl,
-        borderBottomLeftRadius: 32,
-        borderBottomRightRadius: 32,
-        ...theme.shadow.soft,
+    balanceCard: {
+        borderRadius: theme.radii.xl,
+        padding: 24,
+        marginBottom: 28,
+        overflow: 'hidden',
+        shadowColor: theme.colors.emerald,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 16,
+        elevation: 8,
     },
-    headerTitle: { color: theme.colors.surface, fontSize: 18, fontWeight: '700', marginBottom: theme.spacing.xl, textAlign: 'center', opacity: 0.9 },
+    cardPattern: { ...StyleSheet.absoluteFillObject },
+    patternCircle: {
+        position: 'absolute',
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    balanceLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, ...theme.typography.label, marginBottom: 4 },
+    balanceValue: { color: '#fff', fontSize: 36, ...theme.typography.title },
 
-    balanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
-    balanceLabel: { color: theme.colors.textSubtle, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 4, textTransform: 'uppercase' },
-    balanceValue: { color: theme.colors.surface, fontSize: 32, fontWeight: '800' },
+    cardActions: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 20,
+        marginBottom: 20,
+    },
+    cardBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: '#fff',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: theme.radii.pill,
+    },
+    cardBtnText: { color: theme.colors.text, fontWeight: '800', fontSize: 13 },
 
-    withdrawBtn: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, backgroundColor: theme.colors.surface, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radii.pill },
-    withdrawText: { color: theme.colors.text, fontWeight: '800', fontSize: 13 },
-    momoText: { fontSize: 8, color: theme.colors.warning, fontWeight: '800', letterSpacing: 0.5 },
-
-    chartContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 50, paddingHorizontal: theme.spacing.sm },
+    chartContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 40 },
     chartBarWrapper: { height: '100%', justifyContent: 'flex-end', width: 6 },
-    chartBar: { width: '100%', backgroundColor: theme.colors.surface, borderRadius: 4 },
+    chartBar: { width: '100%', backgroundColor: '#fff', borderRadius: 3 },
 
-    body: { flex: 1, padding: theme.spacing.xl },
-    sectionTitle: { fontSize: 18, fontWeight: '800', color: theme.colors.text, marginBottom: theme.spacing.md },
+    sectionTitle: { fontSize: 18, ...theme.typography.title, color: theme.colors.text, marginBottom: theme.spacing.md },
 
-    card: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.surface, padding: theme.spacing.md, borderRadius: theme.radii.md, marginBottom: theme.spacing.sm, gap: theme.spacing.md, ...theme.shadow.soft, borderWidth: 1, borderColor: theme.colors.border },
+    card: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.surface,
+        padding: theme.spacing.md,
+        borderRadius: theme.radii.md,
+        marginBottom: theme.spacing.sm,
+        gap: theme.spacing.md,
+        ...theme.shadow.soft,
+        shadowOpacity: 0.05,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.border,
+    },
     iconBox: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-    bgGreen: { backgroundColor: theme.colors.success + '25' },
-    bgRed: { backgroundColor: theme.colors.danger + '18' },
+    bgGreen: { backgroundColor: theme.colors.success + '20' },
+    bgRed: { backgroundColor: theme.colors.danger + '15' },
 
     cardTitle: { fontSize: 15, fontWeight: '700', color: theme.colors.text },
     cardDate: { fontSize: 12, color: theme.colors.textMuted, marginTop: 2 },
@@ -194,7 +263,15 @@ const styles = StyleSheet.create({
     textGreen: { color: theme.colors.success },
     textRed: { color: theme.colors.danger },
 
-    emptyState: { alignItems: 'center', marginTop: 60, gap: theme.spacing.sm },
-    emptyText: { fontSize: 18, fontWeight: '700', color: theme.colors.text },
-    emptySub: { color: theme.colors.textMuted },
+    emptyState: { alignItems: 'center', paddingTop: 60, gap: 8 },
+    emptyTitle: { fontSize: 18, ...theme.typography.title, color: theme.colors.text },
+    emptySub: { color: theme.colors.textMuted, fontSize: 14 },
+    emptyBtn: {
+        marginTop: 16,
+        backgroundColor: theme.colors.emerald,
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: theme.radii.pill,
+    },
+    emptyBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });

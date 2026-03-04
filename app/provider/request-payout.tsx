@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
+import NavigationBar from '@/components/NavigationBar';
 import { useAuth } from '@/context/AuthContext';
 
 export default function RequestPayout() {
+    const insets = useSafeAreaInsets();
     const { projectId } = useLocalSearchParams();
     const { user } = useAuth();
     const router = useRouter();
@@ -30,22 +33,26 @@ export default function RequestPayout() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+            <NavigationBar title="Request Payout" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+            <View style={styles.form}>
             <Text style={styles.title}>Request Payment</Text>
             <Text style={styles.label}>Amount (CFA)</Text>
             <TextInput style={styles.input} keyboardType="numeric" value={amount} onChangeText={setAmount} placeholder="e.g. 500000" />
             <Text style={styles.label}>Description</Text>
             <TextInput style={styles.input} value={desc} onChangeText={setDesc} placeholder="e.g. Foundation completion" />
             <TouchableOpacity style={styles.btn} onPress={handleSubmit}><Text style={styles.btnText}>Send Request</Text></TouchableOpacity>
+            </View>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 20, paddingTop: 60, backgroundColor: '#fff' },
+    container: { flex: 1, backgroundColor: '#fff' },
+    form: { paddingHorizontal: 20, paddingTop: 16 },
     title: { fontSize: 24, fontWeight: '800', marginBottom: 30 },
     label: { fontWeight: '700', marginBottom: 8 },
     input: { borderWidth: 1, borderColor: '#E2E8F0', padding: 16, borderRadius: 12, marginBottom: 20, fontSize: 16 },
-    btn: { backgroundColor: '#0F172A', padding: 18, borderRadius: 14, alignItems: 'center' },
+    btn: { backgroundColor: '#0F172A', height: 54, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
     btnText: { color: '#fff', fontWeight: '700', fontSize: 16 }
 });

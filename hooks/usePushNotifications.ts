@@ -6,55 +6,60 @@ import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 
+export type PushNotificationHandler = (data: Record<string, unknown>) => void;
+
 Notifications.setNotificationHandler({
     handleNotification: async (notification) => ({
         shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: false,
-        shouldShowBanner: true, // Required by new Expo types
-        shouldShowList: true,   // Required by new Expo types
+        shouldShowBanner: true,
+        shouldShowList: true,
     }),
 });
 
-export function usePushNotifications() {
+export function usePushNotifications(onNotificationPress?: PushNotificationHandler) {
     const { user } = useAuth();
     const [expoPushToken, setExpoPushToken] = useState<string | undefined>();
+    const handlerRef = useRef(onNotificationPress);
+    handlerRef.current = onNotificationPress;
 
-    // Use specific types for the listeners
-    // Initialize with 'undefined' to satisfy TypeScript
     const notificationListener = useRef<Notifications.Subscription | undefined>(undefined);
     const responseListener = useRef<Notifications.Subscription | undefined>(undefined);
 
     useEffect(() => {
         if (!user) return;
 
+        // Action categories for "Approve" / "View Proof" on lock screen
+        Notifications.setNotificationCategoryAsync('MILESTONE_APPROVAL', [
+            { identifier: 'APPROVE', buttonTitle: 'Approve', options: { isDestructive: false, isAuthenticationRequired: false } },
+            { identifier: 'VIEW_PROOF', buttonTitle: 'View Proof', options: { isDestructive: false, isAuthenticationRequired: false } },
+        ]).catch(() => {});
+
         registerForPushNotificationsAsync().then(token => {
             setExpoPushToken(token);
-            if (token) {
-                // SAVE TOKEN TO SUPABASE
-                updateProfileToken(user.id, token);
+            if (token) updateProfileToken(user.id, token);
+        });
+
+        notificationListener.current = Notifications.addNotificationReceivedListener(() => {});
+
+        responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+            const data = (response.notification.request.content.data || {}) as Record<string, unknown>;
+            const projectId = (data.project_id ?? data.chat_id ?? data.id) as string | undefined;
+            const actionIdentifier = response.actionIdentifier || data.actionIdentifier;
+            if (projectId && handlerRef.current) {
+                handlerRef.current({
+                    ...data,
+                    project_id: projectId,
+                    actionIdentifier,
+                    openApproval: actionIdentifier === 'APPROVE' || actionIdentifier === 'VIEW_PROOF' || data.openApproval,
+                });
             }
-        });
-
-        // Listen for incoming notifications
-        notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-            console.log("Notification Received:", notification);
-        });
-
-        // Listen for user tapping a notification
-        responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-            console.log("Notification Tapped:", response);
-            // Future: Navigate to Chat Screen here
         });
 
         return () => {
-            // FIX 2: Use .remove() directly on the subscription object
-            if (notificationListener.current) {
-                notificationListener.current.remove();
-            }
-            if (responseListener.current) {
-                responseListener.current.remove();
-            }
+            notificationListener.current?.remove();
+            responseListener.current?.remove();
         };
     }, [user]);
 
@@ -96,16 +101,15 @@ async function registerForPushNotificationsAsync() {
             return;
         }
 
-        // Get the token specifically for your project ID
-        try {
-            const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-
-            // Fallback or explicit check
-            token = (await Notifications.getExpoPushTokenAsync({
-                projectId: projectId,
-            })).data;
-        } catch (e) {
-            console.log("Error fetching token:", e);
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+        if (!projectId) {
+            console.warn('Push token skipped: Add extra.eas.projectId to app.json for push notifications.');
+        } else {
+            try {
+                token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+            } catch (e) {
+                console.warn('Error fetching push token:', e);
+            }
         }
     } else {
         console.log('Must use physical device for Push Notifications');

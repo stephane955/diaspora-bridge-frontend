@@ -4,12 +4,18 @@ import {
     Alert, ActivityIndicator, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '@/lib/supabase'; //
-import { useAuth } from '@/context/AuthContext'; //
+import NavigationBar from '@/components/NavigationBar';
+import VaultGate from '@/components/VaultGate';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
+import { theme } from '@/constants/theme';
+import { validateCarrierNumber } from '@/utils/carrierValidation';
 
 export default function WithdrawScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const { user } = useAuth();
 
     const [amount, setAmount] = useState('');
@@ -20,6 +26,8 @@ export default function WithdrawScreen() {
     const handleConfirm = async () => {
         if (!amount || !phone) return Alert.alert("Missing Info", "Enter amount and phone number.");
         if (isNaN(Number(amount)) || Number(amount) < 500) return Alert.alert("Invalid Amount", "Minimum withdrawal is 500 CFA.");
+        const carrierCheck = validateCarrierNumber(method, phone);
+        if (!carrierCheck.valid) return Alert.alert("Invalid Number", carrierCheck.error);
 
         setLoading(true);
 
@@ -43,8 +51,10 @@ export default function WithdrawScreen() {
     };
 
     return (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
-            <View style={styles.content}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.container, { paddingBottom: insets.bottom }]}>
+            <NavigationBar title="Withdraw" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+            <VaultGate promptMessage="Unlock to withdraw funds." lockOnBlur>
+            <View style={[styles.content, { paddingHorizontal: 20, paddingBottom: 120 }]}>
                 <Text style={styles.label}>Select Method</Text>
                 <View style={styles.methodRow}>
                     <TouchableOpacity
@@ -98,6 +108,7 @@ export default function WithdrawScreen() {
                     )}
                 </TouchableOpacity>
             </View>
+            </VaultGate>
         </KeyboardAvoidingView>
     );
 }

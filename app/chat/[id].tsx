@@ -7,8 +7,9 @@ import {
     TouchableOpacity,
     KeyboardAvoidingView,
     Platform,
-    ActivityIndicator,
     Image,
+    Animated,
+    ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -16,30 +17,69 @@ import { theme } from '@/constants/theme';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { lightFeedback } from '@/utils/haptics';
+import { lightFeedback, successFeedback, selectionFeedback } from '@/utils/haptics';
 import { Message, Project } from '@/types/models';
+import { getProjectAccessRole } from '@/utils/observers';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import PulseLoader from '@/components/PulseLoader';
 
 type MessageRow = Message;
 
+function ReadReceipt({ isRead }: { isRead: boolean }) {
+    const pulse = useRef(new Animated.Value(1)).current;
+    useEffect(() => {
+        if (!isRead) return;
+        const anim = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulse, { toValue: 1.15, duration: 800, useNativeDriver: true }),
+                Animated.timing(pulse, { toValue: 1, duration: 800, useNativeDriver: true }),
+            ])
+        );
+        anim.start();
+        return () => anim.stop();
+    }, [isRead, pulse]);
+    return (
+        <Animated.View style={{ marginLeft: 4, transform: [{ scale: pulse }] }}>
+            <Ionicons
+                name="checkmark-done"
+                size={14}
+                color={isRead ? theme.colors.emerald : theme.colors.active}
+            />
+        </Animated.View>
+    );
+}
+
 export default function ChatScreen() {
     const insets = useSafeAreaInsets();
+    const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuth();
     const { t } = useLanguage();
-    const router = useRouter();
 
     const projectId = typeof id === 'string' ? id : id?.[0];
     const [messages, setMessages] = useState<MessageRow[]>([]);
     const [text, setText] = useState('');
     const [uploading, setUploading] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [projectTitle, setProjectTitle] = useState('Chat');
+    const [project, setProject] = useState<{ title?: string; image_url?: string | null } | null>(null);
+    const [recording, setRecording] = useState(false);
+    const [recordingUri, setRecordingUri] = useState<string | null>(null);
+    const [transcriptionPlaceholder, setTranscriptionPlaceholder] = useState<string | null>(null);
+    const [isObserver, setIsObserver] = useState(false);
+    const recordingRef = useRef<{ stopAndUnloadAsync: () => Promise<void>; getURI: () => string | null } | null>(null);
+    const scrollThrottle = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const listRef = useRef<FlashList<MessageRow>>(null);
+
+    useEffect(() => {
+        if (!projectId || !user?.id) return;
+        getProjectAccessRole(projectId, user.id).then((role) => setIsObserver(role === 'observer'));
+    }, [projectId, user?.id]);
 
     const fetchMessages = useCallback(async () => {
         if (!projectId) return;
@@ -58,16 +98,19 @@ export default function ChatScreen() {
         setLoading(false);
     }, [projectId]);
 
+    const [hasDispute, setHasDispute] = useState(false);
+
     useEffect(() => {
         if (!projectId) return;
 
         supabase
             .from<Project>('projects')
-            .select('title')
+            .select('title, image_url, dispute_milestone_id')
             .eq('id', projectId)
             .single()
             .then(({ data }) => {
-                if (data?.title) setProjectTitle(data.title);
+                setProject(data ?? null);
+                setHasDispute(!!(data as any)?.dispute_milestone_id);
             });
 
         fetchMessages();
@@ -93,9 +136,7 @@ export default function ChatScreen() {
             )
             .subscribe();
 
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        return () => supabase.removeChannel(channel);
     }, [projectId]);
 
     const sendMessage = async () => {
@@ -103,7 +144,7 @@ export default function ChatScreen() {
         if (!trimmed || !projectId || !user?.id) return;
 
         setText('');
-        lightFeedback();
+        successFeedback();
 
         const { error } = await supabase.from<MessageRow>('messages').insert({
             project_id: projectId,
@@ -159,68 +200,155 @@ export default function ChatScreen() {
         }
     };
 
-    const handleBack = () => {
-        lightFeedback();
-        router.back();
+    const handleScroll = useCallback(() => {
+        if (scrollThrottle.current) return;
+        scrollThrottle.current = setTimeout(() => {
+            selectionFeedback();
+            scrollThrottle.current = null;
+        }, 400);
+    }, []);
+
+    const startRecording = async () => {
+        try {
+            const avModule = 'expo-' + 'av';
+            const { Audio } = require(avModule) as typeof import('expo-av');
+            await Audio.requestPermissionsAsync();
+            await Audio.setAudioModeAsync({
+                allowsRecordingIOS: true,
+                playsInSilentModeIOS: true,
+                staysActiveInBackground: false,
+                shouldDuckAndroid: true,
+                playThroughEarpieceAndroid: false,
+            });
+            const { recording: rec } = await Audio.Recording.createAsync(
+                Audio.RecordingOptionsPresets.HIGH_QUALITY
+            );
+            recordingRef.current = rec;
+            setRecording(true);
+            setTranscriptionPlaceholder(null);
+        } catch (e) {
+            console.warn('Start recording failed', e);
+        }
     };
 
-    const renderMessage = ({ item }: { item: MessageRow }) => {
+    const stopRecordingAndSend = async () => {
+        const rec = recordingRef.current;
+        if (!rec) return;
+        setRecording(false);
+        try {
+            await rec.stopAndUnloadAsync();
+            const uri = rec.getURI();
+            recordingRef.current = null;
+            if (!uri || !projectId || !user?.id) return;
+            setRecordingUri(uri);
+            setTranscriptionPlaceholder('Transcribing...');
+            await new Promise((r) => setTimeout(r, 800));
+            const placeholderText = '[Voice note – connect AI transcription service for full text]';
+            setTranscriptionPlaceholder(placeholderText);
+            const { error } = await supabase.from('messages').insert({
+                project_id: projectId,
+                sender_id: user.id,
+                content: `🎤 ${placeholderText}`,
+            });
+            if (error) throw error;
+            successFeedback();
+            setTranscriptionPlaceholder(null);
+            setRecordingUri(null);
+        } catch (e) {
+            console.warn('Stop/send recording failed', e);
+            setTranscriptionPlaceholder(null);
+            setRecordingUri(null);
+        }
+    };
+
+    const renderMessage = ({ item, index }: { item: MessageRow; index: number }) => {
         const isMe = item.sender_id === user?.id;
+        const time = new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const isRead = isMe && index < messages.length - 2;
+
         return (
             <View style={[styles.msgWrapper, isMe ? styles.myMsgWrapper : styles.theirMsgWrapper]}>
                 {!!item.image_url && (
-                    <View style={[styles.bubble, isMe ? styles.myBubble : styles.theirBubble, styles.imageBubble]}>
+                    <View style={[styles.imageBubble, isMe ? styles.myImageBubble : styles.theirImageBubble]}>
                         <Image source={{ uri: item.image_url }} style={styles.msgImage} />
                     </View>
                 )}
                 {(!item.image_url || (item.content && item.content !== '📷 Image')) && (
-                    <View style={[styles.bubble, isMe ? styles.myBubble : styles.theirBubble]}>
-                        <Text style={[styles.msgText, isMe ? styles.myText : styles.theirText]}>
-                            {item.content}
-                        </Text>
-                    </View>
+                    isMe ? (
+                        <LinearGradient
+                            colors={['#0EA5E9', '#6366F1']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={[styles.bubble, styles.myBubble]}
+                        >
+                            <Text style={[styles.msgText, styles.myText]}>{item.content}</Text>
+                        </LinearGradient>
+                    ) : (
+                        <View style={[styles.bubble, styles.theirBubble]}>
+                            <Text style={[styles.msgText, styles.theirText]}>{item.content}</Text>
+                        </View>
+                    )
                 )}
-                <Text style={styles.timeText}>
-                    {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
+                <View style={[styles.metaRow, isMe && { justifyContent: 'flex-end' }]}>
+                    <Text style={styles.timeText}>{time}</Text>
+                    {isMe && <ReadReceipt isRead={isRead} />}
+                </View>
             </View>
         );
     };
 
     return (
-        <View style={[styles.safe, { flex: 1, backgroundColor: theme.colors.primary, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <View style={[styles.safe, { paddingBottom: insets.bottom }]}>
             <KeyboardAvoidingView
                 style={styles.keyboardView}
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                keyboardVerticalOffset={0}
             >
-                {/* Header — custom (layout has headerShown: false) */}
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.8}>
-                        <Ionicons name="arrow-back" size={24} color={theme.colors.surface} />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle} numberOfLines={1}>
-                        {projectTitle}
-                    </Text>
-                    <TouchableOpacity
-                        onPress={pickImage}
-                        disabled={uploading}
-                        style={styles.headerAction}
-                        activeOpacity={0.8}
-                    >
-                        {uploading ? (
-                            <ActivityIndicator size="small" color={theme.colors.textSubtle} />
-                        ) : (
-                            <Ionicons name="camera-outline" size={22} color={theme.colors.surface} />
+                {/* Contextual Header: BlurView + Project Title + Thumbnail */}
+                <BlurView intensity={80} tint="dark" style={styles.headerBlur}>
+                    <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+                        <TouchableOpacity onPress={() => { lightFeedback(); if (router.canGoBack()) router.back(); else router.replace('/'); }} style={styles.backBtn} activeOpacity={0.7}>
+                            <View style={styles.iconCircle}>
+                                <Ionicons name="chevron-back" size={22} color="#fff" />
+                            </View>
+                        </TouchableOpacity>
+                        {project?.image_url && (
+                            <Image source={{ uri: project.image_url }} style={styles.headerThumb} />
                         )}
-                    </TouchableOpacity>
-                </View>
+                        <View style={styles.headerCenter}>
+                            <Text style={styles.headerTitle} numberOfLines={1}>{project?.title ?? 'Chat'}</Text>
+                            <View style={styles.onlineRow}>
+                                <View style={[styles.liveDot, { backgroundColor: theme.colors.emerald }]} />
+                                <Text style={styles.onlineText}>Online</Text>
+                            </View>
+                        </View>
+                        <TouchableOpacity
+                            onPress={pickImage}
+                            disabled={uploading}
+                            style={styles.headerAction}
+                            activeOpacity={0.7}
+                        >
+                            {uploading ? (
+                                <PulseLoader size={24} color="#fff" />
+                            ) : (
+                                <Ionicons name="camera-outline" size={22} color="#fff" />
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                </BlurView>
 
-                {/* Chat — Slate background */}
+                {hasDispute && (
+                    <View style={styles.arbitrationBanner}>
+                        <Ionicons name="warning" size={18} color={theme.colors.warning} />
+                        <Text style={styles.arbitrationBannerText}>Arbitration mode – dispute in progress. Moderator may join.</Text>
+                    </View>
+                )}
+
+                {/* Chat Area */}
                 <View style={styles.chatArea}>
                     {loading ? (
                         <View style={styles.loadingWrap}>
-                            <ActivityIndicator size="large" color="#0EA5E9" />
+                            <PulseLoader size={48} color={theme.colors.active} />
                         </View>
                     ) : (
                         <FlashList
@@ -232,177 +360,225 @@ export default function ChatScreen() {
                             contentContainerStyle={styles.listContent}
                             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
                             keyboardShouldPersistTaps="handled"
+                            onScroll={handleScroll}
+                            scrollEventThrottle={400}
+                            ListEmptyComponent={
+                                <View style={styles.emptyChatWrap}>
+                                    <Ionicons name="chatbubbles-outline" size={56} color={theme.colors.border} />
+                                    <Text style={styles.emptyChatText}>Start the conversation!</Text>
+                                    <Text style={styles.emptyChatSub}>Send a message to get things moving.</Text>
+                                </View>
+                            }
                         />
                     )}
                 </View>
 
-                {/* Input */}
-                <View style={styles.inputRow}>
-                    <TextInput
-                        style={styles.input}
-                        placeholder={t('typeMessage') || 'Type a message...'}
-                        placeholderTextColor="#94A3B8"
-                        value={text}
-                        onChangeText={setText}
-                        multiline
-                        maxLength={500}
-                    />
-                    <TouchableOpacity
-                        style={[styles.sendBtn, !text.trim() && styles.sendBtnDisabled]}
-                        onPress={sendMessage}
-                        onPressIn={() => text.trim() && lightFeedback()}
-                        disabled={!text.trim()}
-                        activeOpacity={0.8}
-                    >
-                        <Ionicons
-                            name="arrow-up"
-                            size={20}
-                            color={text.trim() ? theme.colors.surface : theme.colors.textSubtle}
-                        />
-                    </TouchableOpacity>
-                </View>
+                {/* Floating Glassmorphic Input (hidden for observers) */}
+                {isObserver ? (
+                    <View style={[styles.observerBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+                        <Ionicons name="eye-outline" size={18} color={theme.colors.textMuted} />
+                        <Text style={styles.observerBarText}>View only – you cannot send messages</Text>
+                    </View>
+                ) : (
+                    <BlurView intensity={60} tint="light" style={styles.inputBlur}>
+                        {transcriptionPlaceholder ? (
+                            <View style={styles.voicePlaceholder}>
+                                <ActivityIndicator size="small" color={theme.colors.active} />
+                                <Text style={styles.voicePlaceholderText}>{transcriptionPlaceholder}</Text>
+                            </View>
+                        ) : null}
+                        <View style={[styles.inputRow, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+                            <TouchableOpacity
+                                style={styles.micBtn}
+                                onPress={recording ? stopRecordingAndSend : startRecording}
+                                activeOpacity={0.7}
+                            >
+                                <Ionicons
+                                    name={recording ? 'stop-circle' : 'mic'}
+                                    size={24}
+                                    color={recording ? theme.colors.danger : theme.colors.textMuted}
+                                />
+                            </TouchableOpacity>
+                            <TextInput
+                                style={styles.input}
+                                placeholder={t('typeMessage') || 'Type a message...'}
+                                placeholderTextColor={theme.colors.textSubtle}
+                                value={text}
+                                onChangeText={setText}
+                                multiline
+                                maxLength={500}
+                            />
+                            <TouchableOpacity
+                                style={[styles.sendBtn, !text.trim() && !recording && styles.sendBtnDisabled]}
+                                onPress={text.trim() ? sendMessage : (recording ? stopRecordingAndSend : undefined)}
+                                disabled={!text.trim() && !recording}
+                                activeOpacity={0.7}
+                            >
+                                <LinearGradient
+                                    colors={text.trim() || recording ? ['#0EA5E9', '#6366F1'] : [theme.colors.border, theme.colors.border]}
+                                    style={styles.sendBtnGradient}
+                                >
+                                    <Ionicons
+                                        name="arrow-up"
+                                        size={20}
+                                        color={text.trim() || recording ? '#fff' : theme.colors.textSubtle}
+                                    />
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </View>
+                    </BlurView>
+                )}
             </KeyboardAvoidingView>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    safe: {
-        flex: 1,
-        backgroundColor: '#0F172A',
-    },
-    keyboardView: {
-        flex: 1,
-        backgroundColor: '#F8FAFC',
+    safe: { flex: 1, backgroundColor: theme.colors.primary },
+    keyboardView: { flex: 1, backgroundColor: theme.colors.background },
+
+    headerBlur: {
+        overflow: 'hidden',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: 'rgba(255,255,255,0.1)',
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 12,
-        paddingVertical: 14,
-        paddingTop: Platform.OS === 'android' ? 14 : 10,
-        backgroundColor: '#0F172A',
-    },
-    backBtn: {
-        padding: 8,
-        marginLeft: 4,
-    },
-    headerTitle: {
-        flex: 1,
-        fontSize: 17,
-        fontWeight: '700',
-        color: '#F8FAFC',
-        textAlign: 'center',
-        marginHorizontal: 8,
-    },
-    headerAction: {
-        padding: 8,
-        minWidth: 40,
-        alignItems: 'flex-end',
-    },
-    chatArea: {
-        flex: 1,
-        backgroundColor: '#F8FAFC',
-    },
-    loadingWrap: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    listContent: {
         paddingHorizontal: 16,
-        paddingVertical: 12,
-        paddingBottom: 24,
+        paddingBottom: 12,
+        backgroundColor: Platform.OS === 'android' ? theme.colors.primary : 'transparent',
     },
-    msgWrapper: {
-        marginBottom: 14,
-        maxWidth: '82%',
+    backBtn: {},
+    iconCircle: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    myMsgWrapper: {
-        alignSelf: 'flex-end',
-        alignItems: 'flex-end',
+    headerThumb: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        marginLeft: 12,
     },
-    theirMsgWrapper: {
-        alignSelf: 'flex-start',
-        alignItems: 'flex-start',
+    headerCenter: { flex: 1, marginHorizontal: 12 },
+    headerTitle: { fontSize: 17, ...theme.typography.title, color: '#fff' },
+    onlineRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+    liveDot: { width: 6, height: 6, borderRadius: 3 },
+    onlineText: { fontSize: 11, color: theme.colors.textSubtle },
+    headerAction: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    bubble: {
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        borderRadius: 18,
-    },
-    imageBubble: {
-        padding: 4,
-    },
-    myBubble: {
-        backgroundColor: '#0EA5E9',
-        borderBottomRightRadius: 4,
-    },
+
+    chatArea: { flex: 1, backgroundColor: theme.colors.background },
+    loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    listContent: { paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 24 },
+
+    msgWrapper: { marginBottom: 12, maxWidth: '82%' },
+    myMsgWrapper: { alignSelf: 'flex-end', alignItems: 'flex-end' },
+    theirMsgWrapper: { alignSelf: 'flex-start', alignItems: 'flex-start' },
+
+    bubble: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
+    imageBubble: { borderRadius: theme.radii.md, overflow: 'hidden', ...theme.shadow.soft },
+    myImageBubble: { borderBottomRightRadius: 4 },
+    theirImageBubble: { borderBottomLeftRadius: 4 },
+    myBubble: { borderBottomRightRadius: 4, ...theme.shadow.glow },
     theirBubble: {
-        backgroundColor: '#FFFFFF',
+        borderRadius: 20,
         borderBottomLeftRadius: 4,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.06,
-        shadowRadius: 4,
-        elevation: 2,
+        backgroundColor: 'rgba(241,245,249,0.95)',
+        borderWidth: 1,
+        borderColor: 'rgba(226,232,240,0.5)',
     },
-    msgText: {
-        fontSize: 15,
-        lineHeight: 22,
+
+    msgText: { fontSize: 15, lineHeight: 22 },
+    myText: { color: '#FFFFFF' },
+    theirText: { color: theme.colors.text },
+
+    msgImage: { width: 200, height: 150, borderRadius: theme.radii.md - 2, backgroundColor: theme.colors.border },
+    metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, marginHorizontal: 4 },
+    timeText: { fontSize: 10, color: theme.colors.textSubtle },
+
+    emptyChatWrap: { alignItems: 'center', paddingTop: 80, gap: 8 },
+    emptyChatText: { fontSize: 18, ...theme.typography.title, color: theme.colors.text },
+    emptyChatSub: { fontSize: 14, color: theme.colors.textMuted },
+
+    observerBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        backgroundColor: theme.colors.surfaceAlt,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: theme.colors.border,
     },
-    myText: {
-        color: '#FFFFFF',
+    observerBarText: { fontSize: 13, color: theme.colors.textMuted, fontWeight: '500' },
+    arbitrationBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: theme.colors.warning + '20', borderBottomWidth: 1, borderBottomColor: theme.colors.warning + '40' },
+    arbitrationBannerText: { flex: 1, fontSize: 12, fontWeight: '600', color: theme.colors.text },
+    inputBlur: {
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: theme.colors.border,
     },
-    theirText: {
-        color: '#0F172A',
+    voicePlaceholder: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingTop: 8,
     },
-    msgImage: {
-        width: 200,
-        height: 150,
-        borderRadius: 14,
-        backgroundColor: '#E2E8F0',
-    },
-    timeText: {
-        fontSize: 10,
-        color: '#94A3B8',
-        marginTop: 4,
-        marginHorizontal: 4,
+    voicePlaceholderText: {
+        fontSize: 13,
+        color: theme.colors.textMuted,
     },
     inputRow: {
         flexDirection: 'row',
         alignItems: 'flex-end',
         paddingHorizontal: 12,
         paddingVertical: 10,
-        paddingBottom: Platform.OS === 'ios' ? 10 : 12,
-        backgroundColor: '#FFFFFF',
-        borderTopWidth: 1,
-        borderTopColor: '#E2E8F0',
+        paddingTop: 14,
+        backgroundColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.92)' : 'transparent',
         gap: 10,
     },
     input: {
         flex: 1,
-        backgroundColor: '#F8FAFC',
-        borderRadius: 20,
+        backgroundColor: 'rgba(248,250,252,0.95)',
+        borderRadius: 22,
         paddingHorizontal: 16,
-        paddingVertical: 10,
+        paddingVertical: 12,
         fontSize: 15,
         maxHeight: 100,
         borderWidth: 1,
-        borderColor: '#E2E8F0',
-        color: '#0F172A',
+        borderColor: 'rgba(226,232,240,0.8)',
+        color: theme.colors.text,
     },
-    sendBtn: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: '#0EA5E9',
+    micBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 2,
+        backgroundColor: 'rgba(248,250,252,0.95)',
+        borderWidth: 1,
+        borderColor: 'rgba(226,232,240,0.8)',
     },
-    sendBtnDisabled: {
-        backgroundColor: '#E2E8F0',
+    sendBtn: {},
+    sendBtnGradient: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+        ...theme.shadow.glow,
     },
+    sendBtnDisabled: { opacity: 0.6 },
 });

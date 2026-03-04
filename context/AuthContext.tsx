@@ -4,37 +4,50 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+export type UserRole = 'client' | 'provider' | null;
+
 type AuthContextType = {
     user: User | null;
     session: Session | null;
+    /** Role from Supabase auth.users.raw_user_meta_data.role (or user_metadata.role). Set at signup/login to prevent routing leaks. */
+    role: UserRole;
     isAuthenticated: boolean;
     loading: boolean;
     login: () => void;
-    logout: () => Promise<void>; // Changed to Promise
+    logout: () => Promise<void>;
     signOut: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function getRoleFromUser(user: User | null): UserRole {
+    const role = user?.user_metadata?.role ?? user?.raw_user_meta_data?.role;
+    if (role === 'client' || role === 'provider') return role;
+    return null;
+}
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
+    const [role, setRole] = useState<UserRole>(null);
     const [loading, setLoading] = useState(true);
     const router = useRouter();
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
-            setUser(session?.user ?? null);
+            const u = session?.user ?? null;
+            setUser(u);
+            setRole(getRoleFromUser(u));
             setLoading(false);
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            console.log("Auth Event:", event); // Debugging
+            const u = session?.user ?? null;
             setSession(session);
-            setUser(session?.user ?? null);
+            setUser(u);
+            setRole(getRoleFromUser(u));
 
-            // If the user signed out, force them to login immediately
             if (event === 'SIGNED_OUT') {
                 router.replace('/login');
             }
@@ -67,7 +80,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, session, isAuthenticated: !!user, loading, login, logout, signOut: logout }}>
+        <AuthContext.Provider value={{ user, session, role, isAuthenticated: !!user, loading, login, logout, signOut: logout }}>
             {!loading && children}
         </AuthContext.Provider>
     );

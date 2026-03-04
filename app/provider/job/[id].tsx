@@ -4,7 +4,9 @@ import {
     Alert, ActivityIndicator, Dimensions, StatusBar
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import NavigationBar from '@/components/NavigationBar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -12,6 +14,7 @@ import { useAuth } from '@/context/AuthContext';
 const { width } = Dimensions.get('window');
 
 export default function JobDetailsScreen() {
+    const insets = useSafeAreaInsets();
     const { id } = useLocalSearchParams();
     const router = useRouter();
     const { user } = useAuth();
@@ -105,10 +108,11 @@ export default function JobDetailsScreen() {
     );
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
             <StatusBar barStyle="light-content" />
+            <NavigationBar title={job?.title ?? 'Job Details'} showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
 
-            <ScrollView contentContainerStyle={{ paddingBottom: 150 }} bounces={false}>
+            <ScrollView contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: 20 }} bounces={false}>
                 {/* HERO IMAGE */}
                 <View style={styles.imageContainer}>
                     <Image

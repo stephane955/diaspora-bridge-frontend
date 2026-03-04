@@ -14,7 +14,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { lightFeedback, mediumFeedback } from '@/utils/haptics';
+import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
+
+const NAV_ITEMS: Array<{
+    key: string;
+    href: '/diaspora/projects' | '/diaspora/new' | '/diaspora/timeline';
+    labelKey: string;
+    icon: keyof typeof Ionicons.glyphMap;
+}> = [
+    { key: 'projects', href: '/diaspora/projects', labelKey: 'tabProjects', icon: 'folder-open-outline' },
+    { key: 'new', href: '/diaspora/new', labelKey: 'tabPostJob', icon: 'add-circle-outline' },
+    { key: 'timeline', href: '/diaspora/timeline', labelKey: 'Timeline', icon: 'time-outline' },
+];
 
 const MENU_ITEMS: Array<{
     key: string;
@@ -54,17 +66,43 @@ export default function MenuScreen() {
 
     return (
         <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+            <NavigationBar title={t('menuTitle') ?? 'Menu'} showBack dynamicColor={theme.colors.active} />
             <ScrollView
                 style={styles.scroll}
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}
                 showsVerticalScrollIndicator={false}
             >
-                <View style={styles.header}>
-                    <Text style={styles.headerTitle}>{t('menuTitle')}</Text>
-                    <Text style={styles.headerSub}>Account & preferences</Text>
+
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>{t('menuNavigate') ?? 'Navigate'}</Text>
+                    <View style={styles.cardGroup}>
+                        {NAV_ITEMS.map((item) => (
+                            <TouchableOpacity
+                                key={item.key}
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                    lightFeedback();
+                                    router.push(item.href);
+                                }}
+                                style={styles.cardTouch}
+                            >
+                                <View style={[styles.card, styles.cardSurface]}>
+                                    <View style={styles.cardLeft}>
+                                        <View style={styles.iconWrap}>
+                                            <Ionicons name={item.icon} size={22} color={theme.colors.active} />
+                                        </View>
+                                        <Text style={styles.cardLabel}>{t(item.labelKey) ?? item.labelKey}</Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={20} color={theme.colors.textSubtle} />
+                                </View>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
                 </View>
 
-                <View style={styles.cardGroup}>
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>{t('menuAccount') ?? 'Account'}</Text>
+                    <View style={styles.cardGroup}>
                     {MENU_ITEMS.map((item) => (
                         <TouchableOpacity
                             key={item.key}
@@ -86,6 +124,7 @@ export default function MenuScreen() {
                             </View>
                         </TouchableOpacity>
                     ))}
+                    </View>
                 </View>
 
                 <View style={styles.spacer} />
@@ -114,24 +153,18 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        paddingHorizontal: theme.spacing.lg,
-        paddingTop: Platform.OS === 'android' ? 56 : 44,
-        paddingBottom: 120,
+        paddingTop: theme.spacing.md,
     },
-    header: {
+    section: {
         marginBottom: theme.spacing.xl,
     },
-    headerTitle: {
-        fontSize: 28,
-        fontWeight: '800',
-        color: theme.colors.text,
-        letterSpacing: -0.5,
-    },
-    headerSub: {
-        fontSize: 14,
+    sectionTitle: {
+        fontSize: 13,
+        fontWeight: '600',
         color: theme.colors.textMuted,
-        marginTop: 4,
-        fontWeight: '500',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: theme.spacing.sm,
     },
     cardGroup: {
         gap: theme.spacing.sm,

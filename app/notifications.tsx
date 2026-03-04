@@ -52,7 +52,13 @@ export default function NotificationsScreen() {
             setNotifications(prev => prev.map(n => (n.id === item.id ? { ...n, is_read: true } : n)));
         }
 
-        if (item.type === 'payment' || item.type === 'withdrawal') {
+        if (item.type === 'chat' || item.type === 'new_message' || item.type === 'message') {
+            const chatId = item.project_id ?? item.chat_id ?? item.id;
+            if (chatId && typeof chatId === 'string') router.push(`/chat/${chatId}`);
+            else if (chatId && typeof chatId === 'number') router.push(`/chat/${String(chatId)}`);
+            else router.back();
+        }
+        else if (item.type === 'payment' || item.type === 'withdrawal') {
             router.push('/provider/earnings');
         }
         else if (item.type === 'job_offer') {
@@ -64,8 +70,11 @@ export default function NotificationsScreen() {
         else if (item.type === 'verification') {
             router.push('/provider/profile');
         }
+        else if (item.project_id && (item.link === 'chat' || item.route === 'chat')) {
+            router.push(`/chat/${item.project_id}`);
+        }
         else {
-            router.push('/provider/dashboard');
+            router.replace('/provider');
         }
     };
 
@@ -76,6 +85,9 @@ export default function NotificationsScreen() {
 
     const getIcon = (type: string) => {
         switch (type) {
+            case 'chat':
+            case 'new_message':
+            case 'message': return { name: 'chatbubbles', color: theme.colors.active, bg: theme.colors.active + '20' };
             case 'payment': return { name: 'wallet', color: theme.colors.success, bg: theme.colors.success + '25' };
             case 'withdrawal': return { name: 'cash', color: theme.colors.warning, bg: theme.colors.warning + '20' };
             case 'job_offer': return { name: 'briefcase', color: theme.colors.active, bg: theme.colors.activeSoft + '25' };

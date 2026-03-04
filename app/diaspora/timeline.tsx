@@ -4,6 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
+import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
 
 export default function ProjectTimeline() {
@@ -40,9 +41,10 @@ export default function ProjectTimeline() {
     const onRefresh = () => { setRefreshing(true); fetchUpdates(); };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+            <NavigationBar title="Timeline" showBack dynamicColor={theme.colors.active} />
             <ScrollView
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             >
                 {loading ? (
@@ -91,7 +93,7 @@ export default function ProjectTimeline() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
-    scrollContent: { padding: theme.spacing.lg, paddingBottom: 50 },
+    scrollContent: { paddingTop: theme.spacing.md },
     timelineContainer: { marginTop: theme.spacing.sm },
     itemWrapper: { flexDirection: 'row' },
     leftColumn: { alignItems: 'center', width: 30, marginRight: 12 },

@@ -1,17 +1,20 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TouchableOpacity,
-    ActivityIndicator, Alert, Image, StatusBar
+    ActivityIndicator, Alert, Image, StatusBar, RefreshControl
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NavigationBar from '@/components/NavigationBar';
 import { Project } from '@/types/models';
 
 export default function RequestsScreen() {
+    const insets = useSafeAreaInsets();
     const { user } = useAuth();
     const router = useRouter();
     const [requests, setRequests] = useState<Project[]>([]);
@@ -157,8 +160,9 @@ export default function RequestsScreen() {
     );
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
             <StatusBar barStyle="dark-content" />
+            <NavigationBar title="Requests" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
 
             {loading ? (
                 <View style={styles.center}><ActivityIndicator size="large" color="#0EA5E9" /></View>
@@ -167,9 +171,8 @@ export default function RequestsScreen() {
                     data={requests}
                     keyExtractor={item => item.id.toString()}
                     renderItem={renderItem}
-                    contentContainerStyle={styles.listContent}
-                    onRefresh={onRefresh}
-                    refreshing={refreshing}
+                    contentContainerStyle={[styles.listContent, { paddingBottom: 120, paddingHorizontal: 20 }]}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                     ListHeaderComponent={
                         <View style={styles.listHeader}>
                             <Text style={styles.headerDate}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>

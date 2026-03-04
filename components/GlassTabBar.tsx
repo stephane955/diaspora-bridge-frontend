@@ -3,6 +3,7 @@ import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useTheme } from '@/context/ThemeContext';
 
 type Theme = 'light' | 'dark';
 
@@ -15,6 +16,9 @@ const COLORS = {
     glass: 'rgba(255,255,255,0.65)',
     glassDark: 'rgba(15,23,42,0.7)',
 };
+
+/** Strict whitelist: only these route names may appear in the tab bar. All others (e.g. settings, project/[id], job/[id]) are suppressed regardless of options merge. */
+const ALLOWED_ROUTES = ['index', 'inbox', 'wallet', 'market', 'profile', 'active', 'earnings'];
 
 const ROUTE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
     index: 'home',
@@ -31,13 +35,16 @@ const ROUTE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 export default function GlassTabBar(props: BottomTabBarProps & { theme?: Theme }) {
-    const { state, descriptors, navigation, theme = 'light' } = props;
+    const { theme: themeFromContext } = useTheme();
+    const { state, descriptors, navigation, theme: themeProp } = props;
+    const theme = themeProp ?? (themeFromContext.isDark ? 'dark' : 'light');
 
     const visibleRoutes = state.routes.filter((route) => {
         const options = descriptors[route.key]?.options ?? {};
         const href = (options as { href?: string | null }).href;
         const display = (options as { display?: string }).display;
         if (href === null || display === 'none') return false;
+        if (!ALLOWED_ROUTES.includes(route.name)) return false;
         return true;
     });
 
@@ -53,7 +60,7 @@ export default function GlassTabBar(props: BottomTabBarProps & { theme?: Theme }
             pointerEvents="box-none"
         >
             <BlurView
-                intensity={80}
+                intensity={100}
                 tint={isDark ? 'dark' : 'light'}
                 style={[
                     styles.glass,

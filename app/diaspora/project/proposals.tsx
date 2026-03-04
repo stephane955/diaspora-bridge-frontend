@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
+import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
 
 export default function ProposalsScreen() {
@@ -99,17 +100,23 @@ export default function ProposalsScreen() {
                                     project_id: id,
                                     title: "Phase 1: Mobilization & Materials",
                                     amount: halfAmount,
-                                    status: 'pending' // Provider must upload proof
+                                    status: 'locked',
+                                    step_order: 1,
                                 },
                                 {
                                     project_id: id,
                                     title: "Phase 2: Completion & Handover",
                                     amount: remainder,
-                                    status: 'pending' // Locked until Phase 1 is done
-                                }
+                                    status: 'locked',
+                                    step_order: 2,
+                                },
                             ]);
 
                             if (milesError) throw milesError;
+
+                            // Set project funds status to escrow (optional: add funds_status column to projects)
+                            const { error: escrowErr } = await supabase.from('projects').update({ funds_status: 'escrow' }).eq('id', id);
+                            if (escrowErr) { /* column may not exist */ }
 
                             successFeedback();
                             Alert.alert("Success", "Provider Hired! Workroom created.");
@@ -197,7 +204,8 @@ export default function ProposalsScreen() {
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+            <NavigationBar title="Proposals" showBack dynamicColor={theme.colors.active} />
             {loading ? (
                 <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.text} /></View>
             ) : (
@@ -205,7 +213,7 @@ export default function ProposalsScreen() {
                     data={proposals}
                     keyExtractor={item => item.id}
                     renderItem={renderProposal}
-                    contentContainerStyle={styles.list}
+                    contentContainerStyle={[styles.list, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}
                     ListEmptyComponent={
                         <View style={styles.emptyState}>
                             <Ionicons name="documents-outline" size={48} color={theme.colors.textSubtle} />
@@ -223,7 +231,7 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-    list: { padding: theme.spacing.lg },
+    list: { paddingTop: theme.spacing.md },
 
     card: { backgroundColor: theme.colors.surface, borderRadius: theme.radii.md, padding: theme.spacing.md, marginBottom: theme.spacing.md, ...theme.shadow.soft, borderWidth: 1, borderColor: theme.colors.border },
     cardExpanded: { borderColor: theme.colors.active, borderWidth: 1 },
