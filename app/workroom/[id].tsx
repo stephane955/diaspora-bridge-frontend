@@ -4,103 +4,83 @@ import {
     Alert, ActivityIndicator, Image
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
+import { theme } from '@/constants/theme';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator'; // <--- The Fix
+import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { FlashList } from '@shopify/flash-list';
+import { useWorkroomQuery, useMilestoneUploadEvidence } from '@/hooks/useWorkroomData';
+
+const WORKROOM_KEY = (projectId: string) => ['workroom', projectId] as const;
 
 export default function WorkroomScreen() {
-    const { id } = useLocalSearchParams(); // Project ID
+    const { id } = useLocalSearchParams();
+    const projectId = typeof id === 'string' ? id : id?.[0];
     const { user } = useAuth();
     const router = useRouter();
+    const queryClient = useQueryClient();
 
-    const [project, setProject] = useState<any>(null);
-    const [milestones, setMilestones] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { data, isLoading: loading, refetch: fetchWorkroomData } = useWorkroomQuery(projectId);
+    const project = data?.project ?? null;
+    const milestones = data?.milestones ?? [];
+
     const [uploading, setUploading] = useState(false);
+    const [advanceEligibility, setAdvanceEligibility] = useState<{ eligible: boolean; max_advance_pct?: number } | null>(null);
+    const [existingAdvance, setExistingAdvance] = useState<any>(null);
+    const [requestingAdvance, setRequestingAdvance] = useState(false);
+
+    const uploadEvidence = useMilestoneUploadEvidence(projectId);
 
     useEffect(() => {
-        fetchWorkroomData();
-    }, [id]);
-
-    const fetchWorkroomData = async () => {
-        try {
-            // 1. Get Project Details
-            const { data: proj } = await supabase
-                .from('projects')
-                .select('*, profiles:owner_id(full_name, avatar_url, city)')
-                .eq('id', id)
-                .single();
-            setProject(proj);
-
-            // 2. Get Milestones
-            const { data: miles } = await supabase
-                .from('milestones')
-                .select('*')
-                .eq('project_id', id)
-                .order('created_at', { ascending: true });
-
-            setMilestones(miles || []);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
-        }
-    };
+        if (!user?.id || !projectId) return;
+        (async () => {
+            const { data: elig } = await supabase.rpc('get_provider_advance_eligibility', { p_provider_id: user.id });
+            setAdvanceEligibility(elig ? { eligible: (elig as any).eligible, max_advance_pct: (elig as any).max_advance_pct } : null);
+            const { data: adv } = await supabase.from('provider_advances').select('*').eq('project_id', projectId).eq('provider_id', user.id).in('status', ['pending', 'disbursed']).maybeSingle();
+            setExistingAdvance(adv || null);
+        })();
+    }, [user?.id, projectId]);
 
     const handleUploadEvidence = async (milestoneId: string) => {
+        if (!projectId) return;
+        const prev = queryClient.getQueryData<{ project: unknown; milestones: any[] }>(WORKROOM_KEY(projectId));
+        queryClient.setQueryData(WORKROOM_KEY(projectId), (old: typeof prev) => {
+            if (!old?.milestones) return old;
+            return { ...old, milestones: old.milestones.map((m) => (m.id === milestoneId ? { ...m, status: 'in_review' as const } : m)) };
+        });
         try {
-            // 1. Pick Image (Prevent cropping to save RAM on old phones)
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ['images'],
                 allowsEditing: false,
                 quality: 0.5,
             });
-
-            if (result.canceled) return;
+            if (result.canceled) {
+                if (prev) queryClient.setQueryData(WORKROOM_KEY(projectId), prev);
+                return;
+            }
             setUploading(true);
 
-            // 2. OPTIMIZATION: Resize & Compress (The "Cameroon Fix")
-            // This ensures a 4MB photo becomes ~40KB for fast 3G upload
             const manipulatedResult = await ImageManipulator.manipulateAsync(
                 result.assets[0].uri,
                 [{ resize: { width: 800 } }],
                 { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
             );
-
-            // 3. Prepare Upload
-            const uri = manipulatedResult.uri;
             const fileName = `${milestoneId}_${Date.now()}.jpg`;
             const filePath = `evidence/${fileName}`;
-
-            // 4. Upload to Storage
-            const response = await fetch(uri);
+            const response = await fetch(manipulatedResult.uri);
             const blob = await response.blob();
 
-            const { error: uploadError } = await supabase.storage
-                .from('evidence')
-                .upload(filePath, blob);
-
+            const { error: uploadError } = await supabase.storage.from('evidence').upload(filePath, blob);
             if (uploadError) throw uploadError;
 
-            // 5. Update Database
-            const { error: dbError } = await supabase
-                .from('milestones')
-                .update({
-                    evidence_url: filePath,
-                    status: 'in_review'
-                })
-                .eq('id', milestoneId);
-
-            if (dbError) throw dbError;
-
+            await uploadEvidence.mutateAsync({ milestoneId, evidenceUrl: filePath });
             Alert.alert("Success", "Evidence uploaded! Client notified.");
-            fetchWorkroomData();
-
         } catch (e: any) {
-            Alert.alert("Upload Failed", "Check your internet connection.");
+            if (prev) queryClient.setQueryData(WORKROOM_KEY(projectId), prev);
+            Alert.alert("Upload Failed", e?.message ?? "Check your internet connection.");
         } finally {
             setUploading(false);
         }
@@ -177,6 +157,66 @@ export default function WorkroomScreen() {
                     ListHeaderComponent={
                         <View style={styles.projectCard}>
                             <Text style={styles.projectTitle}>{project?.title}</Text>
+                            <TouchableOpacity
+                                style={styles.materialCartBtn}
+                                onPress={() => router.push({ pathname: '/provider/material-cart', params: { projectId: id } })}
+                            >
+                                <Ionicons name="cart" size={18} color={theme.colors.emerald} />
+                                <Text style={styles.materialCartBtnText}>Material Cart</Text>
+                            </TouchableOpacity>
+                            {advanceEligibility?.eligible && !existingAdvance && milestones.length > 0 && milestones.some((m: any) => m.status === 'locked') && (
+                                <TouchableOpacity
+                                    style={styles.advanceBtn}
+                                    onPress={async () => {
+                                        const firstLocked = milestones.find((m: any) => m.status === 'locked');
+                                        const pct = Math.min(20, advanceEligibility.max_advance_pct ?? 15);
+                                        const amount = Math.floor((Number(firstLocked?.amount) || 0) * (pct / 100));
+                                        if (amount <= 0) return;
+                                        Alert.alert(
+                                            'Bridge Credit',
+                                            `Request ${amount.toLocaleString()} CFA (${pct}% of Milestone 1)? Repaid automatically from your final payout.`,
+                                            [
+                                                { text: 'Cancel', style: 'cancel' },
+                                                {
+                                                    text: 'Request',
+                                                    onPress: async () => {
+                                                        setRequestingAdvance(true);
+                                                        try {
+                                                            const { error } = await supabase.from('provider_advances').insert({
+                                                                project_id: id,
+                                                                provider_id: user?.id,
+                                                                amount_cfa: amount,
+                                                                status: 'pending',
+                                                            });
+                                                            if (error) throw error;
+                                                            Alert.alert('Submitted', 'Your advance request has been recorded. Funds will be disbursed per platform policy.');
+                                                            fetchWorkroomData();
+                                                        } catch (e: any) {
+                                                            Alert.alert('Error', e.message);
+                                                        } finally {
+                                                            setRequestingAdvance(false);
+                                                        }
+                                                    },
+                                                },
+                                            ]
+                                        );
+                                    }}
+                                    disabled={requestingAdvance}
+                                >
+                                    {requestingAdvance ? <ActivityIndicator size="small" color="#fff" /> : (
+                                        <>
+                                            <Ionicons name="cash-outline" size={18} color="#fff" />
+                                            <Text style={styles.advanceBtnText}>Request Advance</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            )}
+                            {existingAdvance && (
+                                <View style={styles.advanceStatus}>
+                                    <Ionicons name="wallet-outline" size={16} color={theme.colors.textMuted} />
+                                    <Text style={styles.advanceStatusText}>Advance: {Number(existingAdvance.amount_cfa).toLocaleString()} CFA ({existingAdvance.status})</Text>
+                                </View>
+                            )}
                             <View style={styles.clientRow}>
                                 <Image source={{ uri: project?.profiles?.avatar_url }} style={styles.avatar} />
                                 <View>
@@ -206,7 +246,13 @@ const styles = StyleSheet.create({
     headerTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
 
     projectCard: { backgroundColor: '#fff', padding: 20, borderRadius: 20, marginBottom: 20, marginTop: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
-    projectTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 15 },
+    projectTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
+    materialCartBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', marginBottom: 10, paddingVertical: 8, paddingHorizontal: 14, borderRadius: theme.radii.pill, backgroundColor: theme.colors.emeraldSoft + '30', borderWidth: 1, borderColor: theme.colors.emerald + '50' },
+    materialCartBtnText: { fontSize: 13, fontWeight: '700', color: theme.colors.emerald },
+    advanceBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', marginBottom: 15, paddingVertical: 10, paddingHorizontal: 16, borderRadius: theme.radii.pill, backgroundColor: theme.colors.primary, ...theme.shadow.glow },
+    advanceBtnText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+    advanceStatus: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 15 },
+    advanceStatusText: { fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' },
     clientRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
     avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E2E8F0' },
     clientName: { fontSize: 14, fontWeight: '700', color: '#0F172A' },

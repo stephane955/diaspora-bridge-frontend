@@ -67,12 +67,11 @@ export function usePushNotifications(onNotificationPress?: PushNotificationHandl
 }
 
 async function updateProfileToken(userId: string, token: string) {
-    const { error } = await supabase
-        .from('profiles')
-        .update({ push_token: token })
-        .eq('id', userId);
-
-    if (error) console.error("Error saving push token:", error);
+    await supabase.from('profiles').update({ push_token: token, expo_push_token: token }).eq('id', userId);
+    await supabase.from('user_devices').upsert(
+        { user_id: userId, expo_push_token: token, device_id: 'default', updated_at: new Date().toISOString() },
+        { onConflict: 'user_id,device_id' }
+    );
 }
 
 async function registerForPushNotificationsAsync() {

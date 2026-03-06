@@ -39,6 +39,8 @@ export default function MarketScreen() {
     const [selectedJob, setSelectedJob] = useState<any>(null);
     const [bidAmount, setBidAmount] = useState('');
     const [coverLetter, setCoverLetter] = useState('');
+    const [materialEstimate, setMaterialEstimate] = useState('');
+    const [timeToCompletionDays, setTimeToCompletionDays] = useState('');
     const [applying, setApplying] = useState(false);
 
     // --- FETCH DATA ---
@@ -158,13 +160,16 @@ export default function MarketScreen() {
 
         setApplying(true);
         try {
-            const { error } = await supabase.from('project_applications').insert({
+            const payload: Record<string, unknown> = {
                 project_id: selectedJob.id,
                 provider_id: user?.id,
                 bid_amount: parseFloat(bidAmount),
                 cover_letter: coverLetter,
-                status: 'pending'
-            });
+                status: 'pending',
+            };
+            if (materialEstimate.trim()) payload.material_estimate = parseFloat(materialEstimate) || null;
+            if (timeToCompletionDays.trim()) payload.time_to_completion_days = parseInt(timeToCompletionDays, 10) || null;
+            const { error } = await supabase.from('project_applications').insert(payload);
 
             if (error) {
                 if (error.code === '23505') Alert.alert("Already Applied", "You have already bid on this job.");
@@ -179,6 +184,8 @@ export default function MarketScreen() {
                     setSelectedJob(null);
                     setBidAmount('');
                     setCoverLetter('');
+                    setMaterialEstimate('');
+                    setTimeToCompletionDays('');
                 }, 1800);
             }
         } catch (err: any) {
@@ -371,6 +378,24 @@ export default function MarketScreen() {
                             keyboardType="numeric"
                             value={bidAmount}
                             onChangeText={setBidAmount}
+                        />
+
+                        <Text style={styles.label}>Material Estimate (CFA)</Text>
+                        <TextInput
+                            style={styles.modalInput}
+                            placeholder="e.g. 15000"
+                            keyboardType="numeric"
+                            value={materialEstimate}
+                            onChangeText={setMaterialEstimate}
+                        />
+
+                        <Text style={styles.label}>Time to Completion (days)</Text>
+                        <TextInput
+                            style={styles.modalInput}
+                            placeholder="e.g. 14"
+                            keyboardType="numeric"
+                            value={timeToCompletionDays}
+                            onChangeText={setTimeToCompletionDays}
                         />
 
                         <Text style={styles.label}>Cover Letter</Text>

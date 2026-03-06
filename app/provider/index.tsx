@@ -258,6 +258,11 @@ export default function ProviderDashboard() {
                             <View style={{ flex: 1 }}><Text style={styles.modalText}>Payout Setup</Text><Text style={styles.modalSub}>MOMO, OM, bank details</Text></View>
                             <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
                         </TouchableOpacity>
+                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/provider/suppliers'); }} activeOpacity={0.7}>
+                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.emeraldSoft + '40' }]}><Ionicons name="storefront" size={20} color={theme.colors.emerald} /></View>
+                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Partner Suppliers</Text><Text style={styles.modalSub}>Zero-fraud materials, B2B cart</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
+                        </TouchableOpacity>
 
                         <View style={styles.divider} />
                         <Text style={styles.modalSection}>Account</Text>

@@ -16,6 +16,7 @@ import PulseLoader from '@/components/PulseLoader';
 import VaultGate from '@/components/VaultGate';
 import { theme } from '@/constants/theme';
 import { successFeedback, mediumFeedback } from '@/utils/haptics';
+import { YStack, XStack, Text as TamaguiText } from 'tamagui';
 
 export default function ClientWalletScreen() {
     const insets = useSafeAreaInsets();
@@ -135,6 +136,26 @@ export default function ClientWalletScreen() {
                         <Text style={styles.actionText}>Support</Text>
                     </TouchableOpacity>
                 </View>
+
+                {/* Wealth ROI Dashboard — Tamagui layout scaffold: Total Escrow Deployed vs Estimated Current Market Value */}
+                <YStack paddingVertical={theme.spacing.lg} gap={theme.spacing.md}>
+                    <TamaguiText fontSize={18} fontWeight="800" color={theme.colors.text}>
+                        Wealth & ROI
+                    </TamaguiText>
+                    <XStack flexWrap="wrap" gap={theme.spacing.md} justifyContent="space-between">
+                        <YStack flex={1} minWidth={140} padding={theme.spacing.md} backgroundColor={theme.colors.surface} borderRadius={theme.radii.lg}>
+                            <TamaguiText fontSize={12} color={theme.colors.textMuted}>Total Escrow Deployed</TamaguiText>
+                            <TamaguiText fontSize={20} fontWeight="700" color={theme.colors.text} marginTop={4}>{escrowed.toLocaleString()} CFA</TamaguiText>
+                        </YStack>
+                        <YStack flex={1} minWidth={140} padding={theme.spacing.md} backgroundColor={theme.colors.surface} borderRadius={theme.radii.lg}>
+                            <TamaguiText fontSize={12} color={theme.colors.textMuted}>Est. Current Market Value</TamaguiText>
+                            <TamaguiText fontSize={20} fontWeight="700" color={theme.colors.emerald} marginTop={4}>—</TamaguiText>
+                        </YStack>
+                    </XStack>
+                    <YStack height={160} backgroundColor={theme.colors.surfaceAlt} borderRadius={theme.radii.lg} padding={theme.spacing.md} justifyContent="center" alignItems="center">
+                        <TamaguiText color={theme.colors.textMuted}>Chart: Escrow Deployed vs Market Value (placeholder)</TamaguiText>
+                    </YStack>
+                </YStack>
 
                 {/* History */}
                 <Text style={styles.sectionTitle}>History</Text>

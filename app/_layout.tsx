@@ -5,11 +5,14 @@ import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { TamaguiProvider } from 'tamagui';
+import { tamaguiConfig } from '@/tamagui.config';
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { GlobalProvider } from '@/context/GlobalContext';
 import { LanguageProvider } from '@/context/LanguageContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
+import { QueryProvider } from '@/context/QueryProvider';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 function InitialLayout() {
@@ -101,13 +104,15 @@ function RootContent() {
     const { isDark } = useTheme();
     return (
         <NavThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
-            <LanguageProvider>
-                <AuthProvider>
-                    <GlobalProvider>
-                        <InitialLayout />
-                    </GlobalProvider>
-                </AuthProvider>
-            </LanguageProvider>
+            <QueryProvider>
+                <LanguageProvider>
+                    <AuthProvider>
+                        <GlobalProvider>
+                            <InitialLayout />
+                        </GlobalProvider>
+                    </AuthProvider>
+                </LanguageProvider>
+            </QueryProvider>
             <StatusBar style={isDark ? 'light' : 'auto'} />
         </NavThemeProvider>
     );
@@ -116,9 +121,11 @@ function RootContent() {
 export default function RootLayout() {
     return (
         <SafeAreaProvider>
-            <ThemeProvider>
-                <RootContent />
-            </ThemeProvider>
+            <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
+                <ThemeProvider>
+                    <RootContent />
+                </ThemeProvider>
+            </TamaguiProvider>
         </SafeAreaProvider>
     );
 }

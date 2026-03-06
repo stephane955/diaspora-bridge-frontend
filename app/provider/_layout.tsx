@@ -40,6 +40,8 @@ export default function ProviderLayout() {
             <Tabs.Screen name="post_update" options={{ href: null, title: 'Post Update' }} />
             <Tabs.Screen name="withdraw" options={{ href: null, title: t('withdrawTitle') ?? 'Withdraw' }} />
             <Tabs.Screen name="request-payout" options={{ href: null, title: 'Request Payout' }} />
+            <Tabs.Screen name="suppliers" options={{ href: null, title: 'Partner Suppliers' }} />
+            <Tabs.Screen name="material-cart" options={{ href: null, title: 'Material Cart' }} />
             <Tabs.Screen name="job/[id]" options={{ href: null, title: '' }} />
             <Tabs.Screen name="project/[id]" options={{ href: null, title: '' }} />
         </Tabs>

@@ -44,6 +44,11 @@ export default function ProjectDetailsScreen() {
     const [updates, setUpdates] = useState<any[]>([]);
     const [milestones, setMilestones] = useState<any[]>([]);
     const [review, setReview] = useState<any | null>(null);
+    const [materialCart, setMaterialCart] = useState<any | null>(null);
+    const [defects, setDefects] = useState<any[]>([]);
+    const [showDefectModal, setShowDefectModal] = useState(false);
+    const [defectDescription, setDefectDescription] = useState('');
+    const [submittingDefect, setSubmittingDefect] = useState(false);
 
     // --- UI STATE ---
     const [loading, setLoading] = useState(true);
@@ -127,6 +132,14 @@ export default function ProjectDetailsScreen() {
                 const { data: inserted } = await supabase.from('project_contracts').insert({ project_id: id }).select().single();
                 if (inserted) contractData = inserted;
             }
+
+            // H. Material cart (B2B supply chain)
+            const { data: cartData } = await supabase.from('project_material_carts').select('*').eq('project_id', id).maybeSingle();
+            setMaterialCart(cartData || null);
+
+            // I. Defects (handoff / warranty)
+            const { data: defectsData } = await supabase.from('project_defects').select('*').eq('project_id', id).order('created_at', { ascending: false });
+            setDefects(defectsData || []);
 
             setProject(projectData);
             setExpenses(expData || []);
@@ -430,6 +443,36 @@ export default function ProjectDetailsScreen() {
                         </TouchableOpacity>
                     )}
 
+                    {/* 2.5 Material Cart (Client approve → escrow split) */}
+                    {isOwner && !isPending && materialCart?.status === 'pending_approval' && (
+                        <View style={styles.section}>
+                            <Text style={styles.subTitle}>Material Cart – Pending Approval</Text>
+                            <View style={[styles.glassCard, { borderColor: theme.colors.emerald + '60' }]}>
+                                <Text style={styles.glassCardText}>Materials: {Number(materialCart.total_materials_cfa || 0).toLocaleString()} CFA</Text>
+                                {materialCart.labor_amount_cfa != null && (
+                                    <Text style={styles.glassCardText}>Labor: {Number(materialCart.labor_amount_cfa).toLocaleString()} CFA</Text>
+                                )}
+                                <TouchableOpacity
+                                    style={styles.approveCartBtn}
+                                    onPress={async () => {
+                                        try {
+                                            await supabase
+                                                .from('project_material_carts')
+                                                .update({ status: 'approved', approved_at: new Date().toISOString(), approved_by: user?.id })
+                                                .eq('id', materialCart.id);
+                                            successFeedback();
+                                            fetchData();
+                                        } catch (e: any) {
+                                            Alert.alert('Error', e.message);
+                                        }
+                                    }}
+                                >
+                                    <Text style={styles.approveCartBtnText}>Approve cart (split: suppliers + labor)</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
+
                     {/* 3. Expenses & Material Ledger */}
                     {!isPending && (expenses.length > 0 || isProvider || (project.material_budget != null && project.material_budget > 0)) && (
                         <View style={styles.section}>
@@ -543,6 +586,50 @@ export default function ProjectDetailsScreen() {
                             <TouchableOpacity style={styles.callBtn} onPress={() => { mediumFeedback(); router.push(`/chat/${id}`); }}>
                                 <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
                             </TouchableOpacity>
+                        </View>
+                    )}
+
+                    {/* 4.4 Handoff & Warranty (30-day retainage) */}
+                    {isCompleted && isOwner && (project.warranty_status === 'held' || project.warranty_status === 'frozen') && (
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>Handoff & Warranty</Text>
+                            <View style={[styles.glassRow, { padding: 16 }]}>
+                                <View>
+                                    <Text style={styles.metricLabel}>Retainage (10%)</Text>
+                                    <Text style={styles.metricValue}>{Number(project.warranty_retainage_cfa || 0).toLocaleString()} CFA</Text>
+                                </View>
+                                <View>
+                                    <Text style={styles.metricLabel}>Status</Text>
+                                    <Text style={[styles.metricValue, { color: project.warranty_status === 'frozen' ? theme.colors.warning : theme.colors.text }]}>
+                                        {project.warranty_status === 'frozen' ? 'Frozen (defect reported)' : 'Held (30 days)'}
+                                    </Text>
+                                </View>
+                                {project.warranty_hold_until && (
+                                    <View>
+                                        <Text style={styles.metricLabel}>Releases</Text>
+                                        <Text style={styles.metricValue}>{new Date(project.warranty_hold_until).toLocaleDateString()}</Text>
+                                    </View>
+                                )}
+                            </View>
+                            {isOwner && (
+                                <TouchableOpacity
+                                    style={[styles.inviteObserverBtn, { borderColor: theme.colors.warning + '60', backgroundColor: theme.colors.warning + '15' }]}
+                                    onPress={() => setShowDefectModal(true)}
+                                >
+                                    <Ionicons name="warning-outline" size={18} color={theme.colors.warning} />
+                                    <Text style={[styles.inviteObserverText, { color: theme.colors.warning }]}>Report post-completion defect</Text>
+                                </TouchableOpacity>
+                            )}
+                            {defects.length > 0 && (
+                                <View style={styles.defectList}>
+                                    {defects.map((d) => (
+                                        <View key={d.id} style={styles.defectRow}>
+                                            <Text style={styles.defectDesc}>{d.description}</Text>
+                                            <Text style={styles.defectStatus}>{d.status} · {new Date(d.created_at).toLocaleDateString()}</Text>
+                                        </View>
+                                    ))}
+                                </View>
+                            )}
                         </View>
                     )}
 
@@ -744,6 +831,31 @@ export default function ProjectDetailsScreen() {
                                 <Text style={styles.disputeMilestoneText}>Dispute milestone</Text>
                             </TouchableOpacity>
                         )}
+                        <TouchableOpacity
+                            style={[styles.disputeMilestoneBtn, { marginTop: 4 }]}
+                            onPress={() => {
+                                Alert.alert('Lock project', 'Escalate to full project lock? This revokes update access and notifies platform admins.', [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    {
+                                        text: 'Lock project',
+                                        style: 'destructive',
+                                        onPress: async () => {
+                                            try {
+                                                const { data, error } = await supabase.rpc('trigger_dispute', { p_project_id: id });
+                                                if (error) throw error;
+                                                successFeedback();
+                                                fetchData();
+                                                Alert.alert('Project locked', 'Admins have been notified.');
+                                            } catch (e: any) {
+                                                Alert.alert('Error', e.message);
+                                            }
+                                        },
+                                    },
+                                ]);
+                            }}
+                        >
+                            <Text style={styles.disputeMilestoneText}>Lock project (escalate dispute)</Text>
+                        </TouchableOpacity>
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
@@ -831,6 +943,60 @@ export default function ProjectDetailsScreen() {
                 </KeyboardAvoidingView>
             </Modal>
 
+            {/* 6. Report Defect Modal (Handoff / Warranty) */}
+            <Modal visible={showDefectModal} transparent animationType="slide">
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+                    <TouchableOpacity style={{ flex: 1 }} onPress={() => setShowDefectModal(false)} />
+                    <View style={styles.modalCard}>
+                        <View style={styles.modalHandle} />
+                        <Text style={styles.modalTitle}>Report post-completion defect</Text>
+                        <Text style={styles.modalSub}>This will freeze the 10% retainage until the issue is resolved.</Text>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Description</Text>
+                            <TextInput
+                                style={styles.inputArea}
+                                placeholder="e.g. Roof leak in north corner"
+                                value={defectDescription}
+                                onChangeText={setDefectDescription}
+                                multiline
+                            />
+                        </View>
+                        <View style={styles.modalBtns}>
+                            <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowDefectModal(false); setDefectDescription(''); }}>
+                                <Text style={styles.cancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.confirmBtn}
+                                onPress={async () => {
+                                    if (!defectDescription.trim() || !id || !user?.id) return;
+                                    setSubmittingDefect(true);
+                                    try {
+                                        await supabase.from('project_defects').insert({
+                                            project_id: id,
+                                            reported_by: user.id,
+                                            description: defectDescription.trim(),
+                                            status: 'open',
+                                        });
+                                        await supabase.from('projects').update({ warranty_status: 'frozen' }).eq('id', id);
+                                        successFeedback();
+                                        setShowDefectModal(false);
+                                        setDefectDescription('');
+                                        fetchData();
+                                    } catch (e: any) {
+                                        Alert.alert('Error', e.message);
+                                    } finally {
+                                        setSubmittingDefect(false);
+                                    }
+                                }}
+                                disabled={submittingDefect || !defectDescription.trim()}
+                            >
+                                {submittingDefect ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmText}>Report</Text>}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
+
         </View>
     );
 }
@@ -881,6 +1047,15 @@ const styles = StyleSheet.create({
     materialBudgetRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12, backgroundColor: theme.colors.surfaceAlt, borderRadius: 12, marginBottom: 8 },
     approveExpenseBtn: { backgroundColor: theme.colors.success, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
     approveExpenseText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+
+    glassCard: { padding: theme.spacing.md, borderRadius: theme.radii.lg, borderWidth: 1, borderColor: theme.colors.border, marginBottom: theme.spacing.sm },
+    glassCardText: { fontSize: 14, color: theme.colors.text, marginBottom: 4 },
+    approveCartBtn: { backgroundColor: theme.colors.emerald, paddingVertical: 14, borderRadius: theme.radii.md, alignItems: 'center', marginTop: 12 },
+    approveCartBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+    defectList: { marginTop: 12 },
+    defectRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+    defectDesc: { fontSize: 14, color: theme.colors.text },
+    defectStatus: { fontSize: 12, color: theme.colors.textMuted, marginTop: 4 },
 
     // Timeline Styles
     timelineItem: { flexDirection: 'row' },

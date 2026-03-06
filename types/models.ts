@@ -49,6 +49,10 @@ export type Message = {
     content: string;
     created_at: string;
     image_url?: string | null;
+    audio_url?: string | null;
+    transcription_text?: string | null;
+    translation_text?: string | null;
+    translation_lang?: string | null;
 };
 
 export type Notification = {

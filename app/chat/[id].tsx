@@ -59,7 +59,7 @@ export default function ChatScreen() {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuth();
-    const { t } = useLanguage();
+    const { t, language: deviceLanguage } = useLanguage();
 
     const projectId = typeof id === 'string' ? id : id?.[0];
     const [messages, setMessages] = useState<MessageRow[]>([]);
@@ -71,6 +71,7 @@ export default function ChatScreen() {
     const [recordingUri, setRecordingUri] = useState<string | null>(null);
     const [transcriptionPlaceholder, setTranscriptionPlaceholder] = useState<string | null>(null);
     const [isObserver, setIsObserver] = useState(false);
+    const [translatingId, setTranslatingId] = useState<string | null>(null);
     const recordingRef = useRef<{ stopAndUnloadAsync: () => Promise<void>; getURI: () => string | null } | null>(null);
     const scrollThrottle = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -242,18 +243,38 @@ export default function ChatScreen() {
             if (!uri || !projectId || !user?.id) return;
             setRecordingUri(uri);
             setTranscriptionPlaceholder('Transcribing...');
-            await new Promise((r) => setTimeout(r, 800));
-            const placeholderText = '[Voice note – connect AI transcription service for full text]';
-            setTranscriptionPlaceholder(placeholderText);
-            const { error } = await supabase.from('messages').insert({
+
+            let audioUrl: string | null = null;
+            try {
+                const path = `${projectId}/voice_${Date.now()}.m4a`;
+                const response = await fetch(uri);
+                const blob = await response.blob();
+                const { error: uploadErr } = await supabase.storage
+                    .from('project_media')
+                    .upload(path, blob, { contentType: 'audio/mp4' });
+                if (!uploadErr) {
+                    const { data: urlData } = supabase.storage.from('project_media').getPublicUrl(path);
+                    audioUrl = urlData.publicUrl;
+                }
+            } catch (_) { /* upload optional */ }
+
+            const { data: inserted, error } = await supabase.from('messages').insert({
                 project_id: projectId,
                 sender_id: user.id,
-                content: `🎤 ${placeholderText}`,
-            });
+                content: '🎤 Voice note',
+                ...(audioUrl && { audio_url: audioUrl }),
+            }).select('id').single();
+
             if (error) throw error;
             successFeedback();
             setTranscriptionPlaceholder(null);
             setRecordingUri(null);
+
+            if (inserted?.id && audioUrl) {
+                try {
+                    await supabase.functions.invoke('transcribe-voice', { body: { message_id: inserted.id } });
+                } catch (_) { /* Edge Function may not be deployed */ }
+            }
         } catch (e) {
             console.warn('Stop/send recording failed', e);
             setTranscriptionPlaceholder(null);
@@ -261,10 +282,34 @@ export default function ChatScreen() {
         }
     };
 
+    const handleTranslate = async (messageId: string) => {
+        setTranslatingId(messageId);
+        try {
+            await supabase.functions.invoke('translate-message', {
+                body: { message_id: messageId, target_lang: deviceLanguage || 'en' },
+            });
+            fetchMessages();
+        } catch (_) { /* Edge Function may not be deployed */ }
+        setTranslatingId(null);
+    };
+
+    const displayText = (item: MessageRow) => {
+        if (item.audio_url) {
+            if (item.translation_text && item.translation_lang === deviceLanguage) return item.translation_text;
+            return item.transcription_text || item.content;
+        }
+        return item.content;
+    };
+
+    const langNames: Record<string, string> = { en: 'English', fr: 'Français', es: 'Español', de: 'Deutsch', it: 'Italiano' };
+
     const renderMessage = ({ item, index }: { item: MessageRow; index: number }) => {
         const isMe = item.sender_id === user?.id;
         const time = new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const isRead = isMe && index < messages.length - 2;
+        const isVoice = !!item.audio_url;
+        const text = displayText(item);
+        const showTranslate = isVoice && item.transcription_text && item.translation_lang !== deviceLanguage;
 
         return (
             <View style={[styles.msgWrapper, isMe ? styles.myMsgWrapper : styles.theirMsgWrapper]}>
@@ -281,11 +326,27 @@ export default function ChatScreen() {
                             end={{ x: 1, y: 1 }}
                             style={[styles.bubble, styles.myBubble]}
                         >
-                            <Text style={[styles.msgText, styles.myText]}>{item.content}</Text>
+                            {isVoice && <View style={styles.voiceIconRow}><Ionicons name="mic" size={14} color="rgba(255,255,255,0.9)" /><Text style={[styles.msgText, styles.myText]}> </Text></View>}
+                            <Text style={[styles.msgText, styles.myText]}>{text}</Text>
+                            {showTranslate && (
+                                <TouchableOpacity style={styles.translateBtn} onPress={() => handleTranslate(item.id)} disabled={!!translatingId}>
+                                    {translatingId === item.id ? <ActivityIndicator size="small" color="rgba(255,255,255,0.9)" /> : (
+                                        <Text style={styles.translateBtnText}>Translate to {langNames[deviceLanguage] || deviceLanguage}</Text>
+                                    )}
+                                </TouchableOpacity>
+                            )}
                         </LinearGradient>
                     ) : (
                         <View style={[styles.bubble, styles.theirBubble]}>
-                            <Text style={[styles.msgText, styles.theirText]}>{item.content}</Text>
+                            {isVoice && <View style={styles.voiceIconRow}><Ionicons name="mic" size={14} color={theme.colors.textMuted} /></View>}
+                            <Text style={[styles.msgText, styles.theirText]}>{text}</Text>
+                            {showTranslate && (
+                                <TouchableOpacity style={styles.translateBtnThem} onPress={() => handleTranslate(item.id)} disabled={!!translatingId}>
+                                    {translatingId === item.id ? <ActivityIndicator size="small" color={theme.colors.active} /> : (
+                                        <Text style={styles.translateBtnTextThem}>Translate to {langNames[deviceLanguage] || deviceLanguage}</Text>
+                                    )}
+                                </TouchableOpacity>
+                            )}
                         </View>
                     )
                 )}
@@ -502,6 +563,12 @@ const styles = StyleSheet.create({
     msgText: { fontSize: 15, lineHeight: 22 },
     myText: { color: '#FFFFFF' },
     theirText: { color: theme.colors.text },
+
+    voiceIconRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
+    translateBtn: { marginTop: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: theme.radii.sm, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.2)' },
+    translateBtnText: { fontSize: 12, color: 'rgba(255,255,255,0.95)', fontWeight: '600' },
+    translateBtnThem: { marginTop: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: theme.radii.sm, alignSelf: 'flex-start', backgroundColor: theme.colors.activeSoft + '30' },
+    translateBtnTextThem: { fontSize: 12, color: theme.colors.active, fontWeight: '600' },
 
     msgImage: { width: 200, height: 150, borderRadius: theme.radii.md - 2, backgroundColor: theme.colors.border },
     metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, marginHorizontal: 4 },

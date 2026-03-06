@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
 import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
+import { rankBids, type ProviderStats } from '@/utils/bidScoring';
 
 export default function ProposalsScreen() {
     const insets = useSafeAreaInsets();
@@ -33,15 +34,33 @@ export default function ProposalsScreen() {
                 .single();
             setProject(proj);
 
-            // 2. Get Applications (Cheapest first)
+            // 2. Get Applications with Smart Bid fields
             const { data: apps, error } = await supabase
                 .from('project_applications')
                 .select('*, profiles:provider_id(full_name, avatar_url, rating, city)')
                 .eq('project_id', id)
-                .order('bid_amount', { ascending: true });
+                .in('status', ['pending']);
 
             if (error) throw error;
-            setProposals(apps || []);
+
+            // 3. Fetch provider stats for AI scoring and rank bids
+            const providerIds = [...new Set((apps || []).map((a: any) => a.provider_id))];
+            const statsMap: Record<string, ProviderStats> = {};
+            await Promise.all(providerIds.map(async (pid) => {
+                const { data: stats } = await supabase.rpc('get_provider_stats', { p_provider_id: pid });
+                if (stats && typeof stats === 'object') {
+                    statsMap[pid] = {
+                        completionRate: Number((stats as any).completion_rate) || 0,
+                        avgReviewScore: Number((stats as any).avg_review_score) || 0,
+                        disputeCount: Number((stats as any).dispute_count) || 0,
+                        completedProjectsCount: Number((stats as any).completed_projects_count) || 0,
+                    };
+                }
+            }));
+
+            const getStats = (providerId: string) => statsMap[providerId] ?? null;
+            const ranked = rankBids(apps || [], getStats, proj?.budget ?? undefined);
+            setProposals(ranked);
 
         } catch (err) {
             console.error(err);
@@ -133,18 +152,28 @@ export default function ProposalsScreen() {
         );
     };
 
-    const renderProposal = ({ item }: { item: any }) => {
+    const renderProposal = ({ item, index }: { item: any; index: number }) => {
         const isExpanded = expandedId === item.id;
-        // Calculate difference
         const budgetDiff = project?.budget ? item.bid_amount - project.budget : 0;
         const isOverBudget = budgetDiff > 0;
+        const isAlgorithmRecommended = index === 0 && proposals.length > 0;
 
         return (
             <TouchableOpacity
-                style={[styles.card, isExpanded && styles.cardExpanded]}
+                style={[
+                    styles.card,
+                    isExpanded && styles.cardExpanded,
+                    isAlgorithmRecommended && styles.cardRecommended,
+                ]}
                 activeOpacity={0.9}
                 onPress={() => setExpandedId(isExpanded ? null : item.id)}
             >
+                {isAlgorithmRecommended && (
+                    <View style={styles.recommendedBadge}>
+                        <Ionicons name="sparkles" size={12} color={theme.colors.emerald} />
+                        <Text style={styles.recommendedText}>Algorithm Recommended</Text>
+                    </View>
+                )}
                 {/* Header Row */}
                 <View style={styles.cardHeader}>
                     <Image
@@ -162,6 +191,18 @@ export default function ProposalsScreen() {
                         <Text style={styles.bidAmount}>{item.bid_amount?.toLocaleString()} CFA</Text>
                     </View>
                 </View>
+
+                {/* Smart Bid details */}
+                {(item.material_estimate != null || item.time_to_completion_days != null) && (
+                    <View style={styles.smartBidRow}>
+                        {item.material_estimate != null && (
+                            <Text style={styles.smartBidText}>Materials: {Number(item.material_estimate).toLocaleString()} CFA</Text>
+                        )}
+                        {item.time_to_completion_days != null && (
+                            <Text style={styles.smartBidText}>Completion: {item.time_to_completion_days} days</Text>
+                        )}
+                    </View>
+                )}
 
                 {/* Budget Comparison Logic */}
                 {project?.budget && (
@@ -235,6 +276,11 @@ const styles = StyleSheet.create({
 
     card: { backgroundColor: theme.colors.surface, borderRadius: theme.radii.md, padding: theme.spacing.md, marginBottom: theme.spacing.md, ...theme.shadow.soft, borderWidth: 1, borderColor: theme.colors.border },
     cardExpanded: { borderColor: theme.colors.active, borderWidth: 1 },
+    cardRecommended: { borderColor: theme.colors.emerald, borderWidth: 2, ...theme.shadow.glowEmerald },
+    recommendedBadge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, marginBottom: theme.spacing.sm, paddingHorizontal: 10, paddingVertical: 6, borderRadius: theme.radii.pill, backgroundColor: theme.colors.emeraldSoft + '30', borderWidth: 1, borderColor: theme.colors.emerald + '60' },
+    recommendedText: { fontSize: 11, fontWeight: '800', color: theme.colors.emerald, letterSpacing: 0.5 },
+    smartBidRow: { flexDirection: 'row', gap: theme.spacing.md, marginBottom: theme.spacing.sm },
+    smartBidText: { fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' },
 
     cardHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
     avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.border },
