@@ -104,10 +104,17 @@ export default function ActiveSites() {
                         <Ionicons name="receipt-outline" size={16} color="#fff" />
                         <Text style={styles.enterText}>Receipt</Text>
                     </TouchableOpacity>
-                    <View style={styles.enterBtn}>
+                    <TouchableOpacity
+                        style={styles.receiptBtn}
+                        onPress={() => router.push(`/provider/material-cart?projectId=${item.id}`)}
+                    >
+                        <Ionicons name="cart-outline" size={16} color="#fff" />
+                        <Text style={styles.enterText}>Cart</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.enterBtn} onPress={() => router.push(`/provider/project/${item.id}`)}>
                         <Text style={styles.enterText}>{t('open') || "Open"}</Text>
                         <Ionicons name="arrow-forward" size={16} color="#fff" />
-                    </View>
+                    </TouchableOpacity>
                 </View>
             </View>
         </TouchableOpacity>

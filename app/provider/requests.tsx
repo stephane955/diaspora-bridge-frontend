@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NavigationBar from '@/components/NavigationBar';
 import { Project } from '@/types/models';
+import { theme } from '@/constants/theme';
 
 export default function RequestsScreen() {
     const insets = useSafeAreaInsets();

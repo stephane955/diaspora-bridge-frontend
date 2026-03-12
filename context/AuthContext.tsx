@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type UserRole = 'client' | 'provider' | null;
+export type UserRole = 'client' | 'provider' | 'supplier' | null;
 
 type AuthContextType = {
     user: User | null;
@@ -22,7 +22,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function getRoleFromUser(user: User | null): UserRole {
     const role = user?.user_metadata?.role ?? user?.raw_user_meta_data?.role;
-    if (role === 'client' || role === 'provider') return role;
+    if (role === 'client' || role === 'provider' || role === 'supplier') return role;
     return null;
 }
 

@@ -5,19 +5,25 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { MessageCircle } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { YStack, XStack } from 'tamagui';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
-import BudgetProgress from '@/components/BudgetProgress';
 import NavigationBar from '@/components/NavigationBar';
 import { theme } from '@/constants/theme';
 import { generateAndShareReceipt } from '@/utils/pdfReceipt';
 import { getProjectAccessRole, createObserverInvite } from '@/utils/observers';
 import { getContractHtml, uploadContractPdfFromUri } from '@/utils/contractPdf';
+import ClientApprovalCard from '@/components/ClientApprovalCard';
+
+const NAVY = '#0F172A';
+const SLATE = '#1E293B';
+const GOLD = '#D4AF37';
 
 const { width, height } = Dimensions.get('window');
 const HEADER_HEIGHT = 300;
@@ -45,6 +51,7 @@ export default function ProjectDetailsScreen() {
     const [milestones, setMilestones] = useState<any[]>([]);
     const [review, setReview] = useState<any | null>(null);
     const [materialCart, setMaterialCart] = useState<any | null>(null);
+    const [supplierName, setSupplierName] = useState<string | null>(null);
     const [defects, setDefects] = useState<any[]>([]);
     const [showDefectModal, setShowDefectModal] = useState(false);
     const [defectDescription, setDefectDescription] = useState('');
@@ -133,9 +140,13 @@ export default function ProjectDetailsScreen() {
                 if (inserted) contractData = inserted;
             }
 
-            // H. Material cart (B2B supply chain)
-            const { data: cartData } = await supabase.from('project_material_carts').select('*').eq('project_id', id).maybeSingle();
+            // H. Material cart (B2B supply chain) — latest cart per project
+            const { data: cartData } = await supabase.from('project_material_carts').select('*').eq('project_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle();
             setMaterialCart(cartData || null);
+            if (cartData?.supplier_id) {
+                const { data: prof } = await supabase.from('profiles').select('full_name').eq('id', cartData.supplier_id).maybeSingle();
+                setSupplierName(prof?.full_name || null);
+            } else setSupplierName(null);
 
             // I. Defects (handoff / warranty)
             const { data: defectsData } = await supabase.from('project_defects').select('*').eq('project_id', id).order('created_at', { ascending: false });
@@ -183,6 +194,10 @@ export default function ProjectDetailsScreen() {
         getProjectAccessRole(id as string, user.id).then(setProjectAccessRole);
     }, [id, user?.id]);
 
+    // Sequential escrow: step N+1 stays locked until step N is paid
+    const nextReleasableMilestone = milestones.find((m: any) => m.status === 'locked');
+    const hasReleasableStep = !!nextReleasableMilestone;
+
     // Deep link: open approval modal when notification action was "Approve" / "View Proof"
     const openApprovalHandled = useRef(false);
     useEffect(() => {
@@ -193,9 +208,19 @@ export default function ProjectDetailsScreen() {
         }
     }, [openApproval, nextReleasableMilestone]);
 
-    // Sequential escrow: step N+1 stays locked until step N is paid
-    const nextReleasableMilestone = milestones.find((m: any) => m.status === 'locked');
-    const hasReleasableStep = !!nextReleasableMilestone;
+    // Pulsing Live badge
+    const liveOpacity = useRef(new Animated.Value(1)).current;
+    useEffect(() => {
+        if (!isCommandCenter || isCompleted) return;
+        const pulse = Animated.loop(
+            Animated.sequence([
+                Animated.timing(liveOpacity, { toValue: 0.5, duration: 800, useNativeDriver: true }),
+                Animated.timing(liveOpacity, { toValue: 1, duration: 800, useNativeDriver: true }),
+            ])
+        );
+        pulse.start();
+        return () => pulse.stop();
+    }, [isCommandCenter, isCompleted]);
 
     // --- ANIMATION CONFIG ---
     const headerTranslateY = scrollY.interpolate({
@@ -346,6 +371,7 @@ export default function ProjectDetailsScreen() {
     const pendingMaterial = materialExpenses.filter((e: any) => e.status === 'pending');
     const isPending = project.status === 'pending';
     const isCompleted = project.status === 'completed';
+    const isCommandCenter = project.status === 'in_progress' || project.status === 'In Progress' || project.status === 'completed';
     const isObserver = projectAccessRole === 'observer';
     const isOwner = projectAccessRole === 'owner';
     const isProvider = projectAccessRole === 'provider';
@@ -365,6 +391,12 @@ export default function ProjectDetailsScreen() {
                 <LinearGradient colors={['rgba(0,0,0,0.1)', 'rgba(15, 23, 42, 0.9)']} style={styles.gradient} />
                 <View style={styles.headerContent}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        {isCommandCenter && !isCompleted && (
+                            <Animated.View style={[styles.liveBadge, { opacity: liveOpacity }]}>
+                                <View style={styles.liveDot} />
+                                <Text style={styles.liveText}>LIVE</Text>
+                            </Animated.View>
+                        )}
                         <View style={[styles.statusBadge, isPending ? styles.bgWarning : styles.bgSuccess]}>
                             <Text style={[styles.statusText, isPending ? styles.textWarning : styles.textSuccess]}>
                                 {project.status.replace('_', ' ').toUpperCase()}
@@ -394,38 +426,82 @@ export default function ProjectDetailsScreen() {
             >
                 <View style={styles.body}>
 
-                    {/* 1. Glass Metrics */}
-                    <View style={styles.metricsContainer}>
-                        <BlurView intensity={30} tint="light" style={styles.glassRow}>
-                            <View style={styles.metricItem}>
-                                <Text style={styles.metricLabel}>Budget</Text>
-                                <Text style={styles.metricValue}>{(project.budget / 1000).toFixed(0)}k</Text>
+                    {isCommandCenter && (
+                        /* ========== PROJECT COMMAND CENTER ========== */
+                        <>
+                            {/* 1. Financial Dashboard Card */}
+                            <View style={styles.metricsContainer}>
+                                <BlurView intensity={50} tint="dark" style={styles.financialCard}>
+                                    <LinearGradient colors={[NAVY, SLATE] as [string, string]} style={StyleSheet.absoluteFill} />
+                                    <YStack gap={16} padding={20}>
+                                        <XStack justifyContent="space-between" alignItems="center">
+                                            <Text style={styles.financialTitle}>Budget Overview</Text>
+                                            <Text style={styles.financialPercent}>{Math.min(100, ((totalSpent / project.budget) * 100)).toFixed(0)}%</Text>
+                                        </XStack>
+                                        <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.min(100, (totalSpent / project.budget) * 100)}%` }]} /></View>
+                                        <XStack gap={12}>
+                                            <View style={styles.gridCol}><Text style={styles.gridLabel}>Total Budget</Text><Text style={styles.gridValue}>{project.budget.toLocaleString()}</Text></View>
+                                            <View style={[styles.gridCol, styles.gridBorder]}><Text style={styles.gridLabel}>Total Spent</Text><Text style={[styles.gridValue, { color: '#94A3B8' }]}>{totalSpent.toLocaleString()}</Text></View>
+                                            <View style={styles.gridCol}><Text style={styles.gridLabel}>Remaining</Text><Text style={[styles.gridValue, { color: '#4ADE80' }]}>{(project.budget - totalSpent).toLocaleString()}</Text></View>
+                                        </XStack>
+                                    </YStack>
+                                </BlurView>
                             </View>
-                            <View style={styles.metricDivider} />
-                            <View style={styles.metricItem}>
-                                <Text style={styles.metricLabel}>Spent</Text>
-                                <Text style={styles.metricValue}>{(totalSpent / 1000).toFixed(0)}k</Text>
-                            </View>
-                            <View style={styles.metricDivider} />
-                            <View style={styles.metricItem}>
-                                <Text style={styles.metricLabel}>Remaining</Text>
-                                <Text style={[styles.metricValue, { color: '#16A34A' }]}>{((project.budget - totalSpent) / 1000).toFixed(0)}k</Text>
-                            </View>
-                        </BlurView>
-                    </View>
 
-                    {/* 2. Overview */}
-                    <Text style={styles.sectionTitle}>Overview</Text>
-                    <Text style={styles.description}>{project.description || "No description available."}</Text>
+                            {/* 2. Ablauf Timeline (Milestones) */}
+                            {milestones.length > 0 && (
+                                <View style={styles.section}>
+                                    <Text style={styles.sectionTitle}>Ablauf Timeline</Text>
+                                    <YStack gap={0}>
+                                        {milestones.map((m: any, idx: number) => {
+                                            const isDone = m.status === 'paid' || m.status === 'released';
+                                            const isCurrent = m.status === 'locked';
+                                            const isFuture = !isDone && !isCurrent;
+                                            return (
+                                                <View key={m.id} style={[styles.timelineStep, isFuture && styles.timelineStepFaded]}>
+                                                    <View style={[styles.timelineDot, isDone && styles.timelineDotDone, isCurrent && styles.timelineDotCurrent]}>
+                                                        {isDone && <Ionicons name="checkmark" size={14} color="#fff" />}
+                                                    </View>
+                                                    {idx < milestones.length - 1 && <View style={[styles.timelineConnector, isDone && styles.timelineConnectorDone]} />}
+                                                    <View style={[styles.timelineCard, isCurrent && styles.timelineCardGlow]}>
+                                                        <XStack justifyContent="space-between" alignItems="center">
+                                                            <Text style={styles.timelineTitle}>{m.title}</Text>
+                                                            <Text style={styles.timelineAmount}>{Number(m.amount || 0).toLocaleString()} CFA</Text>
+                                                        </XStack>
+                                                        <Text style={styles.timelineStatus}>{isDone ? 'Completed' : isCurrent ? 'Current step' : 'Upcoming'}</Text>
+                                                    </View>
+                                                </View>
+                                            );
+                                        })}
+                                    </YStack>
+                                </View>
+                            )}
 
-                    {!isPending && (
-                        <View style={styles.section}>
-                            <BudgetProgress totalBudget={project.budget} spent={totalSpent} />
-                        </View>
-                    )}
+                            {/* 3. Material Cart Action Card */}
+                            {materialCart && (
+                                <View style={styles.section}>
+                                    <Text style={styles.sectionTitle}>Material Cart</Text>
+                                    <LinearGradient colors={[SLATE, NAVY] as [string, string]} style={styles.cartActionCard}>
+                                        <XStack alignItems="center" justifyContent="space-between" marginBottom={12}>
+                                            <Text style={styles.cartSupplier}>{supplierName || 'Supplier'}</Text>
+                                            <Text style={styles.cartTotal}>{Number(materialCart.total_amount_cfa || 0).toLocaleString()} CFA</Text>
+                                        </XStack>
+                                        <View style={styles.cartProgressRow}>
+                                            <Text style={[styles.cartProgressLabel, materialCart.status !== 'rejected' && styles.cartProgressLabelActive]}>Pending</Text>
+                                            <View style={styles.cartProgressBar}><View style={[styles.cartProgressFill, { width: materialCart.status === 'approved' || materialCart.status === 'collected' ? '50%' : '0%' }]} /></View>
+                                            <Text style={[styles.cartProgressLabel, (materialCart.status === 'approved' || materialCart.status === 'collected') && styles.cartProgressLabelActive]}>Funded</Text>
+                                            <View style={styles.cartProgressBar}><View style={[styles.cartProgressFill, { width: materialCart.status === 'collected' ? '100%' : '0%' }]} /></View>
+                                            <Text style={[styles.cartProgressLabel, materialCart.status === 'collected' && styles.cartProgressLabelActive]}>Collected</Text>
+                                        </View>
+                                        {isOwner && materialCart.status === 'pending_approval' && (
+                                            <ClientApprovalCard cart={{ id: materialCart.id, items: materialCart.items ?? [], total_amount_cfa: Number(materialCart.total_amount_cfa ?? 0) + Number(materialCart.labor_amount_cfa ?? 0), status: materialCart.status, payment_status: materialCart.payment_status }} onApproved={fetchData} />
+                                        )}
+                                    </LinearGradient>
+                                </View>
+                            )}
 
-                    {/* Invite Observer (owner only) */}
-                    {isOwner && !isPending && (
+                            {/* Invite Observer */}
+                            {isOwner && (
                         <TouchableOpacity
                             style={styles.inviteObserverBtn}
                             onPress={async () => {
@@ -441,40 +517,10 @@ export default function ProjectDetailsScreen() {
                             <Ionicons name="people-outline" size={18} color={theme.colors.active} />
                             <Text style={styles.inviteObserverText}>Invite view-only (family / observer)</Text>
                         </TouchableOpacity>
-                    )}
+                            )}
 
-                    {/* 2.5 Material Cart (Client approve → escrow split) */}
-                    {isOwner && !isPending && materialCart?.status === 'pending_approval' && (
-                        <View style={styles.section}>
-                            <Text style={styles.subTitle}>Material Cart – Pending Approval</Text>
-                            <View style={[styles.glassCard, { borderColor: theme.colors.emerald + '60' }]}>
-                                <Text style={styles.glassCardText}>Materials: {Number(materialCart.total_materials_cfa || 0).toLocaleString()} CFA</Text>
-                                {materialCart.labor_amount_cfa != null && (
-                                    <Text style={styles.glassCardText}>Labor: {Number(materialCart.labor_amount_cfa).toLocaleString()} CFA</Text>
-                                )}
-                                <TouchableOpacity
-                                    style={styles.approveCartBtn}
-                                    onPress={async () => {
-                                        try {
-                                            await supabase
-                                                .from('project_material_carts')
-                                                .update({ status: 'approved', approved_at: new Date().toISOString(), approved_by: user?.id })
-                                                .eq('id', materialCart.id);
-                                            successFeedback();
-                                            fetchData();
-                                        } catch (e: any) {
-                                            Alert.alert('Error', e.message);
-                                        }
-                                    }}
-                                >
-                                    <Text style={styles.approveCartBtnText}>Approve cart (split: suppliers + labor)</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    )}
-
-                    {/* 3. Expenses & Material Ledger */}
-                    {!isPending && (expenses.length > 0 || isProvider || (project.material_budget != null && project.material_budget > 0)) && (
+                            {/* 3. Expenses & Material Ledger */}
+                            {!isPending && (expenses.length > 0 || isProvider || (project.material_budget != null && project.material_budget > 0)) && (
                         <View style={styles.section}>
                             <Text style={styles.subTitle}>Expenses</Text>
                             {project.material_budget != null && project.material_budget > 0 && (
@@ -534,7 +580,12 @@ export default function ProjectDetailsScreen() {
                                 </View>
                             ))}
                         </View>
+                            )}
+                        </>
                     )}
+
+                    <Text style={styles.sectionTitle}>Overview</Text>
+                    <Text style={styles.description}>{project.description || "No description available."}</Text>
 
                     {/* 4. Provider / Applicants (UPDATED LINK) */}
                     <View style={{ marginTop: 24, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -741,6 +792,19 @@ export default function ProjectDetailsScreen() {
                         </TouchableOpacity>
                     )}
                 </View>
+            )}
+
+            {/* --- FAB: Chat with Contractor --- */}
+            {isCommandCenter && !isObserver && (
+                <TouchableOpacity
+                    style={[styles.fab, { right: 20, bottom: (insets?.bottom ?? 0) + 100 }]}
+                    onPress={() => { mediumFeedback(); router.push(`/chat/${id}`); }}
+                    activeOpacity={0.9}
+                >
+                    <LinearGradient colors={[GOLD, '#B8860B'] as [string, string]} style={styles.fabGradient}>
+                        <MessageCircle size={24} color="#0F172A" strokeWidth={2} />
+                    </LinearGradient>
+                </TouchableOpacity>
             )}
 
             {/* --- ACTION BAR (Bottom) --- */}
@@ -1010,6 +1074,9 @@ const styles = StyleSheet.create({
     gradient: { ...StyleSheet.absoluteFillObject },
     headerContent: { position: 'absolute', bottom: 40, left: 20, right: 20 },
 
+    liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(239, 68, 68, 0.9)', marginRight: 8 },
+    liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' },
+    liveText: { fontSize: 11, fontWeight: '800', color: '#fff', letterSpacing: 1 },
     statusBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginBottom: 10 },
     bgWarning: { backgroundColor: 'rgba(245, 158, 11, 0.2)' },
     bgSuccess: { backgroundColor: 'rgba(22, 163, 74, 0.2)' },
@@ -1027,6 +1094,37 @@ const styles = StyleSheet.create({
     body: { backgroundColor: theme.colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: theme.spacing.xl, paddingBottom: 40, minHeight: 800 },
 
     metricsContainer: { marginTop: -40, marginBottom: 24 },
+    financialCard: { borderRadius: theme.radii.xl, overflow: 'hidden', ...theme.shadow.soft },
+    financialTitle: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.9)' },
+    financialPercent: { fontSize: 14, fontWeight: '800', color: '#D4AF37' },
+    progressTrack: { height: 8, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 4, overflow: 'hidden' },
+    progressFill: { height: '100%', backgroundColor: GOLD, borderRadius: 4 },
+    gridCol: { flex: 1, alignItems: 'center' },
+    gridBorder: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+    gridLabel: { fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 },
+    gridValue: { fontSize: 14, fontWeight: '800', color: '#fff' },
+    timelineStep: { flexDirection: 'row', marginBottom: 4, position: 'relative' },
+    timelineStepFaded: { opacity: 0.5 },
+    timelineDot: { width: 28, height: 28, borderRadius: 14, backgroundColor: theme.colors.border, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+    timelineDotDone: { backgroundColor: '#D4AF37' },
+    timelineDotCurrent: { backgroundColor: theme.colors.active, shadowColor: theme.colors.active, shadowOpacity: 0.6, shadowRadius: 8 },
+    timelineConnector: { position: 'absolute', left: 13, top: 28, bottom: -8, width: 2, backgroundColor: theme.colors.border },
+    timelineConnectorDone: { backgroundColor: '#D4AF37' },
+    timelineCard: { flex: 1, backgroundColor: theme.colors.surface, padding: 16, borderRadius: theme.radii.md, borderWidth: 1, borderColor: theme.colors.border },
+    timelineCardGlow: { borderColor: theme.colors.active, shadowColor: theme.colors.active, shadowOpacity: 0.3, shadowRadius: 8 },
+    timelineTitle: { fontSize: 15, fontWeight: '700', color: theme.colors.text },
+    timelineAmount: { fontSize: 14, fontWeight: '700', color: theme.colors.textMuted },
+    timelineStatus: { fontSize: 12, color: theme.colors.textMuted, marginTop: 4 },
+    cartActionCard: { padding: 20, borderRadius: theme.radii.lg, overflow: 'hidden', marginBottom: 16 },
+    cartSupplier: { fontSize: 16, fontWeight: '700', color: '#fff' },
+    cartTotal: { fontSize: 16, fontWeight: '800', color: '#D4AF37' },
+    cartProgressRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    cartProgressBar: { flex: 1, height: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 3, overflow: 'hidden' },
+    cartProgressFill: { height: '100%', backgroundColor: '#D4AF37', borderRadius: 3 },
+    cartProgressLabel: { fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: '700' },
+    cartProgressLabelActive: { color: '#D4AF37' },
+    fab: { position: 'absolute', width: 58, height: 58, borderRadius: 29, ...theme.shadow.glowEmerald },
+    fabGradient: { flex: 1, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
     glassRow: { flexDirection: 'row', backgroundColor: theme.colors.surface, borderRadius: theme.radii.lg, padding: theme.spacing.md, ...theme.shadow.soft, justifyContent: 'space-between' },
     metricItem: { alignItems: 'center', flex: 1 },
     metricLabel: { fontSize: 11, color: theme.colors.textMuted, fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 },

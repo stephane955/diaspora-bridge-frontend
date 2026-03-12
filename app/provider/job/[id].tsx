@@ -10,6 +10,7 @@ import NavigationBar from '@/components/NavigationBar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { theme } from '@/constants/theme';
 
 const { width } = Dimensions.get('window');
 

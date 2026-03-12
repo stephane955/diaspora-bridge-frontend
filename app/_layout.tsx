@@ -59,11 +59,9 @@ function InitialLayout() {
         // 2. If logged in and on a public page -> Send to Dashboard (role from AuthContext = Supabase auth metadata)
         if (session && inPublicGroup) {
             const r = session.user?.user_metadata?.role ?? session.user?.raw_user_meta_data?.role;
-            if (r === 'provider') {
-                router.replace('/provider');
-            } else {
-                router.replace('/diaspora');
-            }
+            if (r === 'provider') router.replace('/provider');
+            else if (r === 'supplier') router.replace('/supplier');
+            else router.replace('/diaspora');
         }
     }, [router, segments, session, isMounted, loading]);
 
@@ -81,6 +79,7 @@ function InitialLayout() {
             {/* Protected Routes */}
             <Stack.Screen name="diaspora" options={{ headerShown: false }} />
             <Stack.Screen name="provider" options={{ headerShown: false }} />
+            <Stack.Screen name="supplier" options={{ headerShown: false }} />
 
             {/* Shared/Modal Routes */}
             <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />

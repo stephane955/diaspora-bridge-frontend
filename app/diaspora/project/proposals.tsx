@@ -111,6 +111,9 @@ export default function ProposalsScreen() {
                             // --- 4. NEW: AUTO-CREATE MILESTONES ---
                             // This ensures the Workroom is not empty.
                             // We split the bid into 2 chunks (50% / 50%) for simplicity.
+                            // --- 4. NEW: AUTO-CREATE MILESTONES ---
+                            // This ensures the Workroom is not empty.
+                            // We split the bid into 2 chunks (50% / 50%) for simplicity.
                             const halfAmount = Math.floor(application.bid_amount / 2);
                             const remainder = application.bid_amount - halfAmount;
 
@@ -118,14 +121,14 @@ export default function ProposalsScreen() {
                                 {
                                     project_id: id,
                                     title: "Phase 1: Mobilization & Materials",
-                                    amount: halfAmount,
+                                    amount_cfa: halfAmount, // <-- FIXED: Changed from 'amount'
                                     status: 'locked',
                                     step_order: 1,
                                 },
                                 {
                                     project_id: id,
                                     title: "Phase 2: Completion & Handover",
-                                    amount: remainder,
+                                    amount_cfa: remainder, // <-- FIXED: Changed from 'amount'
                                     status: 'locked',
                                     step_order: 2,
                                 },
@@ -133,9 +136,8 @@ export default function ProposalsScreen() {
 
                             if (milesError) throw milesError;
 
-                            // Set project funds status to escrow (optional: add funds_status column to projects)
-                            const { error: escrowErr } = await supabase.from('projects').update({ funds_status: 'escrow' }).eq('id', id);
-                            if (escrowErr) { /* column may not exist */ }
+                            // <-- FIXED: Removed the 'funds_status' update because that column
+                            // doesn't exist and isn't needed.
 
                             successFeedback();
                             Alert.alert("Success", "Provider Hired! Workroom created.");
