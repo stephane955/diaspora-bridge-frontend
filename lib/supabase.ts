@@ -2,6 +2,7 @@ import { AppState, Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import type { Database } from '@/database.types';
 
 // -----------------------------------------------------------------------
 // YOUR KEYS (Keep these exactly as you had them)
@@ -32,7 +33,7 @@ const ExpoStorage = {
     },
 };
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: {
         storage: ExpoStorage, // <--- Use our safe storage here
         autoRefreshToken: true,

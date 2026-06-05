@@ -60,6 +60,8 @@ export default function ProjectDetailsScreen() {
     // --- UI STATE ---
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [updatesError, setUpdatesError] = useState<string | null>(null);
     const [selectedImage, setSelectedImage] = useState<string | null>(null); // Image Zoom
 
     // --- ACTION STATES ---
@@ -81,6 +83,8 @@ export default function ProjectDetailsScreen() {
     // --- 1. FETCH DATA ---
     const fetchData = useCallback(async () => {
         if (!id) return;
+        setLoadError(null);
+        setUpdatesError(null);
         try {
             // A. Project & Provider (incl. dispute for arbitration)
             const { data: projectData, error: projError } = await supabase
@@ -111,11 +115,14 @@ export default function ProjectDetailsScreen() {
             }
 
             // D. Updates (The Timeline)
-            const { data: updatesData } = await supabase
+            const { data: updatesData, error: updatesErr } = await supabase
                 .from('project_updates')
                 .select('*')
                 .eq('project_id', id)
                 .order('created_at', { ascending: false });
+            if (updatesErr) {
+                setUpdatesError('We could not load photo updates right now. Pull to refresh and try again.');
+            }
 
             // E. Review
             const { data: reviewData } = await supabase
@@ -161,7 +168,7 @@ export default function ProjectDetailsScreen() {
             setContract(contractData);
 
         } catch (e: any) {
-            console.error("Error loading project:", e.message);
+            setLoadError(e?.message || 'Could not load project data.');
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -360,8 +367,19 @@ export default function ProjectDetailsScreen() {
         </View>
     );
 
-    if (loading || !project) {
+    if (loading) {
         return <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.text} /></View>;
+    }
+    if (!project) {
+        return (
+            <View style={styles.center}>
+                <Text style={styles.emptyText}>{loadError || 'Project data is unavailable right now.'}</Text>
+                <TouchableOpacity style={styles.inviteObserverBtn} onPress={fetchData}>
+                    <Ionicons name="refresh" size={18} color={theme.colors.active} />
+                    <Text style={styles.inviteObserverText}>Retry loading project</Text>
+                </TouchableOpacity>
+            </View>
+        );
     }
 
     // Status Helpers
@@ -715,13 +733,25 @@ export default function ProjectDetailsScreen() {
                     {!isPending && (
                         <View style={styles.section}>
                             <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Site Activity</Text>
-                            {updates.length === 0 ? (
+                            {updatesError ? (
+                                <View style={styles.emptyTimeline}>
+                                    <Ionicons name="cloud-offline-outline" size={28} color={theme.colors.textMuted} />
+                                    <Text style={styles.emptyText}>{updatesError}</Text>
+                                    <TouchableOpacity style={styles.inviteObserverBtn} onPress={fetchData}>
+                                        <Ionicons name="refresh" size={18} color={theme.colors.active} />
+                                        <Text style={styles.inviteObserverText}>Retry updates</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            ) : null}
+                            {!updatesError && updates.length === 0 ? (
                                 <View style={styles.emptyTimeline}>
                                     <View style={styles.dashedLine} />
                                     <Text style={styles.emptyText}>Provider has not posted updates yet.</Text>
                                 </View>
-                            ) : (
-                                updates.map((update, index) => (
+                            ) : !updatesError ? (
+                                [...updates]
+                                    .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                                    .map((update, index) => (
                                     <View key={update.id} style={styles.timelineItem}>
                                         <View style={styles.timelineLeft}>
                                             <View style={styles.timelineDot} />
@@ -746,7 +776,7 @@ export default function ProjectDetailsScreen() {
                                         </View>
                                     </View>
                                 ))
-                            )}
+                            ) : null}
                         </View>
                     )}
 

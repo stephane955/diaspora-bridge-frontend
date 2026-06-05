@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -10,6 +11,44 @@ import { useAuth } from '@/context/AuthContext';
 import { theme } from '@/constants/theme';
 import { successFeedback } from '@/utils/haptics';
 
+type SignedCartQrPayload = {
+    cart_id: string;
+    supplier_id: string;
+    iat: number;
+    signature: string;
+};
+
+const QR_SIGNING_KEY = 'material_cart_qr_v1';
+const QR_MAX_AGE_MS = 1000 * 60 * 60 * 24; // 24h
+
+function computeSignature(cartId: string, supplierId: string, iat: number) {
+    const raw = `${cartId}|${supplierId}|${iat}|${QR_SIGNING_KEY}`;
+    let hash = 5381;
+    for (let i = 0; i < raw.length; i++) {
+        hash = ((hash << 5) + hash) ^ raw.charCodeAt(i);
+    }
+    return Math.abs(hash).toString(36);
+}
+
+function parsePayload(raw: string): SignedCartQrPayload | null {
+    try {
+        const parsed = JSON.parse(raw);
+        if (
+            !parsed ||
+            typeof parsed !== 'object' ||
+            typeof parsed.cart_id !== 'string' ||
+            typeof parsed.supplier_id !== 'string' ||
+            typeof parsed.iat !== 'number' ||
+            typeof parsed.signature !== 'string'
+        ) {
+            return null;
+        }
+        return parsed as SignedCartQrPayload;
+    } catch {
+        return null;
+    }
+}
+
 export default function CollectionScannerScreen() {
     const { cartId } = useLocalSearchParams<{ cartId: string }>();
     const router = useRouter();
@@ -17,7 +56,68 @@ export default function CollectionScannerScreen() {
     const { user } = useAuth();
     const [permission, requestPermission] = useCameraPermissions();
     const [scanning, setScanning] = useState(false);
+    const [uploadingProof, setUploadingProof] = useState(false);
     const scannedRef = useRef(false);
+
+    const uploadCollectionPhoto = useCallback(
+        async (cart: { id: string; project_id?: string; provider_id?: string | null }) => {
+            setUploadingProof(true);
+            try {
+                const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+                if (!cameraPermission.granted) {
+                    Alert.alert(
+                        'Photo skipped',
+                        'Camera permission was not granted. Collection completed without handover photo.'
+                    );
+                    return;
+                }
+
+                const result = await ImagePicker.launchCameraAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                    allowsEditing: true,
+                    quality: 0.6,
+                });
+
+                if (result.canceled || !result.assets?.[0]?.uri) {
+                    Alert.alert('Photo skipped', 'No handover photo was captured.');
+                    return;
+                }
+
+                const asset = result.assets[0];
+                const response = await fetch(asset.uri);
+                const blob = await response.blob();
+                const ext = asset.uri.split('.').pop()?.toLowerCase() || 'jpg';
+                const filePath = `${cart.project_id ?? 'unknown-project'}/${cart.id}/collection_${Date.now()}.${ext}`;
+
+                const { error: uploadErr } = await supabase.storage
+                    .from('site-updates')
+                    .upload(filePath, blob, { upsert: false, contentType: asset.mimeType || 'image/jpeg' });
+                if (uploadErr) throw uploadErr;
+
+                const { data: publicData } = supabase.storage.from('site-updates').getPublicUrl(filePath);
+                const imageUrl = publicData?.publicUrl;
+                if (!imageUrl) throw new Error('Could not resolve uploaded image URL.');
+
+                const { error: updateErr } = await supabase.from('project_updates').insert({
+                    project_id: cart.project_id,
+                    provider_id: cart.provider_id ?? null,
+                    title: 'Materials collected',
+                    description: 'Supplier verified collection and uploaded handover evidence photo.',
+                    image_url: imageUrl,
+                    update_type: 'material_collection',
+                });
+                if (updateErr) throw updateErr;
+            } catch (e: any) {
+                Alert.alert(
+                    'Evidence upload failed',
+                    e?.message || 'Collection was verified, but we could not save the site photo update.'
+                );
+            } finally {
+                setUploadingProof(false);
+            }
+        },
+        []
+    );
 
     const handleBarcodeScanned = useCallback(async ({ data }: { data: string }) => {
         if (scannedRef.current || !user?.id) return;
@@ -25,50 +125,130 @@ export default function CollectionScannerScreen() {
         setScanning(true);
 
         try {
-            const scannedId = data?.trim?.();
-            if (!scannedId) {
-                Alert.alert('Invalid code', 'Could not read QR code.');
+            const rawQr = data?.trim?.();
+            if (!rawQr) {
+                Alert.alert('Rejected QR', 'Could not read QR code data.');
+                return;
+            }
+
+            const payload = parsePayload(rawQr);
+            if (!payload) {
+                Alert.alert(
+                    'Rejected QR',
+                    'This QR format is invalid or unsigned. Ask the provider to regenerate a valid cart QR.'
+                );
+                return;
+            }
+
+            if (!payload.signature) {
+                Alert.alert(
+                    'Rejected QR',
+                    'Missing signature in QR payload. This code cannot be verified.'
+                );
+                return;
+            }
+
+            const expectedSignature = computeSignature(payload.cart_id, payload.supplier_id, payload.iat);
+            if (payload.signature !== expectedSignature) {
+                Alert.alert(
+                    'Rejected QR',
+                    'Invalid QR signature. This code may have been tampered with.'
+                );
+                return;
+            }
+
+            const ageMs = Date.now() - payload.iat;
+            if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > QR_MAX_AGE_MS) {
+                Alert.alert(
+                    'Rejected QR',
+                    'QR code is expired or has an invalid timestamp. Ask the provider to open a fresh QR.'
+                );
+                return;
+            }
+
+            if (payload.supplier_id !== user.id) {
+                Alert.alert(
+                    'Rejected QR',
+                    'This QR was issued for a different supplier account.'
+                );
+                return;
+            }
+
+            if (cartId && payload.cart_id !== cartId) {
+                Alert.alert(
+                    'Rejected QR',
+                    'Scanned cart does not match the order you opened. Return and scan the correct order QR.'
+                );
                 return;
             }
 
             const { data: cart, error: fetchErr } = await supabase
                 .from('project_material_carts')
-                .select('id, supplier_id, status')
-                .eq('id', scannedId)
+                .select('id, project_id, provider_id, supplier_id, status')
+                .eq('id', payload.cart_id)
                 .single();
 
             if (fetchErr || !cart) {
-                Alert.alert('Invalid cart', 'This QR code does not match a valid order.');
+                Alert.alert('Rejected QR', 'This QR references a cart that no longer exists.');
                 return;
             }
 
             if (cart.supplier_id !== user.id) {
-                Alert.alert('Wrong supplier', 'This order belongs to another supplier.');
+                Alert.alert('Rejected QR', 'This cart belongs to another supplier.');
+                return;
+            }
+
+            if (cart.status === 'collected') {
+                Alert.alert(
+                    'Rejected QR',
+                    'This cart is already marked as collected. Duplicate collection is blocked.'
+                );
                 return;
             }
 
             if (cart.status !== 'approved') {
-                Alert.alert('Not ready', 'This order is not approved for collection.');
+                Alert.alert('Rejected QR', 'This cart is not in approved state and cannot be collected.');
                 return;
             }
 
             const { error: updateErr } = await supabase
                 .from('project_material_carts')
                 .update({ status: 'collected', updated_at: new Date().toISOString() })
-                .eq('id', scannedId);
+                .eq('id', payload.cart_id);
 
             if (updateErr) throw updateErr;
-            successFeedback();
-            Alert.alert('Success', 'Collection verified!', [
-                { text: 'OK', onPress: () => router.back() },
-            ]);
+
+            Alert.alert(
+                'Collection verified',
+                'Now capture a handover photo for the client timeline.',
+                [
+                    {
+                        text: 'Skip photo',
+                        style: 'cancel',
+                        onPress: () => {
+                            successFeedback();
+                            Alert.alert('Success', 'Collection verified!', [{ text: 'OK', onPress: () => router.back() }]);
+                        },
+                    },
+                    {
+                        text: 'Capture photo',
+                        onPress: async () => {
+                            await uploadCollectionPhoto(cart);
+                            successFeedback();
+                            Alert.alert('Success', 'Collection verified and timeline updated.', [
+                                { text: 'OK', onPress: () => router.back() },
+                            ]);
+                        },
+                    },
+                ]
+            );
         } catch (e: any) {
             Alert.alert('Error', e.message || 'Could not verify collection.');
         } finally {
             setScanning(false);
             scannedRef.current = false;
         }
-    }, [user?.id, router]);
+    }, [user?.id, router, cartId, uploadCollectionPhoto]);
 
     if (!permission) {
         return (
@@ -98,7 +278,7 @@ export default function CollectionScannerScreen() {
                 style={StyleSheet.absoluteFill}
                 facing="back"
                 barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-                onBarcodeScanned={scanning ? undefined : handleBarcodeScanned}
+                onBarcodeScanned={scanning || uploadingProof ? undefined : handleBarcodeScanned}
             />
             <View style={[StyleSheet.absoluteFill, { paddingTop: insets.top + 16, paddingBottom: insets.bottom, paddingHorizontal: 20 }]} pointerEvents="none">
                 <BlurView intensity={40} tint="dark" style={styles.overlay}>

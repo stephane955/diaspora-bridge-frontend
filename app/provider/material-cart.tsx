@@ -18,6 +18,23 @@ import { mediumFeedback, successFeedback } from '@/utils/haptics';
 
 type CartItem = { id: string; name: string; quantity: number; price: number };
 type SupplierProfile = { id: string; full_name: string; avatar_url?: string; city?: string };
+type SignedCartQrPayload = {
+    cart_id: string;
+    supplier_id: string;
+    iat: number;
+    signature: string;
+};
+
+const QR_SIGNING_KEY = 'material_cart_qr_v1';
+
+function computeSignature(cartId: string, supplierId: string, iat: number) {
+    const raw = `${cartId}|${supplierId}|${iat}|${QR_SIGNING_KEY}`;
+    let hash = 5381;
+    for (let i = 0; i < raw.length; i++) {
+        hash = ((hash << 5) + hash) ^ raw.charCodeAt(i);
+    }
+    return Math.abs(hash).toString(36);
+}
 
 export default function BuildCartScreen() {
     const { projectId } = useLocalSearchParams<{ projectId: string }>();
@@ -34,23 +51,33 @@ export default function BuildCartScreen() {
     const [showSupplierModal, setShowSupplierModal] = useState(false);
     const [supplierSearch, setSupplierSearch] = useState('');
     const [submittedCartId, setSubmittedCartId] = useState<string | null>(null);
+    const [submittedSupplierId, setSubmittedSupplierId] = useState<string | null>(null);
 
     const pid = typeof projectId === 'string' ? projectId : projectId?.[0];
 
     const totalAmount = items.reduce((s, i) => s + i.quantity * i.price, 0);
 
     const fetchSuppliers = useCallback(async () => {
-        const { data } = await supabase
-            .from('profiles')
-            .select('id, full_name, avatar_url, city')
-            .eq('role', 'supplier')
-            .not('full_name', 'is', null);
-        setSuppliers(data || []);
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('id, full_name, avatar_url, city')
+                .eq('role', 'supplier')
+                .not('full_name', 'is', null);
+
+            if (error) throw error;
+            setSuppliers(data ?? []);
+        } catch (e: any) {
+            Alert.alert('Supplier load failed', e.message ?? 'Could not fetch suppliers.');
+            setSuppliers([]);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
     useEffect(() => {
         fetchSuppliers();
-        setLoading(false);
     }, [fetchSuppliers]);
 
     const addItem = () => {
@@ -117,6 +144,7 @@ export default function BuildCartScreen() {
             if (error) throw error;
             successFeedback();
             setSubmittedCartId(data.id);
+            setSubmittedSupplierId(supplierId);
         } catch (e: any) {
             Alert.alert('Error', e.message || 'Failed to submit cart.');
         } finally {
@@ -138,6 +166,16 @@ export default function BuildCartScreen() {
     }
 
     if (submittedCartId) {
+        const iat = Date.now();
+        const signature = computeSignature(submittedCartId, submittedSupplierId ?? '', iat);
+        const qrPayload: SignedCartQrPayload = {
+            cart_id: submittedCartId,
+            supplier_id: submittedSupplierId ?? '',
+            iat,
+            signature,
+        };
+        const qrValue = JSON.stringify(qrPayload);
+
         return (
             <ScreenGradient>
                 <NavigationBar title="Success" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
@@ -147,7 +185,7 @@ export default function BuildCartScreen() {
                     <Text style={styles.successSub}>Show this QR to the supplier for collection verification</Text>
                     <View style={styles.qrWrapper}>
                         <BlurView intensity={20} tint="light" style={styles.qrBlur}>
-                            <QRCode value={submittedCartId} size={180} backgroundColor="transparent" color="#0F172A" />
+                            <QRCode value={qrValue} size={180} backgroundColor="transparent" color="#0F172A" />
                         </BlurView>
                     </View>
                     <Text style={styles.cartIdLabel}>Cart ID</Text>
