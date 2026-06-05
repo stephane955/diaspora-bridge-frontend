@@ -9,16 +9,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
+import { providerMenuItems } from '@/constants/premiumMenus';
+import { useLanguage } from '@/context/LanguageContext';
 import { theme } from '@/constants/theme';
 import { extractAmountFromReceiptImage } from '@/utils/receiptOcr';
 import { uploadProjectMedia } from '@/lib/storage';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 
 export default function AddReceiptScreen() {
     const insets = useSafeAreaInsets();
     const { projectId } = useLocalSearchParams<{ projectId: string }>();
     const router = useRouter();
     const { user } = useAuth();
+    const { t } = useLanguage();
     const [receiptUri, setReceiptUri] = useState<string | null>(null);
     const [amount, setAmount] = useState('');
     const [description, setDescription] = useState('');
@@ -84,9 +88,15 @@ export default function AddReceiptScreen() {
     };
 
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <NavigationBar title="Add material receipt" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
-            <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={[styles.container, { backgroundColor: PREMIUM_BG }]}>
+            <PremiumHeader
+                title={t('receipt')}
+                subtitle={t('materialCartTitle')}
+                showBack
+                fallbackRoute="/provider/active"
+                menuItems={providerMenuItems(router, t)}
+            />
+            <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}>
                 <Text style={styles.hint}>Upload a hardware store receipt. Amount can be scanned or entered manually.</Text>
                 <TouchableOpacity style={styles.uploadBox} onPress={pickImage}>
                     {receiptUri ? (

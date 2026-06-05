@@ -7,14 +7,16 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { mediumFeedback } from '@/utils/haptics';
-import NavigationBar from '@/components/NavigationBar';
-import ScreenGradient from '@/components/ScreenGradient';
+import PremiumHeader from '@/components/PremiumHeader';
+import { providerMenuItems } from '@/constants/premiumMenus';
 import PulseLoader from '@/components/PulseLoader';
 import { theme } from '@/constants/theme';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 
 type HubItem = {
     key: string;
@@ -51,6 +53,7 @@ const CITIES = ["Douala", "Yaoundé", "Bamenda", "Kribi", "Limbe", "Bafoussam"];
 
 export default function ProviderProfileScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const { user, signOut } = useAuth();
     const { t, setLanguage, language, getFlag } = useLanguage();
 
@@ -130,23 +133,32 @@ export default function ProviderProfileScreen() {
     };
 
     if (loading) return (
-        <ScreenGradient>
-            <NavigationBar title={t('tabProfile') ?? 'Profile'} showBack={false} onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+        <View style={styles.screen}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <PremiumHeader
+                title={t('tabProfile')}
+                subtitle={t('accountSettings')}
+                menuItems={providerMenuItems(router, t)}
+            />
             <View style={styles.center}><PulseLoader color={theme.colors.emerald} /></View>
-        </ScreenGradient>
+        </View>
     );
     const isVerified = profile?.verification_status === 'verified';
 
     return (
-        <ScreenGradient>
-            <StatusBar barStyle="light-content" />
-            <NavigationBar title={t('tabProfile') ?? 'Profile'} showBack={false} onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+        <View style={styles.screen}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <PremiumHeader
+                title={profile?.full_name || t('tabProfile')}
+                subtitle={profile?.city || t('accountSettings')}
+                menuItems={providerMenuItems(router, t)}
+            />
 
             {/* ============================================================
                 1. FIXED HEADER SECTION (STATIC)
                 This section stays pinned to the top.
                ============================================================ */}
-            <View style={styles.staticHeader}>
+            <View style={[styles.staticHeader, { paddingTop: insets.top + 56 }]}>
                 <ImageBackground
                     source={{ uri: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?q=80&w=2070&auto=format&fit=crop' }}
                     style={styles.headerImage}
@@ -214,7 +226,7 @@ export default function ProviderProfileScreen() {
                ============================================================ */}
             <ScrollView
                 style={styles.scrollableContent}
-                contentContainerStyle={{ paddingBottom: 120, paddingTop: theme.spacing.md, paddingHorizontal: theme.spacing.lg }}
+                contentContainerStyle={{ paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingTop: theme.spacing.md, paddingHorizontal: theme.spacing.lg }}
                 showsVerticalScrollIndicator={false}
             >
                 {/* COMMAND CENTER (Icon Grid) */}
@@ -392,19 +404,20 @@ export default function ProviderProfileScreen() {
                 </KeyboardAvoidingView>
             </Modal>
 
-        </ScreenGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: PREMIUM_BG },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
     // --- STATIC HEADER (FIXED) ---
-    staticHeader: { width: '100%', height: 380, backgroundColor: '#F8FAFC', zIndex: 10 },
+    staticHeader: { width: '100%', height: 380, backgroundColor: PREMIUM_BG, zIndex: 10 },
     headerImage: { width: '100%', height: 330 }, // Image is slightly shorter than container
     gradient: { flex: 1, justifyContent: 'flex-end', padding: 24, paddingBottom: 60 },
 
-    glassEditBtn: { position: 'absolute', top: 60, right: 24, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', gap: 6 },
+    glassEditBtn: { position: 'absolute', top: 16, right: 24, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', gap: 6 },
     editBtnText: { color: '#fff', fontWeight: '700', fontSize: 12 },
 
     headerContent: { flexDirection: 'row', alignItems: 'center', gap: 16 },
@@ -424,7 +437,7 @@ const styles = StyleSheet.create({
     statDivider: { width: 1, height: 24, backgroundColor: '#E2E8F0' },
 
     // --- SCROLLABLE AREA ---
-    scrollableContent: { flex: 1, backgroundColor: '#F8FAFC' },
+    scrollableContent: { flex: 1, backgroundColor: PREMIUM_BG },
 
     hubSection: { marginTop: theme.spacing.xl },
     hubTitle: { fontSize: 13, ...theme.typography.label, color: theme.colors.textSubtle, marginBottom: theme.spacing.sm },

@@ -10,11 +10,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import NavigationBar from '@/components/NavigationBar';
-import ScreenGradient from '@/components/ScreenGradient';
+import PremiumHeader from '@/components/PremiumHeader';
 import PulseLoader from '@/components/PulseLoader';
+import { providerMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
 import { successFeedback, mediumFeedback } from '@/utils/haptics';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_MUTED } from '@/constants/layout';
 
 type Transaction = {
     id: string;
@@ -78,24 +79,37 @@ export default function ProviderEarningsScreen() {
 
     if (loading) {
         return (
-            <ScreenGradient>
-                <NavigationBar title={t('walletTitle') ?? 'Earnings'} showBack={false} onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <View style={styles.screen}>
+                <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+                <PremiumHeader
+                    title={t('walletTitle')}
+                    subtitle={t('history')}
+                    showBack
+                    fallbackRoute="/provider/active"
+                    menuItems={providerMenuItems(router, t)}
+                />
+                <View style={styles.center}>
                     <PulseLoader color={theme.colors.emerald} />
                 </View>
-            </ScreenGradient>
+            </View>
         );
     }
 
     return (
-        <ScreenGradient>
-            <StatusBar barStyle="light-content" />
-            <NavigationBar title={t('walletTitle') ?? 'Earnings'} showBack={false} onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+        <View style={styles.screen}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <PremiumHeader
+                title={t('walletTitle')}
+                subtitle={t('history')}
+                showBack
+                fallbackRoute="/provider/active"
+                menuItems={providerMenuItems(router, t)}
+            />
 
             <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.scrollContent}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchEarnings(); }} />}
+                contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchEarnings(); }} tintColor="#D4AF37" />}
             >
                 {/* Mesh Gradient Balance Card */}
                 <LinearGradient
@@ -128,7 +142,7 @@ export default function ProviderEarningsScreen() {
                             activeOpacity={0.7}
                         >
                             <Ionicons name="card-outline" size={18} color={theme.colors.emerald} />
-                            <Text style={styles.cardBtnText}>Payout Setup</Text>
+                            <Text style={styles.cardBtnText}>{t('payoutSetupBtn')}</Text>
                         </TouchableOpacity>
                     </View>
 
@@ -155,7 +169,7 @@ export default function ProviderEarningsScreen() {
                             onPress={() => { mediumFeedback(); router.push('/provider/market'); }}
                             activeOpacity={0.7}
                         >
-                            <Text style={styles.emptyBtnText}>Browse Available Jobs</Text>
+                            <Text style={styles.emptyBtnText}>{t('browseJobs')}</Text>
                         </TouchableOpacity>
                     </View>
                 ) : (
@@ -188,12 +202,14 @@ export default function ProviderEarningsScreen() {
                     })
                 )}
             </ScrollView>
-        </ScreenGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    scrollContent: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: 120 },
+    screen: { flex: 1, backgroundColor: PREMIUM_BG },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    scrollContent: { paddingHorizontal: theme.spacing.lg },
 
     balanceCard: {
         borderRadius: theme.radii.xl,

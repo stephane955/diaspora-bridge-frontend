@@ -1,22 +1,63 @@
 import React, { useState, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    RefreshControl, StatusBar, Alert
+    View,
+    Text,
+    StyleSheet,
+    ScrollView,
+    TouchableOpacity,
+    RefreshControl,
+    StatusBar,
+    Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { CheckCircle, Lock, Plus } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { YStack, XStack, Text as TamaguiText } from 'tamagui';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import NavigationBar from '@/components/NavigationBar';
-import ScreenGradient from '@/components/ScreenGradient';
+import PremiumHeader from '@/components/PremiumHeader';
+import { clientMenuItems } from '@/constants/premiumMenus';
 import PulseLoader from '@/components/PulseLoader';
 import VaultGate from '@/components/VaultGate';
-import { theme } from '@/constants/theme';
-import { successFeedback, mediumFeedback } from '@/utils/haptics';
-import { YStack, XStack, Text as TamaguiText } from 'tamagui';
+import { successFeedback } from '@/utils/haptics';
+import {
+    FLOATING_TAB_BAR_HEIGHT,
+    PREMIUM_BG,
+    PREMIUM_GOLD,
+    PREMIUM_MUTED,
+} from '@/constants/layout';
+
+type MaterialCartRow = {
+    id: string;
+    project_id: string;
+    status: string;
+    total_amount_cfa: number;
+    labor_amount_cfa?: number | null;
+    created_at: string;
+    supplier_id?: string | null;
+    projects?: { title?: string | null } | null;
+    supplier?: { full_name?: string | null } | null;
+};
+
+function cartTotalCfa(cart: MaterialCartRow) {
+    return Number(cart.total_amount_cfa ?? 0) + Number(cart.labor_amount_cfa ?? 0);
+}
+
+function statusLabel(status: string) {
+    if (status === 'pending_approval') return 'Pending Approval';
+    if (status === 'approved') return 'Funded / In Escrow';
+    if (status === 'collected') return 'Collected';
+    return status.replace('_', ' ');
+}
+
+function statusColor(status: string) {
+    if (status === 'pending_approval') return PREMIUM_GOLD;
+    if (status === 'approved') return '#60A5FA';
+    return PREMIUM_MUTED;
+}
 
 export default function ClientWalletScreen() {
     const insets = useSafeAreaInsets();
@@ -27,6 +68,7 @@ export default function ClientWalletScreen() {
     const [transactions, setTransactions] = useState<any[]>([]);
     const [balance, setBalance] = useState(0);
     const [escrowed, setEscrowed] = useState(0);
+    const [materialCarts, setMaterialCarts] = useState<MaterialCartRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
@@ -55,8 +97,45 @@ export default function ClientWalletScreen() {
 
             const lockedTotal = milestones?.reduce((acc: number, curr: any) => acc + Number(curr.amount), 0) || 0;
             setEscrowed(lockedTotal);
+
+            const { data: ownedProjects } = await supabase
+                .from('projects')
+                .select('id')
+                .eq('owner_id', user.id);
+
+            const projectIds = ownedProjects?.map((p) => p.id) ?? [];
+            if (projectIds.length > 0) {
+                const { data: carts } = await supabase
+                    .from('project_material_carts')
+                    .select('id, project_id, status, total_amount_cfa, labor_amount_cfa, created_at, supplier_id, projects(title)')
+                    .in('project_id', projectIds)
+                    .order('created_at', { ascending: false });
+
+                const rows = (carts ?? []) as MaterialCartRow[];
+                const supplierIds = [...new Set(rows.map((c) => c.supplier_id).filter(Boolean))] as string[];
+                let supplierMap: Record<string, string> = {};
+                if (supplierIds.length > 0) {
+                    const { data: suppliers } = await supabase
+                        .from('profiles')
+                        .select('id, full_name')
+                        .in('id', supplierIds);
+                    supplierMap = Object.fromEntries(
+                        (suppliers ?? []).map((s) => [s.id, s.full_name ?? 'Supplier'])
+                    );
+                }
+                setMaterialCarts(
+                    rows.map((cart) => ({
+                        ...cart,
+                        supplier: cart.supplier_id
+                            ? { full_name: supplierMap[cart.supplier_id] ?? null }
+                            : null,
+                    }))
+                );
+            } else {
+                setMaterialCarts([]);
+            }
         } catch (err) {
-            console.error("Client Wallet Error:", err);
+            console.error('Client Wallet Error:', err);
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -67,198 +146,409 @@ export default function ClientWalletScreen() {
 
     const handleTopUp = () => {
         successFeedback();
-        Alert.alert("Add Funds", "This would open the Stripe Payment Gateway.");
+        Alert.alert('Add Funds', 'This would open the Stripe Payment Gateway.');
     };
 
+    const activeCarts = materialCarts.filter((c) =>
+        c.status === 'pending_approval' || c.status === 'approved'
+    );
+    const collectedCarts = materialCarts.filter((c) => c.status === 'collected');
+
     const walletContent = loading ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={styles.loaderWrap}>
             <PulseLoader />
         </View>
     ) : (
         <ScrollView
-                contentContainerStyle={styles.scrollContent}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} />}
-            >
-                {/* Mesh Gradient Balance Card */}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+                styles.scrollContent,
+                { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 },
+            ]}
+            refreshControl={
+                <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={() => { setRefreshing(true); fetchData(); }}
+                    tintColor={PREMIUM_GOLD}
+                />
+            }
+        >
+            {/* Black card — total escrow */}
+            <View style={styles.cardGlowWrap}>
+                <BlurView intensity={45} tint="dark" style={styles.cardGlow} />
                 <LinearGradient
-                    colors={theme.gradient.mesh}
+                    colors={['#1E293B', '#0F172A', '#050810']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
-                    style={styles.masterCard}
+                    style={styles.escrowCard}
                 >
-                    <View style={styles.cardPattern}>
-                        <View style={[styles.patternCircle, { top: -20, right: -20 }]} />
-                        <View style={[styles.patternCircle, { bottom: 10, left: -30, width: 80, height: 80 }]} />
-                    </View>
-
-                    <View style={styles.cardHeader}>
-                        <View>
-                            <Text style={styles.cardLabel}>AVAILABLE FUNDS</Text>
-                            <Text style={styles.cardAmount}>{balance.toLocaleString()} CFA</Text>
-                        </View>
-                        <TouchableOpacity style={styles.topUpBadge} onPress={handleTopUp} activeOpacity={0.7}>
-                            <Ionicons name="add" size={16} color={theme.colors.active} />
-                            <Text style={styles.topUpText}>Top Up</Text>
+                    <View style={styles.cardShine} />
+                    <View style={styles.cardChipRow}>
+                        <View style={styles.chip} />
+                        <TouchableOpacity style={styles.topUpPill} onPress={handleTopUp} activeOpacity={0.85}>
+                            <Plus size={14} color={PREMIUM_GOLD} strokeWidth={2.5} />
+                            <Text style={styles.topUpPillText}>Top Up</Text>
                         </TouchableOpacity>
                     </View>
 
-                    <View style={styles.divider} />
+                    <Text style={styles.cardEyebrow}>Total Funds in Escrow</Text>
+                    <Text style={styles.cardBalance}>{escrowed.toLocaleString()} CFA</Text>
 
-                    <View style={styles.escrowRow}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Ionicons name="lock-closed" size={14} color="rgba(255,255,255,0.7)" />
-                            <Text style={styles.escrowLabel}>Locked in Escrow:</Text>
-                        </View>
-                        <Text style={styles.escrowAmount}>{escrowed.toLocaleString()} CFA</Text>
+                    <View style={styles.cardFooter}>
+                        <XStack alignItems="center" gap={6}>
+                            <Lock size={14} color="rgba(255,255,255,0.55)" />
+                            <TamaguiText color="rgba(255,255,255,0.55)" fontSize={13} fontWeight="600">
+                                Available wallet balance
+                            </TamaguiText>
+                        </XStack>
+                        <Text style={styles.cardSubBalance}>{balance.toLocaleString()} CFA</Text>
                     </View>
                 </LinearGradient>
+            </View>
 
-                {/* Quick Actions */}
-                <View style={styles.actionRow}>
-                    <TouchableOpacity style={styles.actionBtn} onPress={handleTopUp} activeOpacity={0.7}>
-                        <LinearGradient colors={['#EFF6FF', '#DBEAFE']} style={styles.iconCircle}>
-                            <Ionicons name="card" size={24} color={theme.colors.active} />
-                        </LinearGradient>
-                        <Text style={styles.actionText}>Add Funds</Text>
-                    </TouchableOpacity>
+            {/* Active material carts */}
+            <YStack marginTop={28} marginBottom={8}>
+                <TamaguiText color="#F8FAFC" fontSize={20} fontWeight="800" letterSpacing={-0.3} marginBottom={14}>
+                    Active Material Carts
+                </TamaguiText>
 
-                    <TouchableOpacity style={styles.actionBtn} onPress={() => { successFeedback(); router.push('/diaspora/projects'); }} activeOpacity={0.7}>
-                        <LinearGradient colors={['#F0FDF4', '#DCFCE7']} style={styles.iconCircle}>
-                            <Ionicons name="shield-checkmark" size={24} color={theme.colors.success} />
-                        </LinearGradient>
-                        <Text style={styles.actionText}>Release Funds</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.actionBtn} onPress={() => { mediumFeedback(); router.push('/modal'); }} activeOpacity={0.7}>
-                        <LinearGradient colors={['#F1F5F9', '#E2E8F0']} style={styles.iconCircle}>
-                            <Ionicons name="headset" size={24} color={theme.colors.textMuted} />
-                        </LinearGradient>
-                        <Text style={styles.actionText}>Support</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* Wealth ROI Dashboard — Tamagui layout scaffold: Total Escrow Deployed vs Estimated Current Market Value */}
-                <YStack paddingVertical={theme.spacing.lg} gap={theme.spacing.md}>
-                    <TamaguiText fontSize={18} fontWeight="800" color={theme.colors.text}>
-                        Wealth & ROI
-                    </TamaguiText>
-                    <XStack flexWrap="wrap" gap={theme.spacing.md} justifyContent="space-between">
-                        <YStack flex={1} minWidth={140} padding={theme.spacing.md} backgroundColor={theme.colors.surface} borderRadius={theme.radii.lg}>
-                            <TamaguiText fontSize={12} color={theme.colors.textMuted}>Total Escrow Deployed</TamaguiText>
-                            <TamaguiText fontSize={20} fontWeight="700" color={theme.colors.text} marginTop={4}>{escrowed.toLocaleString()} CFA</TamaguiText>
-                        </YStack>
-                        <YStack flex={1} minWidth={140} padding={theme.spacing.md} backgroundColor={theme.colors.surface} borderRadius={theme.radii.lg}>
-                            <TamaguiText fontSize={12} color={theme.colors.textMuted}>Est. Current Market Value</TamaguiText>
-                            <TamaguiText fontSize={20} fontWeight="700" color={theme.colors.emerald} marginTop={4}>—</TamaguiText>
-                        </YStack>
-                    </XStack>
-                    <YStack height={160} backgroundColor={theme.colors.surfaceAlt} borderRadius={theme.radii.lg} padding={theme.spacing.md} justifyContent="center" alignItems="center">
-                        <TamaguiText color={theme.colors.textMuted}>Chart: Escrow Deployed vs Market Value (placeholder)</TamaguiText>
-                    </YStack>
-                </YStack>
-
-                {/* History */}
-                <Text style={styles.sectionTitle}>History</Text>
-                <View style={styles.listContainer}>
-                    {transactions.length === 0 ? (
-                        <View style={styles.emptyState}>
-                            <Ionicons name="wallet-outline" size={48} color={theme.colors.border} />
-                            <Text style={styles.emptyTitle}>No transactions yet</Text>
-                            <Text style={styles.emptyText}>Fund your wallet to get started.</Text>
-                            <TouchableOpacity style={styles.emptyBtn} onPress={handleTopUp} activeOpacity={0.7}>
-                                <Text style={styles.emptyBtnText}>Add Funds Now</Text>
+                {activeCarts.length === 0 ? (
+                    <View style={styles.emptyCartStrip}>
+                        <TamaguiText color={PREMIUM_MUTED} fontSize={14}>
+                            No carts awaiting approval or in escrow.
+                        </TamaguiText>
+                    </View>
+                ) : (
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.cartScrollRow}
+                        decelerationRate="fast"
+                    >
+                        {activeCarts.map((cart) => (
+                            <TouchableOpacity
+                                key={cart.id}
+                                activeOpacity={0.92}
+                                onPress={() => router.push(`/diaspora/project/${cart.project_id}`)}
+                                style={styles.cartCard}
+                            >
+                                <Text style={styles.cartProject} numberOfLines={1}>
+                                    {cart.projects?.title ?? 'Project'}
+                                </Text>
+                                <Text style={[styles.cartStatus, { color: statusColor(cart.status) }]}>
+                                    {statusLabel(cart.status)}
+                                </Text>
+                                <Text style={styles.cartAmount}>
+                                    {cartTotalCfa(cart).toLocaleString()} CFA
+                                </Text>
+                                <Text style={styles.cartDate}>
+                                    {new Date(cart.created_at).toLocaleDateString(undefined, {
+                                        month: 'short',
+                                        day: 'numeric',
+                                    })}
+                                </Text>
                             </TouchableOpacity>
-                        </View>
-                    ) : (
-                        transactions.map((txn) => (
-                            <View key={txn.id} style={styles.txnItem}>
-                                <View style={[styles.txnIcon, txn.amount > 0 ? styles.inIcon : styles.outIcon]}>
-                                    <Ionicons
-                                        name={txn.amount > 0 ? "arrow-down" : "arrow-up"}
-                                        size={18}
-                                        color={txn.amount > 0 ? theme.colors.success : theme.colors.textMuted}
-                                    />
+                        ))}
+                    </ScrollView>
+                )}
+            </YStack>
+
+            {/* Completed handovers */}
+            <YStack marginTop={24}>
+                <TamaguiText color="#F8FAFC" fontSize={20} fontWeight="800" letterSpacing={-0.3} marginBottom={14}>
+                    Completed Handovers
+                </TamaguiText>
+
+                {collectedCarts.length === 0 ? (
+                    <View style={styles.emptyHistory}>
+                        <CheckCircle size={36} color="#94A3B8" />
+                        <Text style={styles.emptyHistoryTitle}>No completed collections yet</Text>
+                        <Text style={styles.emptyHistorySub}>
+                            When suppliers scan QR codes and collect materials, they appear here.
+                        </Text>
+                    </View>
+                ) : (
+                    <YStack gap={0}>
+                        {collectedCarts.map((cart) => (
+                            <TouchableOpacity
+                                key={cart.id}
+                                style={styles.statementRow}
+                                activeOpacity={0.85}
+                                onPress={() => router.push(`/diaspora/project/${cart.project_id}`)}
+                            >
+                                <View style={styles.statementIconWrap}>
+                                    <CheckCircle size={20} color="#34D399" strokeWidth={2.2} />
                                 </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.txnTitle}>{txn.description || "Transaction"}</Text>
-                                    <Text style={styles.txnSub}>{new Date(txn.created_at).toLocaleDateString()}</Text>
+                                <View style={styles.statementBody}>
+                                    <Text style={styles.statementTitle} numberOfLines={1}>
+                                        {cart.supplier?.full_name ?? cart.projects?.title ?? 'Supplier'}
+                                    </Text>
+                                    <Text style={styles.statementSub}>
+                                        {new Date(cart.created_at).toLocaleDateString(undefined, {
+                                            month: 'short',
+                                            day: 'numeric',
+                                            year: 'numeric',
+                                        })}
+                                    </Text>
                                 </View>
-                                <Text style={[styles.txnAmount, txn.amount > 0 ? styles.textGreen : styles.textNeutral]}>
-                                    {txn.amount > 0 ? "+" : ""}{txn.amount.toLocaleString()}
+                                <Text style={styles.statementAmount}>
+                                    {cartTotalCfa(cart).toLocaleString()} CFA
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </YStack>
+                )}
+            </YStack>
+
+            {/* Legacy transaction history (unchanged data) */}
+            {transactions.length > 0 && (
+                <YStack marginTop={28}>
+                    <TamaguiText color="#F8FAFC" fontSize={20} fontWeight="800" letterSpacing={-0.3} marginBottom={14}>
+                        Wallet Activity
+                    </TamaguiText>
+                    <YStack gap={0}>
+                        {transactions.map((txn) => (
+                            <View key={txn.id} style={styles.statementRow}>
+                                <View style={[
+                                    styles.statementIconWrap,
+                                    { backgroundColor: txn.amount > 0 ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)' },
+                                ]}>
+                                    <Text style={{ color: txn.amount > 0 ? '#34D399' : PREMIUM_MUTED, fontWeight: '800' }}>
+                                        {txn.amount > 0 ? '+' : '−'}
+                                    </Text>
+                                </View>
+                                <View style={styles.statementBody}>
+                                    <Text style={styles.statementTitle} numberOfLines={1}>
+                                        {txn.description || 'Transaction'}
+                                    </Text>
+                                    <Text style={styles.statementSub}>
+                                        {new Date(txn.created_at).toLocaleDateString()}
+                                    </Text>
+                                </View>
+                                <Text style={[
+                                    styles.statementAmount,
+                                    { color: txn.amount > 0 ? '#34D399' : '#F8FAFC' },
+                                ]}>
+                                    {txn.amount > 0 ? '+' : ''}{Number(txn.amount).toLocaleString()}
                                 </Text>
                             </View>
-                        ))
-                    )}
-                </View>
-            </ScrollView>
+                        ))}
+                    </YStack>
+                </YStack>
+            )}
+        </ScrollView>
     );
 
     return (
-        <ScreenGradient>
-            <StatusBar barStyle="light-content" />
-            <NavigationBar title={t('clientDashboard.myWallet') ?? 'Wallet'} showBack={false} dynamicColor={theme.colors.active} />
+        <View style={styles.screen}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <PremiumHeader
+                title={t('clientDashboard.myWallet') ?? 'Escrow'}
+                subtitle="Funds & material carts"
+                menuItems={clientMenuItems(router, t)}
+            />
             <VaultGate promptMessage="Unlock Wallet to view balance and transactions." lockOnBlur>
                 {walletContent}
             </VaultGate>
-        </ScreenGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    scrollContent: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: 120 },
+    screen: {
+        flex: 1,
+        backgroundColor: PREMIUM_BG,
+    },
+    loaderWrap: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: PREMIUM_BG,
+    },
+    scrollContent: {
+        paddingHorizontal: 16,
+    },
 
-    masterCard: {
-        width: '100%',
-        borderRadius: theme.radii.xl,
-        padding: 24,
-        marginBottom: 28,
+    cardGlowWrap: {
+        position: 'relative',
+        marginBottom: 4,
+    },
+    cardGlow: {
+        ...StyleSheet.absoluteFillObject,
+        borderRadius: 24,
         overflow: 'hidden',
-        ...theme.shadow.glow,
+        opacity: 0.55,
+        transform: [{ scale: 1.04 }],
     },
-    cardPattern: { ...StyleSheet.absoluteFillObject },
-    patternCircle: {
+    escrowCard: {
+        borderRadius: 22,
+        padding: 22,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(212,175,55,0.22)',
+    },
+    cardShine: {
         position: 'absolute',
-        width: 100,
-        height: 100,
-        borderRadius: 50,
+        top: -40,
+        right: -30,
+        width: 140,
+        height: 140,
+        borderRadius: 70,
+        backgroundColor: 'rgba(212,175,55,0.08)',
+    },
+    cardChipRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 28,
+    },
+    chip: {
+        width: 42,
+        height: 30,
+        borderRadius: 6,
+        backgroundColor: 'rgba(212,175,55,0.35)',
+        borderWidth: 1,
+        borderColor: 'rgba(212,175,55,0.5)',
+    },
+    topUpPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 999,
         backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(212,175,55,0.35)',
     },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
-    cardLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 12, ...theme.typography.label },
-    cardAmount: { color: '#fff', fontSize: 34, ...theme.typography.title, marginTop: 4 },
-    topUpBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#fff', paddingHorizontal: 14, paddingVertical: 8, borderRadius: theme.radii.pill },
-    topUpText: { color: theme.colors.active, fontSize: 12, fontWeight: '800' },
-    divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginBottom: 15 },
-    escrowRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    escrowLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
-    escrowAmount: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-    actionRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 28 },
-    actionBtn: { alignItems: 'center', gap: 8, width: '30%' },
-    iconCircle: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center' },
-    actionText: { color: theme.colors.textMuted, fontWeight: '600', fontSize: 12 },
-
-    sectionTitle: { fontSize: 18, ...theme.typography.title, color: theme.colors.text, marginBottom: 15 },
-    listContainer: { backgroundColor: theme.colors.surface, borderRadius: theme.radii.lg, padding: theme.spacing.xs, ...theme.shadow.soft, shadowOpacity: 0.05 },
-    txnItem: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border, gap: 15 },
-    txnIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-    inIcon: { backgroundColor: theme.colors.success + '20' },
-    outIcon: { backgroundColor: theme.colors.surfaceAlt },
-    txnTitle: { color: theme.colors.text, fontWeight: '700', fontSize: 14 },
-    txnSub: { color: theme.colors.textSubtle, fontSize: 11 },
-    txnAmount: { fontWeight: '700', fontSize: 15 },
-    textGreen: { color: theme.colors.success },
-    textNeutral: { color: theme.colors.textMuted },
-
-    emptyState: { alignItems: 'center', padding: theme.spacing.xxl, gap: 8 },
-    emptyTitle: { fontSize: 18, ...theme.typography.title, color: theme.colors.text },
-    emptyText: { color: theme.colors.textMuted, fontSize: 14 },
-    emptyBtn: {
-        marginTop: 12,
-        backgroundColor: theme.colors.active,
-        paddingHorizontal: 24,
-        paddingVertical: 12,
-        borderRadius: theme.radii.pill,
+    topUpPillText: {
+        color: PREMIUM_GOLD,
+        fontSize: 12,
+        fontWeight: '800',
     },
-    emptyBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+    cardEyebrow: {
+        color: 'rgba(255,255,255,0.55)',
+        fontSize: 11,
+        fontWeight: '800',
+        letterSpacing: 1.2,
+        textTransform: 'uppercase',
+    },
+    cardBalance: {
+        color: PREMIUM_GOLD,
+        fontSize: 36,
+        fontWeight: '800',
+        letterSpacing: -0.5,
+        marginTop: 6,
+    },
+    cardFooter: {
+        marginTop: 22,
+        paddingTop: 16,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: 'rgba(255,255,255,0.1)',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    cardSubBalance: {
+        color: '#F8FAFC',
+        fontSize: 15,
+        fontWeight: '700',
+    },
+
+    cartScrollRow: {
+        gap: 12,
+        paddingRight: 8,
+    },
+    cartCard: {
+        width: 200,
+        padding: 16,
+        borderRadius: 18,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+    },
+    cartProject: {
+        color: '#F8FAFC',
+        fontSize: 15,
+        fontWeight: '800',
+        marginBottom: 8,
+    },
+    cartStatus: {
+        fontSize: 11,
+        fontWeight: '800',
+        textTransform: 'uppercase',
+        letterSpacing: 0.6,
+        marginBottom: 10,
+    },
+    cartAmount: {
+        color: '#F8FAFC',
+        fontSize: 18,
+        fontWeight: '800',
+    },
+    cartDate: {
+        color: PREMIUM_MUTED,
+        fontSize: 12,
+        marginTop: 4,
+        fontWeight: '600',
+    },
+    emptyCartStrip: {
+        padding: 18,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+    },
+
+    statementRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 14,
+        gap: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: 'rgba(255,255,255,0.06)',
+    },
+    statementIconWrap: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(52,211,153,0.12)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    statementBody: {
+        flex: 1,
+    },
+    statementTitle: {
+        color: '#F8FAFC',
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    statementSub: {
+        color: PREMIUM_MUTED,
+        fontSize: 12,
+        marginTop: 2,
+        fontWeight: '500',
+    },
+    statementAmount: {
+        color: '#F8FAFC',
+        fontSize: 15,
+        fontWeight: '800',
+    },
+
+    emptyHistory: {
+        alignItems: 'center',
+        paddingVertical: 32,
+        paddingHorizontal: 16,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 18,
+        gap: 8,
+    },
+    emptyHistoryTitle: {
+        color: '#E2E8F0',
+        fontSize: 16,
+        fontWeight: '700',
+        marginTop: 4,
+    },
+    emptyHistorySub: {
+        color: PREMIUM_MUTED,
+        fontSize: 13,
+        textAlign: 'center',
+        lineHeight: 18,
+    },
 });

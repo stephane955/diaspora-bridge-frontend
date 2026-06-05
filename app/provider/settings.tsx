@@ -9,8 +9,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
+import { providerMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 
 const LANGUAGES = [
     { code: 'en', label: 'English', flag: '🇺🇸' },
@@ -74,8 +76,14 @@ export default function ProviderSettingsScreen() {
 
     return (
         <View style={styles.container}>
-            <NavigationBar title={t('settingsTitle') ?? 'Settings'} showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
-            <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}>
+            <PremiumHeader
+                title={t('settingsTitle')}
+                subtitle={t('preferences')}
+                showBack
+                fallbackRoute="/provider/active"
+                menuItems={providerMenuItems(router, t)}
+            />
+            <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: theme.spacing.lg }]}>
 
                 {/* --- SECTION 1: AVAILABILITY --- */}
                 <Text style={styles.sectionTitle}>{t('availability')}</Text>
@@ -161,7 +169,7 @@ export default function ProviderSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
+    container: { flex: 1, backgroundColor: PREMIUM_BG },
     scroll: { paddingTop: theme.spacing.md },
     sectionTitle: { fontSize: 14, fontWeight: '700', color: theme.colors.textSubtle, marginBottom: theme.spacing.sm, marginTop: theme.spacing.sm, textTransform: 'uppercase' },
 

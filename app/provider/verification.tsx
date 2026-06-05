@@ -13,7 +13,9 @@ import { uploadKycDocument } from '@/lib/storage';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
+import { providerMenuItems } from '@/constants/premiumMenus';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 import { theme } from '@/constants/theme';
 import { getAndClearVerificationScanResult } from '@/utils/verificationScanResult';
 
@@ -162,10 +164,16 @@ export default function VerificationScreen() {
     };
 
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <NavigationBar title={t('verifyTitle') ?? 'Verification'} showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+        <View style={[styles.container, { backgroundColor: PREMIUM_BG }]}>
+            <PremiumHeader
+                title={t('verifyTitle')}
+                subtitle={t('verifySub')}
+                showBack
+                fallbackRoute="/provider/profile"
+                menuItems={providerMenuItems(router, t)}
+            />
 
-            <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 120, paddingHorizontal: 20 }]}>
+            <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: 20 }]}>
 
                 {status === 'verified' ? (
                     <View style={styles.stateBox}>

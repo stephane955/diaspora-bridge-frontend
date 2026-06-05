@@ -5,8 +5,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/context/LanguageContext';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
+import PulseLoader from '@/components/PulseLoader';
+import { clientMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_MUTED } from '@/constants/layout';
 
 export default function ApplicantsScreen() {
     const insets = useSafeAreaInsets();
@@ -87,16 +90,27 @@ export default function ApplicantsScreen() {
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <View style={styles.screen}>
+            <PremiumHeader
+                title={t('applicantsTitle')}
+                subtitle={t('proposalsTitle')}
+                showBack
+                fallbackRoute={`/diaspora/project/${id}`}
+                menuItems={clientMenuItems(router, t)}
+            />
             {loading ? (
                 <View style={styles.center}>
-                    <ActivityIndicator size="large" color={theme.colors.active} />
+                    <PulseLoader />
                 </View>
             ) : (
                 <FlatList
                     data={applicants}
                     keyExtractor={(item) => item.id.toString()}
-                    contentContainerStyle={styles.listContent}
+                    contentContainerStyle={{
+                        paddingTop: insets.top + 88,
+                        paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32,
+                        paddingHorizontal: theme.spacing.lg,
+                    }}
                     ListEmptyComponent={
                         <View style={styles.emptyState}>
                             <Text style={styles.emptyTitle}>{t('noApplicants') || "No applicants yet"}</Text>
@@ -140,9 +154,9 @@ export default function ApplicantsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
+    screen: { flex: 1, backgroundColor: PREMIUM_BG },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    listContent: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: 120 },
+    listContent: { paddingHorizontal: theme.spacing.lg },
     emptyState: { padding: theme.spacing.xxl, alignItems: 'center' },
     emptyTitle: { fontSize: 16, fontWeight: '700', color: theme.colors.textMuted },
     emptySub: { fontSize: 13, color: theme.colors.textSubtle, marginTop: theme.spacing.xs, textAlign: 'center' },

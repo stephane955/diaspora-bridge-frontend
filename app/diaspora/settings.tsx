@@ -7,8 +7,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '@/context/LanguageContext';
 import { lightFeedback } from '@/utils/haptics';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
+import { clientMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 
 const LANGUAGES = [
     { code: 'en', label: 'English', flag: '🇺🇸' },
@@ -18,6 +20,7 @@ const LANGUAGES = [
 
 export default function ClientSettingsScreen() {
     const insets = useSafeAreaInsets();
+    const router = useRouter();
     const { t, setLanguage, language } = useLanguage();
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
@@ -29,11 +32,17 @@ export default function ClientSettingsScreen() {
     };
 
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <NavigationBar title={t('menuSettings') ?? 'Settings'} showBack dynamicColor={theme.colors.active} />
+        <View style={[styles.container, { backgroundColor: PREMIUM_BG }]}>
+            <PremiumHeader
+                title={t('menuSettings')}
+                subtitle={t('preferences')}
+                showBack
+                fallbackRoute="/diaspora"
+                menuItems={clientMenuItems(router, t)}
+            />
             <ScrollView
                 style={styles.scroll}
-                contentContainerStyle={[styles.scrollContent, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}
+                contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: theme.spacing.lg }]}
                 showsVerticalScrollIndicator={false}
             >
                 <Text style={styles.sectionTitle}>{t('preferences') ?? 'Preferences'}</Text>

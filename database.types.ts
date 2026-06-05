@@ -54,6 +54,28 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['project_material_carts']['Row']>;
         Relationships: [];
       };
+      messages: {
+        Row: {
+          id: string;
+          project_id: string;
+          sender_id: string;
+          recipient_id: string;
+          content: string | null;
+          audio_url: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          sender_id: string;
+          recipient_id: string;
+          content?: string | null;
+          audio_url?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['messages']['Row']>;
+        Relationships: [];
+      };
     };
     Views: {
       [key: string]: never;

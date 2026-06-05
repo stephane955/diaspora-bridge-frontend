@@ -10,11 +10,12 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
 import PulseLoader from '@/components/PulseLoader';
-import ScreenGradient from '@/components/ScreenGradient';
+import { providerMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
 import { mediumFeedback, successFeedback, lightFeedback } from '@/utils/haptics';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
@@ -272,11 +273,17 @@ export default function MarketScreen() {
     };
 
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <NavigationBar title={t('marketTitle') ?? 'Market'} showBack={false} onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+        <View style={[styles.container, { paddingBottom: insets.bottom, backgroundColor: PREMIUM_BG }]}>
+            <PremiumHeader
+                title={t('marketTitle')}
+                subtitle={t('searchPlaceholder')}
+                showBack
+                fallbackRoute="/provider/active"
+                menuItems={providerMenuItems(router, t)}
+            />
 
             {/* --- PREMIUM HEADER --- */}
-            <View style={styles.headerContainer}>
+            <View style={[styles.headerContainer, { paddingTop: insets.top + 72 }]}>
                 <LinearGradient
                     colors={['#0F172A', '#1E293B']}
                     start={{ x: 0, y: 0 }}

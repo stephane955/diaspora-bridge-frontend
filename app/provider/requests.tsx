@@ -10,14 +10,19 @@ import { mediumFeedback, successFeedback } from '@/utils/haptics';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import NavigationBar from '@/components/NavigationBar';
+import { useLanguage } from '@/context/LanguageContext';
+import PremiumHeader from '@/components/PremiumHeader';
+import PulseLoader from '@/components/PulseLoader';
+import { providerMenuItems } from '@/constants/premiumMenus';
 import { Project } from '@/types/models';
 import { theme } from '@/constants/theme';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_MUTED } from '@/constants/layout';
 
 export default function RequestsScreen() {
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
     const router = useRouter();
+    const { t } = useLanguage();
     const [requests, setRequests] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<string | null>(null);
@@ -81,7 +86,7 @@ export default function RequestsScreen() {
             if (error) throw error;
 
             successFeedback();
-            Alert.alert("Success", "Project accepted! check your 'Active Contracts'.");
+            Alert.alert(t('success'), t('profileSaved'));
 
             setRequests(prev => prev.filter(r => r.id !== projectId));
             router.push('/provider/active');
@@ -161,31 +166,40 @@ export default function RequestsScreen() {
     );
 
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <StatusBar barStyle="dark-content" />
-            <NavigationBar title="Requests" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <PremiumHeader
+                title={t('requestsTitle')}
+                subtitle={t('requestsTab')}
+                showBack
+                fallbackRoute="/provider/active"
+                menuItems={providerMenuItems(router, t)}
+            />
 
             {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color="#0EA5E9" /></View>
+                <View style={styles.center}><PulseLoader color={theme.colors.emerald} /></View>
             ) : (
                 <FlatList
                     data={requests}
                     keyExtractor={item => item.id.toString()}
                     renderItem={renderItem}
-                    contentContainerStyle={[styles.listContent, { paddingBottom: 120, paddingHorizontal: 20 }]}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                    contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: 20 }]}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4AF37" />}
                     ListHeaderComponent={
                         <View style={styles.listHeader}>
-                            <Text style={styles.headerDate}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
-                            <Text style={styles.headerTitle}>New Opportunities</Text>
-                            <Text style={styles.headerSub}>You have <Text style={styles.headerCount}>{requests.length}</Text> new leads waiting.</Text>
+                            <Text style={styles.headerDate}>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
+                            <Text style={styles.headerTitle}>{t('marketTitle')}</Text>
+                            <Text style={styles.headerSub}>{requests.length} {t('requestsTab')}</Text>
                         </View>
                     }
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
-                            <Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/7486/7486744.png' }} style={styles.emptyImg} />
-                            <Text style={styles.emptyTitle}>All Caught Up!</Text>
-                            <Text style={styles.emptySub}>There are no new jobs matching your profile right now. Check back later.</Text>
+                            <Ionicons name="mail-open-outline" size={56} color="#334155" />
+                            <Text style={styles.emptyTitle}>{t('noData')}</Text>
+                            <Text style={styles.emptySub}>{t('checkMarketHint')}</Text>
+                            <TouchableOpacity style={styles.marketBtn} onPress={() => router.push('/provider/market')}>
+                                <Text style={styles.marketBtnText}>{t('marketTitle')}</Text>
+                            </TouchableOpacity>
                         </View>
                     }
                 />
@@ -195,14 +209,14 @@ export default function RequestsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    container: { flex: 1, backgroundColor: PREMIUM_BG },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
     // Header Styles
     header: { paddingTop: 70, paddingHorizontal: 24, paddingBottom: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-    headerDate: { fontSize: 11, fontWeight: '700', color: '#94A3B8', marginBottom: 4, letterSpacing: 1 },
-    headerTitle: { fontSize: 26, fontWeight: '800', color: '#0F172A', lineHeight: 32 },
-    headerSub: { fontSize: 14, color: '#64748B', marginTop: 4 },
+    headerDate: { fontSize: 11, fontWeight: '700', color: PREMIUM_MUTED, marginBottom: 4, letterSpacing: 1 },
+    headerTitle: { fontSize: 26, fontWeight: '800', color: '#F8FAFC', lineHeight: 32 },
+    headerSub: { fontSize: 14, color: PREMIUM_MUTED, marginTop: 4 },
     headerCount: { color: '#0EA5E9', fontWeight: '800' },
     listHeader: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20 },
     filterBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginTop: 10 },
@@ -247,6 +261,8 @@ const styles = StyleSheet.create({
     // Empty State
     emptyContainer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
     emptyImg: { width: 80, height: 80, opacity: 0.5, marginBottom: 20 },
-    emptyTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-    emptySub: { textAlign: 'center', color: '#64748B', marginTop: 8, lineHeight: 22 },
+    emptyTitle: { fontSize: 18, fontWeight: '800', color: '#F8FAFC' },
+    emptySub: { textAlign: 'center', color: PREMIUM_MUTED, marginTop: 8, lineHeight: 22 },
+    marketBtn: { marginTop: 16, backgroundColor: '#D4AF37', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
+    marketBtnText: { color: '#0A0F1A', fontWeight: '800', fontSize: 14 },
 });

@@ -5,15 +5,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
-import NavigationBar from '@/components/NavigationBar';
-import ScreenGradient from '@/components/ScreenGradient';
+import { useLanguage } from '@/context/LanguageContext';
+import PremiumHeader from '@/components/PremiumHeader';
+import { providerMenuItems } from '@/constants/premiumMenus';
 import PulseLoader from '@/components/PulseLoader';
 import { theme } from '@/constants/theme';
 import { mediumFeedback } from '@/utils/haptics';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 
 export default function SuppliersScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
+    const { t } = useLanguage();
     const [suppliers, setSuppliers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -37,11 +40,13 @@ export default function SuppliersScreen() {
     React.useEffect(() => { fetchSuppliers(); }, [fetchSuppliers]);
 
     return (
-        <ScreenGradient>
-            <NavigationBar
-                title="Partner Suppliers"
+        <View style={styles.screen}>
+            <PremiumHeader
+                title={t('partnerSuppliersTitle')}
+                subtitle={t('materialCartTitle')}
                 showBack
-                dynamicColor={theme.colors.emerald}
+                fallbackRoute="/provider/active"
+                menuItems={providerMenuItems(router, t)}
             />
             {loading ? (
                 <View style={styles.center}><PulseLoader /></View>
@@ -49,7 +54,7 @@ export default function SuppliersScreen() {
                 <FlatList
                     data={suppliers}
                     keyExtractor={(item) => item.id}
-                    contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
+                    contentContainerStyle={[styles.list, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}
                     refreshControl={
                         <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchSuppliers(); }} />
                     }
@@ -85,11 +90,12 @@ export default function SuppliersScreen() {
                     )}
                 />
             )}
-        </ScreenGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: PREMIUM_BG },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     list: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md },
     card: { marginBottom: theme.spacing.md, borderRadius: theme.radii.lg, overflow: 'hidden', ...theme.shadow.soft },

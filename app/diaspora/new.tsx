@@ -13,8 +13,10 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
+import { clientMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 
 const CITIES = [
     "Douala", "Yaoundé", "Bamenda", "Bafoussam",
@@ -55,7 +57,7 @@ export default function NewProjectScreen() {
 
     const handleSubmit = async () => {
         if (!title || !city || !budget || !description) {
-            Alert.alert("Missing Fields", "Please fill in all details.");
+            Alert.alert(t('missingFields'), t('missingFields'));
             return;
         }
         setLoading(true);
@@ -70,10 +72,10 @@ export default function NewProjectScreen() {
                 status: 'pending',
             });
             if (error) throw error;
-            Alert.alert("Success", "Project posted successfully!");
+            Alert.alert(t('success'), t('profileSaved'));
             router.replace('/diaspora');
         } catch (err: any) {
-            Alert.alert("Error", err.message);
+            Alert.alert(t('errorTitle'), err.message);
         } finally {
             setLoading(false);
         }
@@ -82,12 +84,18 @@ export default function NewProjectScreen() {
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={[styles.container, { paddingBottom: insets.bottom }]}
+            style={styles.screen}
         >
-            <NavigationBar title={t('tabPostJob') ?? 'New Project'} showBack dynamicColor={theme.colors.active} />
+            <PremiumHeader
+                title={t('newProjectTitle')}
+                subtitle={t('postProjectSub')}
+                showBack
+                fallbackRoute="/diaspora"
+                menuItems={clientMenuItems(router, t)}
+            />
             <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={[styles.scrollContent, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}
+                contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: theme.spacing.lg }]}
             >
                 {/* --- IMAGE PICKER --- */}
                 <TouchableOpacity onPress={pickImage} activeOpacity={0.9} style={styles.imagePickerContainer}>
@@ -96,7 +104,7 @@ export default function NewProjectScreen() {
                             <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={styles.imageOverlay}>
                                 <View style={styles.glassBadge}>
                                     <Ionicons name="camera" size={18} color="#fff" />
-                                    <Text style={styles.editText}>Change Cover</Text>
+                                    <Text style={styles.editText}>{t('changeCover')}</Text>
                                 </View>
                             </LinearGradient>
                         </ImageBackground>
@@ -106,7 +114,7 @@ export default function NewProjectScreen() {
                                 <View style={styles.iconCircle}>
                                     <Ionicons name="add" size={32} color={theme.colors.active} />
                                 </View>
-                                <Text style={styles.placeholderText}>Add a project photo</Text>
+                                <Text style={styles.placeholderText}>{t('addProjectPhoto')}</Text>
                             </LinearGradient>
                         </View>
                     )}
@@ -114,7 +122,7 @@ export default function NewProjectScreen() {
 
                 {/* --- FORM --- */}
                 <View style={styles.formCard}>
-                    <Text style={styles.sectionTitle}>Project Specs</Text>
+                    <Text style={styles.sectionTitle}>{t('projectSpecs')}</Text>
 
                     <View style={styles.inputGroup}>
                         <Text style={styles.label}>{t('project.title' as any) || "Project Title"}</Text>
@@ -131,7 +139,7 @@ export default function NewProjectScreen() {
                         <View style={styles.flex1}>
                             <Text style={styles.label}>{t('project.city' as any) || "Location"}</Text>
                             <TouchableOpacity style={styles.selectBtn} onPress={() => setShowCityPicker(true)}>
-                                <Text style={city ? styles.selectText : styles.placeholderSelect}>{city || "Select City"}</Text>
+                                <Text style={city ? styles.selectText : styles.placeholderSelect}>{city || t('selectCityPlaceholder')}</Text>
                                 <Ionicons name="location" size={16} color={theme.colors.active} />
                             </TouchableOpacity>
                         </View>
@@ -172,7 +180,7 @@ export default function NewProjectScreen() {
                         {loading ? (
                             <ActivityIndicator color={theme.colors.surface} />
                         ) : (
-                            <Text style={styles.submitText}>Publish Project</Text>
+                            <Text style={styles.submitText}>{t('publishProject')}</Text>
                         )}
                     </TouchableOpacity>
                 </View>
@@ -183,7 +191,7 @@ export default function NewProjectScreen() {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalBar} />
-                        <Text style={styles.modalTitle}>Choose City</Text>
+                        <Text style={styles.modalTitle}>{t('chooseCity')}</Text>
                         <FlatList
                             data={CITIES}
                             renderItem={({ item }) => (
@@ -204,7 +212,8 @@ export default function NewProjectScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.surface },
+    container: { flex: 1, backgroundColor: PREMIUM_BG },
+    screen: { flex: 1, backgroundColor: PREMIUM_BG },
     scrollContent: {},
 
     imagePickerContainer: { height: 200, borderRadius: theme.radii.xl, marginBottom: theme.spacing.sm },

@@ -6,7 +6,10 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import NavigationBar from '@/components/NavigationBar';
+import { useLanguage } from '@/context/LanguageContext';
+import PremiumHeader from '@/components/PremiumHeader';
+import { providerMenuItems } from '@/constants/premiumMenus';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { z } from 'zod';
@@ -23,6 +26,7 @@ const payoutSchema = z.object({
 export default function PayoutSetupScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
+    const { t } = useLanguage();
     const { user } = useAuth();
 
     const [method, setMethod] = useState<'mtn' | 'orange'>('mtn');
@@ -119,9 +123,15 @@ export default function PayoutSetupScreen() {
     };
 
     return (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <NavigationBar title="Payout Setup" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
-            <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120, paddingHorizontal: 20 }]}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: PREMIUM_BG }]}>
+            <PremiumHeader
+                title={t('payoutSetupTitle')}
+                subtitle={t('walletTitle')}
+                showBack
+                fallbackRoute="/provider/earnings"
+                menuItems={providerMenuItems(router, t)}
+            />
+            <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: 20 }]}>
                 <Text style={styles.subTitle}>Select Method</Text>
 
                 <View style={styles.methodRow}>

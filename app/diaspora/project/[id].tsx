@@ -1,32 +1,38 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, Image, TouchableOpacity,
-    ActivityIndicator, Dimensions, StatusBar, Alert, RefreshControl, TextInput, Modal, Animated, KeyboardAvoidingView, Platform, Linking
+    ActivityIndicator, Dimensions, StatusBar, Alert, RefreshControl, TextInput, Modal, Animated, KeyboardAvoidingView, Platform, Linking, ScrollView
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { MessageCircle } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { YStack, XStack } from 'tamagui';
+import { YStack, XStack, Button, Text as TamaguiText } from 'tamagui';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_GOLD, TEXT_PRIMARY, TEXT_SECONDARY } from '@/constants/layout';
 import { theme } from '@/constants/theme';
 import { generateAndShareReceipt } from '@/utils/pdfReceipt';
 import { getProjectAccessRole, createObserverInvite } from '@/utils/observers';
 import { getContractHtml, uploadContractPdfFromUri } from '@/utils/contractPdf';
 import ClientApprovalCard from '@/components/ClientApprovalCard';
+import ChatRoom from '@/components/ChatRoom';
+import EvidenceImage from '@/components/EvidenceImage';
+import ProjectChatFab from '@/components/ProjectChatFab';
+import { markProjectChatRead } from '@/lib/chatReadState';
 
 const NAVY = '#0F172A';
 const SLATE = '#1E293B';
 const GOLD = '#D4AF37';
 
 const { width, height } = Dimensions.get('window');
-const HEADER_HEIGHT = 300;
+const HEADER_HEIGHT = 380;
+const PHOTO_CARD_WIDTH = width * 0.82;
+const PHOTO_CARD_GAP = 14;
 
 export default function ProjectDetailsScreen() {
     const insets = useSafeAreaInsets();
@@ -35,6 +41,12 @@ export default function ProjectDetailsScreen() {
     const { t } = useLanguage();
     const { user } = useAuth();
     const scrollY = useRef(new Animated.Value(0)).current;
+    const scrollViewRef = useRef<ScrollView>(null);
+
+    const openProjectChat = useCallback(async () => {
+        if (user?.id && id) await markProjectChatRead(user.id, id as string);
+        setChatModalVisible(true);
+    }, [user?.id, id]);
 
     // --- DATA STATE ---
     const [project, setProject] = useState<any>(null);
@@ -77,6 +89,9 @@ export default function ProjectDetailsScreen() {
     const [rating, setRating] = useState(5);
     const [reviewText, setReviewText] = useState('');
     const [submittingReview, setSubmittingReview] = useState(false);
+    const [approvingId, setApprovingId] = useState<string | null>(null);
+    const [rejectingId, setRejectingId] = useState<string | null>(null);
+    const [chatModalVisible, setChatModalVisible] = useState(false);
 
     // Note: 'hiring' state removed here because hiring moved to Proposals screen
 
@@ -177,7 +192,7 @@ export default function ProjectDetailsScreen() {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    // Live milestones: when RPC updates milestone (e.g. release), refetch so UI updates instantly
+    // Live milestones: patch local state instantly, then refetch for consistency
     useEffect(() => {
         if (!id) return;
         const channel = supabase
@@ -185,11 +200,37 @@ export default function ProjectDetailsScreen() {
             .on(
                 'postgres_changes',
                 { event: 'UPDATE', schema: 'public', table: 'milestones', filter: `project_id=eq.${id}` },
-                () => { fetchData(); }
+                (payload) => {
+                    const updated = payload.new as Record<string, unknown>;
+                    if (updated?.id) {
+                        setMilestones((prev) =>
+                            prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m))
+                        );
+                    }
+                    fetchData();
+                }
             )
             .on(
                 'postgres_changes',
                 { event: 'INSERT', schema: 'public', table: 'milestones', filter: `project_id=eq.${id}` },
+                () => { fetchData(); }
+            )
+            .subscribe();
+        return () => { supabase.removeChannel(channel); };
+    }, [id, fetchData]);
+
+    useEffect(() => {
+        if (!id) return;
+        const channel = supabase
+            .channel(`project_updates:${id}`)
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'project_updates', filter: `project_id=eq.${id}` },
+                () => { fetchData(); }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'project_updates', filter: `project_id=eq.${id}` },
                 () => { fetchData(); }
             )
             .subscribe();
@@ -203,17 +244,24 @@ export default function ProjectDetailsScreen() {
 
     // Sequential escrow: step N+1 stays locked until step N is paid
     const nextReleasableMilestone = milestones.find((m: any) => m.status === 'locked');
+    const pendingReviewMilestone = milestones.find((m: any) => m.status === 'in_review');
     const hasReleasableStep = !!nextReleasableMilestone;
 
-    // Deep link: open approval modal when notification action was "Approve" / "View Proof"
+    // Deep link: scroll to phase approval when notification action was "Approve" / "View Proof"
     const openApprovalHandled = useRef(false);
     useEffect(() => {
-        if (openApproval === '1' && nextReleasableMilestone && !openApprovalHandled.current) {
+        if (openApproval !== '1' || openApprovalHandled.current) return;
+        if (pendingReviewMilestone) {
             openApprovalHandled.current = true;
-            setPaymentAmount(String(nextReleasableMilestone.amount ?? ''));
+            setTimeout(() => {
+                scrollViewRef.current?.scrollTo({ y: 420, animated: true });
+            }, 400);
+        } else if (nextReleasableMilestone) {
+            openApprovalHandled.current = true;
+            setPaymentAmount(String(nextReleasableMilestone.amount ?? nextReleasableMilestone.amount_cfa ?? ''));
             setShowPaymentModal(true);
         }
-    }, [openApproval, nextReleasableMilestone]);
+    }, [openApproval, pendingReviewMilestone, nextReleasableMilestone]);
 
     // Pulsing Live badge
     const liveOpacity = useRef(new Animated.Value(1)).current;
@@ -281,6 +329,70 @@ export default function ProjectDetailsScreen() {
         } finally {
             setProcessingPayment(false);
         }
+    };
+
+    const patchMilestone = useCallback((milestoneId: string, patch: Record<string, unknown>) => {
+        setMilestones((prev) =>
+            prev.map((m) => (m.id === milestoneId ? { ...m, ...patch } : m))
+        );
+    }, []);
+
+    const handleApproveMilestone = async (milestoneId: string) => {
+        Alert.alert(t('approvePhase'), t('approvePhaseConfirm'), [
+            { text: t('cancel'), style: 'cancel' },
+            {
+                text: t('approvePhase'),
+                onPress: async () => {
+                    setApprovingId(milestoneId);
+                    patchMilestone(milestoneId, { status: 'approved' });
+                    try {
+                        const { error } = await supabase
+                            .from('milestones')
+                            .update({ status: 'approved' })
+                            .eq('id', milestoneId)
+                            .eq('status', 'in_review');
+                        if (error) throw error;
+                        successFeedback();
+                        Alert.alert(t('approvePhase'), t('approvePhaseSuccess'));
+                        fetchData();
+                    } catch (err: any) {
+                        fetchData();
+                        Alert.alert('Error', err.message || 'Could not approve phase.');
+                    } finally {
+                        setApprovingId(null);
+                    }
+                },
+            },
+        ]);
+    };
+
+    const handleRejectMilestone = async (milestoneId: string) => {
+        Alert.alert(t('rejectProof'), t('rejectPhaseConfirm'), [
+            { text: t('cancel'), style: 'cancel' },
+            {
+                text: t('rejectProof'),
+                style: 'destructive',
+                onPress: async () => {
+                    setRejectingId(milestoneId);
+                    patchMilestone(milestoneId, { status: 'in_progress', evidence_url: null });
+                    try {
+                        const { error } = await supabase
+                            .from('milestones')
+                            .update({ status: 'in_progress', evidence_url: null })
+                            .eq('id', milestoneId)
+                            .eq('status', 'in_review');
+                        if (error) throw error;
+                        mediumFeedback();
+                        fetchData();
+                    } catch (err: any) {
+                        fetchData();
+                        Alert.alert('Error', err.message || 'Could not reject phase.');
+                    } finally {
+                        setRejectingId(null);
+                    }
+                },
+            },
+        ]);
     };
 
     const handleContractSign = async () => {
@@ -368,7 +480,7 @@ export default function ProjectDetailsScreen() {
     );
 
     if (loading) {
-        return <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.text} /></View>;
+        return <View style={styles.center}><ActivityIndicator size="large" color={PREMIUM_GOLD} /></View>;
     }
     if (!project) {
         return (
@@ -389,18 +501,51 @@ export default function ProjectDetailsScreen() {
     const pendingMaterial = materialExpenses.filter((e: any) => e.status === 'pending');
     const isPending = project.status === 'pending';
     const isCompleted = project.status === 'completed';
+    const isInProgress = !isPending && !isCompleted;
     const isCommandCenter = project.status === 'in_progress' || project.status === 'In Progress' || project.status === 'completed';
     const isObserver = projectAccessRole === 'observer';
     const isOwner = projectAccessRole === 'owner';
     const isProvider = projectAccessRole === 'provider';
     const hasActiveDispute = !!project?.dispute_milestone_id;
+    const photoUpdates = updates.filter((u: any) => !!u.image_url);
+    const milestoneActivities = milestones
+        .filter((m: any) => (m.status === 'in_review' && m.evidence_url) || m.status === 'approved')
+        .map((m: any) => ({
+            id: `milestone-activity-${m.id}-${m.status}`,
+            isMilestoneActivity: true,
+            milestoneStatus: m.status,
+            title: m.status === 'in_review' ? t('phaseProofForReview') : t('phaseApprovedActivity'),
+            description: m.title,
+            evidence_path: m.evidence_url,
+            created_at: m.updated_at || m.created_at || new Date(0).toISOString(),
+        }));
+    const reviewGalleryItems = [
+        ...photoUpdates,
+        ...milestoneActivities.filter((m: any) => m.evidence_path),
+    ];
+    const combinedActivity = [
+        ...updates.map((u: any) => ({ ...u, isMilestoneActivity: false })),
+        ...milestoneActivities,
+    ].sort(
+        (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
 
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <StatusBar barStyle="light-content" />
-            <NavigationBar title={project?.title ?? 'Project'} showBack dynamicColor={theme.colors.active} />
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <PremiumHeader
+                title={project?.title ?? 'Project'}
+                subtitle={project?.city}
+                showBack
+                fallbackRoute="/diaspora"
+                onNotificationsPress={() => router.push('/notifications')}
+                menuItems={[
+                    { label: 'Settings', icon: 'settings', onPress: () => router.push('/diaspora/settings') },
+                    { label: 'Profile', icon: 'profile', onPress: () => router.push('/diaspora/profile') },
+                ]}
+            />
 
-            {/* --- HEADER --- */}
+            {/* --- IMMERSIVE HERO --- */}
             <Animated.View style={[styles.headerContainer, { transform: [{ translateY: headerTranslateY }] }]}>
                 <Animated.Image
                     source={{ uri: project.image_url || 'https://images.unsplash.com/photo-1503387762-592deb58ef4e' }}
@@ -436,11 +581,12 @@ export default function ProjectDetailsScreen() {
 
             {/* --- SCROLL CONTENT --- */}
             <Animated.ScrollView
-                contentContainerStyle={{ paddingTop: HEADER_HEIGHT - 30, paddingBottom: 120, paddingHorizontal: theme.spacing.lg }}
+                ref={scrollViewRef as any}
+                contentContainerStyle={{ paddingTop: HEADER_HEIGHT - 48, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 120 }}
                 onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
                 scrollEventThrottle={16}
                 showsVerticalScrollIndicator={false}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} />}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} tintColor="#D4AF37" />}
             >
                 <View style={styles.body}>
 
@@ -469,24 +615,140 @@ export default function ProjectDetailsScreen() {
                             {/* 2. Ablauf Timeline (Milestones) */}
                             {milestones.length > 0 && (
                                 <View style={styles.section}>
-                                    <Text style={styles.sectionTitle}>Ablauf Timeline</Text>
+                                    <Text style={styles.sectionTitle}>{t('ablaufTimeline')}</Text>
                                     <YStack gap={0}>
                                         {milestones.map((m: any, idx: number) => {
-                                            const isDone = m.status === 'paid' || m.status === 'released';
-                                            const isCurrent = m.status === 'locked';
+                                            const amount = Number(m.amount ?? m.amount_cfa ?? 0);
+                                            const isPaid = m.status === 'paid' || m.status === 'released';
+                                            const isApproved = m.status === 'approved';
+                                            const isInReview = m.status === 'in_review';
+                                            const isDone = isPaid;
+                                            const isCurrent = !isDone && (m.status === 'locked' || m.status === 'in_progress' || isInReview || isApproved);
                                             const isFuture = !isDone && !isCurrent;
+                                            const hasEvidence = !!(m.evidence_url && m.evidence_url !== 'pending');
+                                            const statusLabel = isPaid
+                                                ? t('completedStep')
+                                                : isApproved
+                                                    ? t('phaseCompleted')
+                                                    : isInReview
+                                                        ? t('reviewProofTitle')
+                                                        : isCurrent
+                                                            ? t('currentStep')
+                                                            : t('upcomingStep');
                                             return (
                                                 <View key={m.id} style={[styles.timelineStep, isFuture && styles.timelineStepFaded]}>
-                                                    <View style={[styles.timelineDot, isDone && styles.timelineDotDone, isCurrent && styles.timelineDotCurrent]}>
+                                                    <View style={[
+                                                        styles.timelineDot,
+                                                        isDone && styles.timelineDotDone,
+                                                        (isCurrent || isInReview) && styles.timelineDotCurrent,
+                                                        isApproved && styles.timelineDotApproved,
+                                                    ]}>
                                                         {isDone && <Ionicons name="checkmark" size={14} color="#fff" />}
+                                                        {isApproved && !isPaid && <Ionicons name="checkmark-circle" size={14} color="#fff" />}
+                                                        {isInReview && <Ionicons name="eye" size={14} color="#fff" />}
                                                     </View>
                                                     {idx < milestones.length - 1 && <View style={[styles.timelineConnector, isDone && styles.timelineConnectorDone]} />}
-                                                    <View style={[styles.timelineCard, isCurrent && styles.timelineCardGlow]}>
+                                                    <View style={[
+                                                        styles.timelineCard,
+                                                        isCurrent && styles.timelineCardGlow,
+                                                        isInReview && styles.timelineCardReview,
+                                                    ]}>
                                                         <XStack justifyContent="space-between" alignItems="center">
                                                             <Text style={styles.timelineTitle}>{m.title}</Text>
-                                                            <Text style={styles.timelineAmount}>{Number(m.amount || 0).toLocaleString()} CFA</Text>
+                                                            <Text style={styles.timelineAmount}>{amount.toLocaleString()} CFA</Text>
                                                         </XStack>
-                                                        <Text style={styles.timelineStatus}>{isDone ? 'Completed' : isCurrent ? 'Current step' : 'Upcoming'}</Text>
+                                                        <Text style={[
+                                                            styles.timelineStatus,
+                                                            isInReview && styles.timelineStatusReview,
+                                                            isApproved && styles.timelineStatusApproved,
+                                                        ]}>
+                                                            {statusLabel}
+                                                        </Text>
+
+                                                        {isInReview && (
+                                                            <View style={styles.evidenceBlock}>
+                                                                <Text style={styles.evidenceLabel}>{t('reviewProofTitle')}</Text>
+                                                                {hasEvidence ? (
+                                                                    <EvidenceImage
+                                                                        path={m.evidence_url}
+                                                                        style={styles.evidenceImage}
+                                                                        onPress={(url) => { mediumFeedback(); setSelectedImage(url); }}
+                                                                    />
+                                                                ) : (
+                                                                    <View style={[styles.evidenceImage, styles.evidenceMissing]}>
+                                                                        <Ionicons name="image-outline" size={28} color="#64748B" />
+                                                                        <Text style={styles.evidenceMissingText}>Waiting for proof image…</Text>
+                                                                    </View>
+                                                                )}
+
+                                                                {isOwner && !isObserver && (
+                                                                    <YStack gap={12} marginTop={14} width="100%">
+                                                                        <Button
+                                                                            size="$4"
+                                                                            height={52}
+                                                                            borderRadius={14}
+                                                                            disabled={!!approvingId || !!rejectingId}
+                                                                            opacity={approvingId === m.id || rejectingId === m.id ? 0.7 : 1}
+                                                                            backgroundColor="#D4AF37"
+                                                                            pressStyle={{ backgroundColor: '#B8860B', scale: 0.98 }}
+                                                                            onPress={() => handleApproveMilestone(m.id)}
+                                                                        >
+                                                                            <XStack alignItems="center" justifyContent="center" gap={8}>
+                                                                                {approvingId === m.id ? (
+                                                                                    <ActivityIndicator color="#0F172A" />
+                                                                                ) : (
+                                                                                    <Ionicons name="checkmark-circle" size={20} color="#0F172A" />
+                                                                                )}
+                                                                                <TamaguiText color="#0F172A" fontWeight="800" fontSize={15}>
+                                                                                    {t('approvePhase')}
+                                                                                </TamaguiText>
+                                                                            </XStack>
+                                                                        </Button>
+
+                                                                        <Button
+                                                                            size="$4"
+                                                                            height={52}
+                                                                            borderRadius={14}
+                                                                            disabled={!!approvingId || !!rejectingId}
+                                                                            opacity={approvingId === m.id || rejectingId === m.id ? 0.7 : 1}
+                                                                            backgroundColor="rgba(239,68,68,0.15)"
+                                                                            borderWidth={1}
+                                                                            borderColor="rgba(239,68,68,0.35)"
+                                                                            pressStyle={{ backgroundColor: 'rgba(239,68,68,0.25)', scale: 0.98 }}
+                                                                            onPress={() => handleRejectMilestone(m.id)}
+                                                                        >
+                                                                            <XStack alignItems="center" justifyContent="center" gap={8}>
+                                                                                {rejectingId === m.id ? (
+                                                                                    <ActivityIndicator color="#FCA5A5" />
+                                                                                ) : (
+                                                                                    <Ionicons name="close-circle-outline" size={20} color="#FCA5A5" />
+                                                                                )}
+                                                                                <TamaguiText color="#FCA5A5" fontWeight="700" fontSize={15}>
+                                                                                    {t('rejectProof')}
+                                                                                </TamaguiText>
+                                                                            </XStack>
+                                                                        </Button>
+                                                                    </YStack>
+                                                                )}
+                                                            </View>
+                                                        )}
+
+                                                        {isApproved && !isPaid && (
+                                                            <View style={styles.approvedInlineBadge}>
+                                                                <Ionicons name="shield-checkmark" size={16} color="#34D399" />
+                                                                <Text style={styles.approvedInlineText}>{t('phaseCompleted')}</Text>
+                                                            </View>
+                                                        )}
+
+                                                        {isApproved && hasEvidence && (
+                                                            <View style={styles.evidenceBlock}>
+                                                                <EvidenceImage
+                                                                    path={m.evidence_url}
+                                                                    style={styles.evidenceImage}
+                                                                    onPress={(url) => { mediumFeedback(); setSelectedImage(url); }}
+                                                                />
+                                                            </View>
+                                                        )}
                                                     </View>
                                                 </View>
                                             );
@@ -652,13 +914,27 @@ export default function ProjectDetailsScreen() {
                                 <Text style={styles.provName}>{project.profiles?.full_name}</Text>
                                 <Text style={styles.provStatus}>Verified Professional</Text>
                             </View>
-                            <TouchableOpacity style={styles.callBtn} onPress={() => { mediumFeedback(); router.push(`/chat/${id}`); }}>
+                            <TouchableOpacity
+                                style={styles.callBtn}
+                                onPress={() => {
+                                    mediumFeedback();
+                                    openProjectChat();
+                                }}
+                            >
                                 <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
                             </TouchableOpacity>
                         </View>
                     )}
 
-                    {/* 4.4 Handoff & Warranty (30-day retainage) */}
+                    {isInProgress && !isObserver && id && (
+                        <ProjectChatFab
+                            projectId={id as string}
+                            bottomOffset={FLOATING_TAB_BAR_HEIGHT + 72}
+                            onPress={openProjectChat}
+                        />
+                    )}
+
+                    {/* Handoff & Warranty (30-day retainage) */}
                     {isCompleted && isOwner && (project.warranty_status === 'held' || project.warranty_status === 'frozen') && (
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Handoff & Warranty</Text>
@@ -669,7 +945,7 @@ export default function ProjectDetailsScreen() {
                                 </View>
                                 <View>
                                     <Text style={styles.metricLabel}>Status</Text>
-                                    <Text style={[styles.metricValue, { color: project.warranty_status === 'frozen' ? theme.colors.warning : theme.colors.text }]}>
+                                    <Text style={[styles.metricValue, { color: project.warranty_status === 'frozen' ? theme.colors.warning : TEXT_PRIMARY }]}>
                                         {project.warranty_status === 'frozen' ? 'Frozen (defect reported)' : 'Held (30 days)'}
                                     </Text>
                                 </View>
@@ -732,7 +1008,16 @@ export default function ProjectDetailsScreen() {
                     {/* 5. Live Timeline (Project Updates) */}
                     {!isPending && (
                         <View style={styles.section}>
-                            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Site Activity</Text>
+                            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t('siteActivity')}</Text>
+                            {pendingReviewMilestone && isOwner && !isObserver && (
+                                <View style={styles.reviewBanner}>
+                                    <Ionicons name="alert-circle" size={20} color={GOLD} />
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.reviewBannerTitle}>{t('reviewProofTitle')}</Text>
+                                        <Text style={styles.reviewBannerSub}>{pendingReviewMilestone.title}</Text>
+                                    </View>
+                                </View>
+                            )}
                             {updatesError ? (
                                 <View style={styles.emptyTimeline}>
                                     <Ionicons name="cloud-offline-outline" size={28} color={theme.colors.textMuted} />
@@ -743,36 +1028,106 @@ export default function ProjectDetailsScreen() {
                                     </TouchableOpacity>
                                 </View>
                             ) : null}
-                            {!updatesError && updates.length === 0 ? (
+                            {!updatesError && reviewGalleryItems.length > 0 ? (
+                                <View style={styles.photoGallerySection}>
+                                    <Text style={styles.photoGalleryTitle}>{t('siteActivity')}</Text>
+                                    <ScrollView
+                                        horizontal
+                                        showsHorizontalScrollIndicator={false}
+                                        decelerationRate="fast"
+                                        snapToInterval={PHOTO_CARD_WIDTH + PHOTO_CARD_GAP}
+                                        snapToAlignment="start"
+                                        contentContainerStyle={styles.photoGalleryRow}
+                                    >
+                                        {reviewGalleryItems.map((update: any) => (
+                                            <View
+                                                key={`photo-${update.id}`}
+                                                style={[
+                                                    styles.photoCardWrap,
+                                                    update.isMilestoneActivity && update.milestoneStatus === 'in_review' && styles.photoCardReview,
+                                                ]}
+                                            >
+                                                {update.isMilestoneActivity ? (
+                                                    <EvidenceImage
+                                                        path={update.evidence_path}
+                                                        style={styles.photoGalleryImage}
+                                                        onPress={(url) => { mediumFeedback(); setSelectedImage(url); }}
+                                                    />
+                                                ) : (
+                                                    <TouchableOpacity
+                                                        activeOpacity={0.95}
+                                                        onPress={() => { mediumFeedback(); setSelectedImage(update.image_url); }}
+                                                    >
+                                                        <Image source={{ uri: update.image_url }} style={styles.photoGalleryImage} />
+                                                    </TouchableOpacity>
+                                                )}
+                                                <LinearGradient
+                                                    colors={['transparent', 'rgba(0,0,0,0.85)']}
+                                                    style={styles.photoCardGradient}
+                                                    pointerEvents="none"
+                                                />
+                                                {update.isMilestoneActivity && update.milestoneStatus === 'in_review' && (
+                                                    <View style={styles.reviewPill} pointerEvents="none">
+                                                        <Text style={styles.reviewPillText}>{t('reviewProofTitle')}</Text>
+                                                    </View>
+                                                )}
+                                                <Text style={styles.photoGalleryCaption} numberOfLines={2} pointerEvents="none">
+                                                    {update.isMilestoneActivity
+                                                        ? update.title
+                                                        : update.update_type === 'material_collection'
+                                                            ? 'Materials collected'
+                                                            : (update.title || 'Site update')}
+                                                </Text>
+                                            </View>
+                                        ))}
+                                    </ScrollView>
+                                </View>
+                            ) : null}
+                            {!updatesError && combinedActivity.length === 0 ? (
                                 <View style={styles.emptyTimeline}>
                                     <View style={styles.dashedLine} />
                                     <Text style={styles.emptyText}>Provider has not posted updates yet.</Text>
                                 </View>
                             ) : !updatesError ? (
-                                [...updates]
-                                    .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-                                    .map((update, index) => (
+                                combinedActivity.map((update: any, index: number) => (
                                     <View key={update.id} style={styles.timelineItem}>
                                         <View style={styles.timelineLeft}>
-                                            <View style={styles.timelineDot} />
-                                            {index !== updates.length - 1 && <View style={styles.timelineLine} />}
+                                            <View style={[
+                                                styles.timelineDot,
+                                                update.isMilestoneActivity && update.milestoneStatus === 'in_review' && styles.timelineDotReview,
+                                                update.isMilestoneActivity && update.milestoneStatus === 'approved' && styles.timelineDotApprovedSmall,
+                                            ]} />
+                                            {index !== combinedActivity.length - 1 && <View style={styles.timelineLine} />}
                                         </View>
 
-                                        <View style={styles.timelineContent}>
+                                        <View style={[
+                                            styles.timelineContent,
+                                            update.isMilestoneActivity && update.milestoneStatus === 'in_review' && styles.timelineContentReview,
+                                        ]}>
                                             <View style={styles.timelineHeader}>
-                                                <Text style={styles.updateTitle}>{update.title || "Update"}</Text>
+                                                <Text style={styles.updateTitle}>
+                                                    {update.isMilestoneActivity ? update.title : (update.title || 'Update')}
+                                                </Text>
                                                 <Text style={styles.updateDate}>
-                                                    {new Date(update.created_at).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
+                                                    {new Date(update.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                                 </Text>
                                             </View>
 
-                                            <Text style={styles.updateDesc}>{update.description}</Text>
+                                            <Text style={styles.updateDesc}>
+                                                {update.isMilestoneActivity ? update.description : update.description}
+                                            </Text>
 
-                                            {update.image_url && (
+                                            {update.isMilestoneActivity && update.evidence_path ? (
+                                                <EvidenceImage
+                                                    path={update.evidence_path}
+                                                    style={styles.updateImage}
+                                                    onPress={(url) => { mediumFeedback(); setSelectedImage(url); }}
+                                                />
+                                            ) : update.image_url ? (
                                                 <TouchableOpacity onPress={() => { mediumFeedback(); setSelectedImage(update.image_url); }}>
                                                     <Image source={{ uri: update.image_url }} style={styles.updateImage} />
                                                 </TouchableOpacity>
-                                            )}
+                                            ) : null}
                                         </View>
                                     </View>
                                 ))
@@ -824,22 +1179,10 @@ export default function ProjectDetailsScreen() {
                 </View>
             )}
 
-            {/* --- FAB: Chat with Contractor --- */}
-            {isCommandCenter && !isObserver && (
-                <TouchableOpacity
-                    style={[styles.fab, { right: 20, bottom: (insets?.bottom ?? 0) + 100 }]}
-                    onPress={() => { mediumFeedback(); router.push(`/chat/${id}`); }}
-                    activeOpacity={0.9}
-                >
-                    <LinearGradient colors={[GOLD, '#B8860B'] as [string, string]} style={styles.fabGradient}>
-                        <MessageCircle size={24} color="#0F172A" strokeWidth={2} />
-                    </LinearGradient>
-                </TouchableOpacity>
-            )}
 
             {/* --- ACTION BAR (Bottom) --- */}
             {!isPending && !isCompleted && !isObserver && !hasActiveDispute && (
-                <View style={styles.actionBar}>
+                <BlurView intensity={80} tint="dark" style={[styles.actionBar, { bottom: FLOATING_TAB_BAR_HEIGHT - 8 }]}>
                     <TouchableOpacity
                         style={[styles.actionPayBtn, !hasReleasableStep && styles.actionPayBtnDisabled]}
                         onPress={() => {
@@ -859,8 +1202,32 @@ export default function ProjectDetailsScreen() {
                     <TouchableOpacity style={styles.actionDoneBtn} onPress={() => setShowCompleteModal(true)}>
                         <Text style={styles.actionDoneText}>Complete</Text>
                     </TouchableOpacity>
-                </View>
+                </BlurView>
             )}
+
+            {/* Project Chat Modal */}
+            <Modal visible={chatModalVisible} animationType="slide" onRequestClose={() => setChatModalVisible(false)}>
+                <View style={[styles.chatModalScreen, { paddingTop: insets.top }]}>
+                    <View style={styles.chatModalHeader}>
+                        <TouchableOpacity
+                            onPress={() => setChatModalVisible(false)}
+                            style={styles.chatModalClose}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        >
+                            <Ionicons name="chevron-down" size={28} color={TEXT_PRIMARY} />
+                        </TouchableOpacity>
+                        <Text style={styles.chatModalTitle}>{t('projectChatTitle')}</Text>
+                        <View style={{ width: 40 }} />
+                    </View>
+                    {id ? (
+                        <ChatRoom
+                            projectId={id as string}
+                            maxHeight={height - insets.top - insets.bottom - 80}
+                            bottomInset={insets.bottom + 8}
+                        />
+                    ) : null}
+                </View>
+            </Modal>
 
             {/* --- MODALS --- */}
 
@@ -1096,11 +1463,11 @@ export default function ProjectDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
+    container: { flex: 1, backgroundColor: PREMIUM_BG },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
     headerContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: HEADER_HEIGHT, overflow: 'hidden', zIndex: 0 },
-    headerImage: { width: '100%', height: HEADER_HEIGHT, resizeMode: 'cover' },
+    headerImage: { width: width, height: HEADER_HEIGHT, resizeMode: 'cover' },
     gradient: { ...StyleSheet.absoluteFillObject },
     headerContent: { position: 'absolute', bottom: 40, left: 20, right: 20 },
 
@@ -1121,9 +1488,9 @@ const styles = StyleSheet.create({
     navBar: { position: 'absolute', top: 50, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 10 },
     navBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' },
 
-    body: { backgroundColor: theme.colors.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: theme.spacing.xl, paddingBottom: 40, minHeight: 800 },
+    body: { paddingHorizontal: 16, paddingBottom: 40, minHeight: 800 },
 
-    metricsContainer: { marginTop: -40, marginBottom: 24 },
+    metricsContainer: { marginTop: -24, marginBottom: 20, paddingHorizontal: 4 },
     financialCard: { borderRadius: theme.radii.xl, overflow: 'hidden', ...theme.shadow.soft },
     financialTitle: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.9)' },
     financialPercent: { fontSize: 14, fontWeight: '800', color: '#D4AF37' },
@@ -1140,11 +1507,31 @@ const styles = StyleSheet.create({
     timelineDotCurrent: { backgroundColor: theme.colors.active, shadowColor: theme.colors.active, shadowOpacity: 0.6, shadowRadius: 8 },
     timelineConnector: { position: 'absolute', left: 13, top: 28, bottom: -8, width: 2, backgroundColor: theme.colors.border },
     timelineConnectorDone: { backgroundColor: '#D4AF37' },
-    timelineCard: { flex: 1, backgroundColor: theme.colors.surface, padding: 16, borderRadius: theme.radii.md, borderWidth: 1, borderColor: theme.colors.border },
-    timelineCardGlow: { borderColor: theme.colors.active, shadowColor: theme.colors.active, shadowOpacity: 0.3, shadowRadius: 8 },
-    timelineTitle: { fontSize: 15, fontWeight: '700', color: theme.colors.text },
-    timelineAmount: { fontSize: 14, fontWeight: '700', color: theme.colors.textMuted },
-    timelineStatus: { fontSize: 12, color: theme.colors.textMuted, marginTop: 4 },
+    timelineCard: { flex: 1, backgroundColor: 'rgba(255,255,255,0.04)', padding: 16, borderRadius: 16 },
+    timelineCardGlow: { backgroundColor: 'rgba(37,99,235,0.12)' },
+    timelineCardReview: { backgroundColor: 'rgba(212,175,55,0.08)', borderWidth: 1, borderColor: 'rgba(212,175,55,0.25)' },
+    timelineDotApproved: { backgroundColor: '#059669' },
+    timelineStatusReview: { color: GOLD, fontWeight: '700' },
+    timelineStatusApproved: { color: '#34D399', fontWeight: '700' },
+    evidenceBlock: { marginTop: 14 },
+    evidenceLabel: { fontSize: 12, fontWeight: '700', color: GOLD, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.6 },
+    evidenceImage: { width: '100%', height: 200, borderRadius: 14, backgroundColor: '#1E293B' },
+    evidenceMissing: { alignItems: 'center', justifyContent: 'center', gap: 8 },
+    evidenceMissingText: { color: '#64748B', fontSize: 13, fontWeight: '600' },
+    approvedInlineBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: 'rgba(52,211,153,0.12)' },
+    approvedInlineText: { color: '#34D399', fontWeight: '700', fontSize: 13 },
+    reviewBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, marginBottom: 16, backgroundColor: 'rgba(212,175,55,0.12)', borderWidth: 1, borderColor: 'rgba(212,175,55,0.3)' },
+    reviewBannerTitle: { fontSize: 14, fontWeight: '800', color: GOLD },
+    reviewBannerSub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+    photoCardReview: { borderWidth: 2, borderColor: GOLD },
+    reviewPill: { position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(212,175,55,0.9)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+    reviewPillText: { fontSize: 10, fontWeight: '800', color: '#0F172A' },
+    timelineDotReview: { backgroundColor: GOLD, borderColor: GOLD },
+    timelineDotApprovedSmall: { backgroundColor: '#34D399', borderColor: '#34D399' },
+    timelineContentReview: { borderWidth: 1, borderColor: 'rgba(212,175,55,0.2)' },
+    timelineTitle: { fontSize: 15, fontWeight: '700', color: '#F8FAFC' },
+    timelineAmount: { fontSize: 14, fontWeight: '700', color: '#94A3B8' },
+    timelineStatus: { fontSize: 12, color: '#64748B', marginTop: 4 },
     cartActionCard: { padding: 20, borderRadius: theme.radii.lg, overflow: 'hidden', marginBottom: 16 },
     cartSupplier: { fontSize: 16, fontWeight: '700', color: '#fff' },
     cartTotal: { fontSize: 16, fontWeight: '800', color: '#D4AF37' },
@@ -1157,19 +1544,19 @@ const styles = StyleSheet.create({
     fabGradient: { flex: 1, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
     glassRow: { flexDirection: 'row', backgroundColor: theme.colors.surface, borderRadius: theme.radii.lg, padding: theme.spacing.md, ...theme.shadow.soft, justifyContent: 'space-between' },
     metricItem: { alignItems: 'center', flex: 1 },
-    metricLabel: { fontSize: 11, color: theme.colors.textMuted, fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 },
-    metricValue: { fontSize: 16, fontWeight: '800', color: theme.colors.text },
+    metricLabel: { fontSize: 11, color: TEXT_SECONDARY, fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 },
+    metricValue: { fontSize: 16, fontWeight: '800', color: TEXT_PRIMARY },
     metricDivider: { width: 1, height: 24, backgroundColor: theme.colors.border },
 
-    sectionTitle: { fontSize: 18, fontWeight: '800', color: theme.colors.text, marginBottom: theme.spacing.sm },
-    subTitle: { fontSize: 14, fontWeight: '700', color: theme.colors.textMuted, marginBottom: theme.spacing.sm, textTransform: 'uppercase', marginTop: theme.spacing.sm },
-    description: { fontSize: 15, color: '#475569', lineHeight: 24, marginBottom: 20 },
-    section: { marginBottom: 24 },
+    sectionTitle: { fontSize: 20, fontWeight: '800', color: TEXT_PRIMARY, marginBottom: 12, letterSpacing: -0.3 },
+    subTitle: { fontSize: 13, fontWeight: '700', color: TEXT_SECONDARY, marginBottom: 10, textTransform: 'uppercase', marginTop: 8, letterSpacing: 0.8 },
+    description: { fontSize: 15, color: TEXT_SECONDARY, lineHeight: 24, marginBottom: 20 },
+    section: { marginBottom: 28, paddingHorizontal: 4 },
 
     // Expense Styles
-    expenseRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 12, borderRadius: 12, marginBottom: 8, gap: 12 },
+    expenseRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.04)', padding: 14, borderRadius: 16, marginBottom: 8, gap: 12 },
     expenseIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-    expenseTitle: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+    expenseTitle: { fontSize: 14, fontWeight: '600', color: '#F1F5F9' },
     expenseDate: { fontSize: 12, color: '#94A3B8' },
     expenseAmount: { fontSize: 14, fontWeight: '700', color: '#EF4444' },
     materialBudgetRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12, backgroundColor: theme.colors.surfaceAlt, borderRadius: 12, marginBottom: 8 },
@@ -1177,25 +1564,32 @@ const styles = StyleSheet.create({
     approveExpenseText: { color: '#fff', fontWeight: '700', fontSize: 12 },
 
     glassCard: { padding: theme.spacing.md, borderRadius: theme.radii.lg, borderWidth: 1, borderColor: theme.colors.border, marginBottom: theme.spacing.sm },
-    glassCardText: { fontSize: 14, color: theme.colors.text, marginBottom: 4 },
+    glassCardText: { fontSize: 14, color: TEXT_PRIMARY, marginBottom: 4 },
     approveCartBtn: { backgroundColor: theme.colors.emerald, paddingVertical: 14, borderRadius: theme.radii.md, alignItems: 'center', marginTop: 12 },
     approveCartBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
     defectList: { marginTop: 12 },
     defectRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
-    defectDesc: { fontSize: 14, color: theme.colors.text },
-    defectStatus: { fontSize: 12, color: theme.colors.textMuted, marginTop: 4 },
+    defectDesc: { fontSize: 14, color: TEXT_PRIMARY },
+    defectStatus: { fontSize: 12, color: TEXT_SECONDARY, marginTop: 4 },
 
     // Timeline Styles
     timelineItem: { flexDirection: 'row' },
     timelineLeft: { width: 24, alignItems: 'center', marginRight: 12 },
     timelineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#0F172A', borderWidth: 2, borderColor: '#fff', zIndex: 10 },
     timelineLine: { width: 2, flex: 1, backgroundColor: '#E2E8F0', position: 'absolute', top: 12, bottom: -12 },
-    timelineContent: { flex: 1, backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 24, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 5 },
+    timelineContent: { flex: 1, backgroundColor: 'rgba(255,255,255,0.04)', padding: 16, borderRadius: 16, marginBottom: 20 },
     timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-    updateTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+    updateTitle: { fontSize: 15, fontWeight: '700', color: '#F8FAFC' },
     updateDate: { fontSize: 12, color: '#94A3B8' },
-    updateDesc: { color: '#334155', lineHeight: 20 },
-    updateImage: { width: '100%', height: 160, borderRadius: 12, marginTop: 12 },
+    updateDesc: { color: '#94A3B8', lineHeight: 20 },
+    updateImage: { width: '100%', height: 200, borderRadius: 16, marginTop: 12 },
+    photoGallerySection: { marginBottom: 24, marginHorizontal: -16 },
+    photoGalleryTitle: { fontSize: 20, fontWeight: '800', color: '#F8FAFC', marginBottom: 14, paddingHorizontal: 16, letterSpacing: -0.3 },
+    photoGalleryRow: { paddingHorizontal: 16, gap: PHOTO_CARD_GAP },
+    photoCardWrap: { width: PHOTO_CARD_WIDTH, height: 300, borderRadius: 24, overflow: 'hidden', backgroundColor: '#1E293B' },
+    photoGalleryImage: { width: '100%', height: '100%' },
+    photoCardGradient: { ...StyleSheet.absoluteFillObject },
+    photoGalleryCaption: { position: 'absolute', left: 16, right: 16, bottom: 16, fontSize: 15, fontWeight: '700', color: '#F8FAFC' },
 
     inviteObserverBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 16, backgroundColor: theme.colors.surfaceAlt, borderRadius: theme.radii.sm, marginBottom: 24 },
     inviteObserverText: { fontSize: 14, fontWeight: '600', color: theme.colors.active },
@@ -1205,7 +1599,25 @@ const styles = StyleSheet.create({
 
     emptyTimeline: { alignItems: 'center', padding: 20 },
     dashedLine: { height: 40, width: 1, borderStyle: 'dashed', borderWidth: 1, borderColor: '#CBD5E1', marginBottom: 10 },
-    emptyText: { color: '#94A3B8', fontWeight: '500' },
+    emptyText: { color: TEXT_SECONDARY, fontWeight: '500' },
+
+    chatModalScreen: { flex: 1, backgroundColor: PREMIUM_BG, paddingHorizontal: 12 },
+    chatModalHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+        marginBottom: 8,
+    },
+    chatModalClose: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+    chatModalTitle: { fontSize: 17, fontWeight: '800', color: TEXT_PRIMARY },
 
     // Provider / Applicant
     emptyCard: { alignItems: 'center', padding: 30, borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed', borderRadius: 16 },
@@ -1225,14 +1637,14 @@ const styles = StyleSheet.create({
     callBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
 
     // Actions & Reviews
-    actionBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: theme.colors.surface, flexDirection: 'row', padding: theme.spacing.lg, gap: theme.spacing.sm, borderTopWidth: 1, borderTopColor: theme.colors.border },
-    actionPayBtn: { flex: 2, backgroundColor: theme.colors.primary, borderRadius: theme.radii.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 50, gap: theme.spacing.sm },
+    actionBar: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', padding: 14, gap: 10, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+    actionPayBtn: { flex: 2, backgroundColor: '#2563EB', borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 52, gap: 8 },
     actionPayBtnDisabled: { opacity: 0.6 },
-    actionPayText: { color: theme.colors.surface, fontWeight: '700', fontSize: 16 },
-    actionDoneBtn: { flex: 1, backgroundColor: theme.colors.success + '18', borderRadius: theme.radii.sm, alignItems: 'center', justifyContent: 'center', height: 50, borderWidth: 1, borderColor: theme.colors.success + '50' },
-    actionDoneText: { color: theme.colors.success, fontWeight: '700', fontSize: 16 },
+    actionPayText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+    actionDoneBtn: { flex: 1, backgroundColor: 'rgba(16,185,129,0.15)', borderRadius: 16, alignItems: 'center', justifyContent: 'center', height: 52 },
+    actionDoneText: { color: '#34D399', fontWeight: '700', fontSize: 15 },
     disputeBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', padding: theme.spacing.md, gap: 10, backgroundColor: theme.colors.warning + '18', borderTopWidth: 1, borderTopColor: theme.colors.warning + '50' },
-    disputeBarText: { flex: 1, fontSize: 13, fontWeight: '600', color: theme.colors.text },
+    disputeBarText: { flex: 1, fontSize: 13, fontWeight: '600', color: TEXT_PRIMARY },
     resolveDisputeBtn: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: theme.colors.warning, borderRadius: 8 },
     resolveDisputeText: { color: '#fff', fontWeight: '700', fontSize: 13 },
     disputeMilestoneBtn: { marginTop: 8, paddingVertical: 10, alignItems: 'center' },

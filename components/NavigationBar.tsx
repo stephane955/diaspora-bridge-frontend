@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { theme as defaultTheme } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { mediumFeedback, lightFeedback } from '@/utils/haptics';
+import { safeGoBack } from '@/utils/navigation';
 
 type Props = {
     title: string;
@@ -48,8 +49,7 @@ export default function NavigationBar({
 
     const goBack = () => {
         mediumFeedback();
-        if (router.canGoBack()) router.back();
-        else router.replace('/');
+        safeGoBack(router, '/');
     };
 
     return (

@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import { View } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TamaguiProvider } from 'tamagui';
 import { tamaguiConfig } from '@/tamagui.config';
@@ -14,6 +15,14 @@ import { LanguageProvider } from '@/context/LanguageContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { QueryProvider } from '@/context/QueryProvider';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+
+Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+    }),
+});
 
 function InitialLayout() {
     const { session, loading } = useAuth();
@@ -80,6 +89,7 @@ function InitialLayout() {
             <Stack.Screen name="diaspora" options={{ headerShown: false }} />
             <Stack.Screen name="provider" options={{ headerShown: false }} />
             <Stack.Screen name="supplier" options={{ headerShown: false }} />
+            <Stack.Screen name="workroom/[id]" options={{ headerShown: false }} />
 
             {/* Shared/Modal Routes */}
             <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
@@ -120,7 +130,7 @@ function RootContent() {
 export default function RootLayout() {
     return (
         <SafeAreaProvider>
-            <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
+            <TamaguiProvider config={tamaguiConfig} defaultTheme="dark">
                 <ThemeProvider>
                     <RootContent />
                 </ThemeProvider>

@@ -1,37 +1,44 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, TouchableOpacity, FlatList, StyleSheet,
-    ActivityIndicator, RefreshControl
+    RefreshControl, ScrollView, ImageBackground, StatusBar, Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
+import PulseLoader from '@/components/PulseLoader';
+import { providerMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
+import { mediumFeedback } from '@/utils/haptics';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_GOLD, PREMIUM_MUTED } from '@/constants/layout';
 
 export default function ActiveSites() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
-    const { t } = useLanguage(); // <--- Hook for translations
+    const { t } = useLanguage();
 
-    // --- STATE ---
     const [activeTab, setActiveTab] = useState<'active' | 'applied'>('active');
-    const [projects, setProjects] = useState<any[]>([]);       // Active Jobs
-    const [applications, setApplications] = useState<any[]>([]); // Bids
+    const [projects, setProjects] = useState<any[]>([]);
+    const [applications, setApplications] = useState<any[]>([]);
+    const [profile, setProfile] = useState<any>(null);
+    const [stats, setStats] = useState({ pendingRequests: 0, balance: 0 });
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    // --- FETCH DATA ---
     const fetchData = useCallback(async () => {
         if (!user) return;
         setLoading(true);
-
         try {
-            // 1. Fetch ACTIVE Contracts (Where you are the assigned provider)
+            const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+            if (profileData) setProfile(profileData);
+
             const { data: activeData } = await supabase
                 .from('projects')
                 .select('*')
@@ -39,112 +46,114 @@ export default function ActiveSites() {
                 .in('status', ['in_progress', 'In Progress'])
                 .order('updated_at', { ascending: false });
 
-            // 2. Fetch APPLIED Jobs (Where you sent a bid)
             const { data: appliedData } = await supabase
                 .from('project_applications')
                 .select('*, projects(title, city, budget, status)')
                 .eq('provider_id', user.id)
                 .eq('status', 'pending');
 
+            const { count: requestsCount } = await supabase
+                .from('project_applications')
+                .select('*', { count: 'exact', head: true })
+                .eq('provider_id', user.id)
+                .eq('status', 'pending');
+
+            const { data: tx } = await supabase.from('transactions').select('amount').eq('user_id', user.id);
+            const balance = tx?.reduce((acc, curr) => acc + Number(curr.amount), 0) || 0;
+
             if (activeData) setProjects(activeData);
             if (appliedData) setApplications(appliedData);
-
+            setStats({ pendingRequests: requestsCount || 0, balance });
         } catch (error) {
-            console.error("Error fetching jobs:", error);
+            console.error('Error fetching jobs:', error);
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
     }, [user]);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    useFocusEffect(useCallback(() => { fetchData(); }, [fetchData]));
 
-    const onRefresh = () => {
-        setRefreshing(true);
-        fetchData();
-    };
+    const onRefresh = () => { setRefreshing(true); fetchData(); };
 
-    // --- RENDER: ACTIVE JOB CARD (Command Center Style) ---
+    const isOnline = profile?.is_online !== false;
+
     const renderActive = ({ item }: { item: any }) => (
-        <TouchableOpacity
-            style={styles.activeCard}
-            activeOpacity={0.95}
-            // IMPORTANT: Links to the Workroom (project/[id])
+        <Pressable
+            style={({ pressed }) => [styles.activeCard, pressed && { opacity: 0.92 }]}
             onPress={() => router.push(`/provider/project/${item.id}`)}
         >
             <View style={styles.activeHeader}>
                 <View style={styles.liveBadge}>
                     <View style={styles.pulsingDot} />
-                    <Text style={styles.liveText}>{t('liveSite') || "LIVE SITE"}</Text>
+                    <Text style={styles.liveText}>{t('liveSite')}</Text>
                 </View>
                 <Text style={styles.dateText}>
-                    {t('started') || "Started"} {new Date(item.created_at).toLocaleDateString()}
+                    {t('started')} {new Date(item.created_at).toLocaleDateString()}
                 </Text>
             </View>
 
             <View style={styles.activeContent}>
                 <Text style={styles.activeTitle} numberOfLines={2}>{item.title}</Text>
                 <View style={styles.locationRow}>
-                    <Ionicons name="location-sharp" size={16} color="#64748B" />
+                    <Ionicons name="location-sharp" size={16} color={PREMIUM_MUTED} />
                     <Text style={styles.locationText}>{item.city}</Text>
                 </View>
             </View>
 
-            {/* Action Bar */}
             <View style={styles.actionBar}>
                 <View style={styles.actionLeft}>
-                    <Text style={styles.nextTaskLabel}>{t('nextTask') || "NEXT TASK"}</Text>
-                    <Text style={styles.nextTaskValue}>{t('uploadProof') || "Upload Milestone Proof"}</Text>
+                    <Text style={styles.nextTaskLabel}>{t('nextTask')}</Text>
+                    <Text style={styles.nextTaskValue}>{t('uploadProof')}</Text>
                 </View>
                 <View style={styles.actionBarBtns}>
                     <TouchableOpacity
-                        style={styles.receiptBtn}
-                        onPress={() => router.push(`/provider/add-receipt?projectId=${item.id}`)}
+                        style={styles.toolBtn}
+                        onPress={() => { mediumFeedback(); router.push(`/provider/add-receipt?projectId=${item.id}`); }}
                     >
                         <Ionicons name="receipt-outline" size={16} color="#fff" />
-                        <Text style={styles.enterText}>Receipt</Text>
+                        <Text style={styles.toolBtnText}>{t('receipt')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={styles.receiptBtn}
-                        onPress={() => router.push(`/provider/material-cart?projectId=${item.id}`)}
+                        style={styles.toolBtn}
+                        onPress={() => { mediumFeedback(); router.push(`/provider/material-cart?projectId=${item.id}`); }}
                     >
                         <Ionicons name="cart-outline" size={16} color="#fff" />
-                        <Text style={styles.enterText}>Cart</Text>
+                        <Text style={styles.toolBtnText}>{t('cart')}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.enterBtn} onPress={() => router.push(`/provider/project/${item.id}`)}>
-                        <Text style={styles.enterText}>{t('open') || "Open"}</Text>
+                    <TouchableOpacity
+                        style={styles.enterBtn}
+                        onPress={() => { mediumFeedback(); router.push(`/provider/project/${item.id}`); }}
+                    >
+                        <Text style={styles.enterText}>{t('open')}</Text>
                         <Ionicons name="arrow-forward" size={16} color="#fff" />
                     </TouchableOpacity>
                 </View>
             </View>
-        </TouchableOpacity>
+        </Pressable>
     );
 
-    // --- RENDER: APPLIED JOB CARD (Ticket Style) ---
     const renderApplied = ({ item }: { item: any }) => (
         <View style={styles.ticketCard}>
-            {/* Left Side: Status Color Strip */}
             <View style={[styles.statusStrip, { backgroundColor: '#F59E0B' }]} />
-
             <View style={styles.ticketContent}>
                 <View style={styles.ticketHeader}>
-                    <Text style={styles.ticketTitle}>{item.projects?.title || 'Unknown Project'}</Text>
+                    <Text style={styles.ticketTitle}>{item.projects?.title || t('unknownLocation')}</Text>
                     <View style={styles.pendingTag}>
-                        <Text style={styles.pendingTagText}>{t('pending') || "PENDING"}</Text>
+                        <Text style={styles.pendingTagText}>{t('pending')}</Text>
                     </View>
                 </View>
-
                 <View style={styles.ticketInfo}>
                     <View>
-                        <Text style={styles.ticketLabel}>{t('clientBudget') || "CLIENT BUDGET"}</Text>
+                        <Text style={styles.ticketLabel}>{t('clientBudget')}</Text>
                         <Text style={styles.ticketValue}>
                             {item.projects?.budget ? item.projects.budget.toLocaleString() : 'N/A'} CFA
                         </Text>
                     </View>
                     <View style={styles.verticalLine} />
                     <View>
-                        <Text style={styles.ticketLabel}>{t('yourBid') || "YOUR BID"}</Text>
-                        <Text style={[styles.ticketValue, { color: theme.colors.text }]}>
+                        <Text style={styles.ticketLabel}>{t('yourBid')}</Text>
+                        <Text style={[styles.ticketValue, { color: '#F8FAFC' }]}>
                             {item.bid_amount?.toLocaleString()} CFA
                         </Text>
                     </View>
@@ -153,160 +162,238 @@ export default function ActiveSites() {
         </View>
     );
 
-    return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <NavigationBar title={t('tabActive') ?? 'Sites'} showBack={false} onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>{t('sitesTitle') || "My Sites"}</Text>
+    const listHeader = (
+        <>
+            <ImageBackground
+                source={{ uri: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?q=80&w=2070&auto=format&fit=crop' }}
+                style={styles.heroContainer}
+            >
+                <LinearGradient
+                    colors={isOnline
+                        ? ['rgba(10,15,26,0.95)', 'rgba(10,15,26,0.7)', 'rgba(10,15,26,0.4)']
+                        : ['rgba(71,85,105,0.95)', 'rgba(71,85,105,0.7)', 'rgba(71,85,105,0.4)']}
+                    style={styles.heroGradient}
+                >
+                    <View style={styles.balanceSection}>
+                        <Text style={styles.balanceLabel}>{t('availableBalance').toUpperCase()}</Text>
+                        <Text style={styles.balanceAmount}>{stats.balance.toLocaleString()} CFA</Text>
+                        <TouchableOpacity style={styles.secureBadge} onPress={() => router.push('/provider/earnings')}>
+                            <Ionicons name="wallet" size={12} color="#16A34A" />
+                            <Text style={styles.secureText}>{t('openWallet')}</Text>
+                        </TouchableOpacity>
+                    </View>
+                </LinearGradient>
+            </ImageBackground>
 
-                {/* Integrated Tabs */}
-                <View style={styles.tabContainer}>
-                    <TouchableOpacity
-                        style={[styles.tab, activeTab === 'active' && styles.activeTab]}
-                        onPress={() => setActiveTab('active')}
-                    >
-                        <Text style={[styles.tabText, activeTab === 'active' && styles.activeTabText]}>
-                            {t('clientDashboard.activeProjects') || "Active"} ({projects.length})
-                        </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={[styles.tab, activeTab === 'applied' && styles.activeTab]}
-                        onPress={() => setActiveTab('applied')}
-                    >
-                        <Text style={[styles.tabText, activeTab === 'applied' && styles.activeTabText]}>
-                            {t('applicantsTitle') || "Applied"} ({applications.length})
-                        </Text>
-                    </TouchableOpacity>
-                </View>
+            <View style={styles.floatingCardWrap}>
+                <BlurView intensity={60} tint="dark" style={styles.floatingStatsCard}>
+                    <View style={styles.statItem}>
+                        <Text style={styles.statValue}>{projects.length}</Text>
+                        <Text style={styles.statLabel}>{t('activeSitesLabel')}</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.statItem}>
+                        <Text style={styles.statValue}>{stats.pendingRequests}</Text>
+                        <Text style={styles.statLabel}>{t('pendingRequestsLabel')}</Text>
+                    </View>
+                </BlurView>
             </View>
 
-            {/* CONTENT LIST */}
-            {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.text} /></View>
-            ) : (
-                <FlatList
-                    data={activeTab === 'active' ? projects : applications}
-                    keyExtractor={(item) => item.id.toString()}
-                    renderItem={activeTab === 'active' ? renderActive : renderApplied}
-                    contentContainerStyle={[styles.listContent, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-                    ListEmptyComponent={
-                        <View style={styles.emptyContainer}>
-                            <Ionicons name={activeTab === 'active' ? "hammer-outline" : "document-text-outline"} size={48} color={theme.colors.textSubtle} />
-                            <Text style={styles.emptyTitle}>
-                                {activeTab === 'active' ? (t('noActiveJobs') || "No Active Sites") : "No Applications"}
-                            </Text>
-                            <Text style={styles.emptySub}>
-                                {activeTab === 'active'
-                                    ? (t('clientDashboard.noProjects') || "Once you are hired, your projects will appear here.")
-                                    : "Check the market for new opportunities."}
-                            </Text>
-                        </View>
-                    }
+            <View style={styles.quickActions}>
+                <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/provider/market'); }}>
+                    <LinearGradient colors={['#2563EB', '#1D4ED8']} style={styles.quickActionIcon}>
+                        <Ionicons name="search" size={22} color="#fff" />
+                    </LinearGradient>
+                    <Text style={styles.quickActionLabel}>{t('marketTitle')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/provider/cart-hub'); }}>
+                    <LinearGradient colors={['#10B981', '#059669']} style={styles.quickActionIcon}>
+                        <Ionicons name="scan" size={22} color="#fff" />
+                    </LinearGradient>
+                    <Text style={styles.quickActionLabel}>{t('cartHubTitle')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/provider/requests'); }}>
+                    <LinearGradient colors={['#D4AF37', '#B8860B']} style={styles.quickActionIcon}>
+                        <Ionicons name="mail-unread" size={22} color="#fff" />
+                    </LinearGradient>
+                    <Text style={styles.quickActionLabel}>{t('requestsTab')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/provider/earnings'); }}>
+                    <LinearGradient colors={['#6366F1', '#818CF8']} style={styles.quickActionIcon}>
+                        <Ionicons name="cash" size={22} color="#fff" />
+                    </LinearGradient>
+                    <Text style={styles.quickActionLabel}>{t('walletTitle')}</Text>
+                </TouchableOpacity>
+            </View>
+
+            <View style={styles.tabContainer}>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'active' && styles.activeTab]}
+                    onPress={() => setActiveTab('active')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'active' && styles.activeTabText]}>
+                        {t('clientDashboard.activeProjects')} ({projects.length})
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'applied' && styles.activeTab]}
+                    onPress={() => setActiveTab('applied')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'applied' && styles.activeTabText]}>
+                        {t('tabApplied')} ({applications.length})
+                    </Text>
+                </TouchableOpacity>
+            </View>
+        </>
+    );
+
+    if (loading && !refreshing) {
+        return (
+            <View style={styles.screen}>
+                <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+                <PremiumHeader
+                    title={t('tabActive')}
+                    subtitle={t('providerHomeSubtitle')}
+                    menuItems={providerMenuItems(router, t)}
+                    onNotificationsPress={() => router.push('/provider/inbox')}
                 />
-            )}
+                <View style={styles.center}><PulseLoader color={theme.colors.emerald} /></View>
+            </View>
+        );
+    }
+
+    return (
+        <View style={styles.screen}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <PremiumHeader
+                title={profile?.full_name?.split(' ')[0] || t('tabActive')}
+                subtitle={isOnline ? t('onlineAvailable') : t('offlineStatus')}
+                menuItems={providerMenuItems(router, t)}
+                onNotificationsPress={() => router.push('/provider/inbox')}
+            />
+
+            <FlatList
+                data={activeTab === 'active' ? projects : applications}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={activeTab === 'active' ? renderActive : renderApplied}
+                ListHeaderComponent={listHeader}
+                contentContainerStyle={{
+                    paddingTop: insets.top + 72,
+                    paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32,
+                    paddingHorizontal: theme.spacing.lg,
+                }}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PREMIUM_GOLD} />}
+                ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                        <Ionicons
+                            name={activeTab === 'active' ? 'hammer-outline' : 'document-text-outline'}
+                            size={48}
+                            color="#94A3B8"
+                        />
+                        <Text style={styles.emptyTitle}>
+                            {activeTab === 'active' ? t('noActiveJobs') : t('noApplications')}
+                        </Text>
+                        <Text style={styles.emptySub}>
+                            {activeTab === 'active' ? t('clientDashboard.noProjects') : t('checkMarketHint')}
+                        </Text>
+                        {activeTab === 'applied' && (
+                            <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/provider/market')}>
+                                <Text style={styles.emptyBtnText}>{t('marketTitle')}</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                }
+            />
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
+    screen: { flex: 1, backgroundColor: PREMIUM_BG },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-    header: {
-        paddingTop: 70,
-        paddingHorizontal: theme.spacing.xl,
-        paddingBottom: theme.spacing.xl,
-        backgroundColor: theme.colors.surface,
-        borderBottomLeftRadius: 32,
-        borderBottomRightRadius: 32,
-        shadowColor: '#000',
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-        elevation: 5,
-        marginBottom: 10
+    heroContainer: { width: '100%', height: 200, borderRadius: 24, overflow: 'hidden', marginBottom: 8 },
+    heroGradient: { flex: 1, padding: 20, justifyContent: 'flex-end' },
+    balanceSection: { gap: 4 },
+    balanceLabel: { color: PREMIUM_MUTED, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+    balanceAmount: { color: '#F8FAFC', fontSize: 36, fontWeight: '800', letterSpacing: -0.5 },
+    secureBadge: {
+        flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, alignSelf: 'flex-start',
+        paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
+        backgroundColor: 'rgba(22,163,74,0.15)', borderWidth: 1, borderColor: 'rgba(22,163,74,0.25)',
     },
-    headerTitle: {
-        fontSize: 34,
-        fontWeight: '800',
-        color: theme.colors.text,
-        marginBottom: theme.spacing.lg,
-        letterSpacing: -1
-    },
+    secureText: { color: '#16A34A', fontSize: 12, fontWeight: '700' },
 
-    // Tabs
+    floatingCardWrap: { marginTop: -28, marginBottom: 16 },
+    floatingStatsCard: {
+        flexDirection: 'row', alignItems: 'center', borderRadius: 20, padding: 18,
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', overflow: 'hidden',
+    },
+    statItem: { flex: 1, alignItems: 'center' },
+    statValue: { fontSize: 22, fontWeight: '800', color: '#F8FAFC' },
+    statLabel: { fontSize: 11, color: PREMIUM_MUTED, marginTop: 4, fontWeight: '700' },
+    statDivider: { width: 1, height: 32, backgroundColor: 'rgba(255,255,255,0.15)' },
+
+    quickActions: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, gap: 8 },
+    quickActionBtn: { flex: 1, alignItems: 'center', gap: 8 },
+    quickActionIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+    quickActionLabel: { fontSize: 11, fontWeight: '700', color: PREMIUM_MUTED, textAlign: 'center' },
+
     tabContainer: {
-        flexDirection: 'row',
-        backgroundColor: '#F1F5F9',
-        borderRadius: 20,
-        padding: 4,
-        gap: 4
+        flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 16, padding: 4, marginBottom: 16,
     },
-    tab: {
-        flex: 1,
-        paddingVertical: 12,
-        borderRadius: 16,
-        alignItems: 'center',
-        justifyContent: 'center'
-    },
-    activeTab: {
-        backgroundColor: '#fff',
-        shadowColor: '#000',
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2
-    },
-    tabText: {
-        color: '#64748B',
-        fontWeight: '700',
-        fontSize: 13
-    },
-    activeTabText: {
-        color: '#0F172A'
-    },
+    tab: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+    activeTab: { backgroundColor: 'rgba(37,99,235,0.35)' },
+    tabText: { color: PREMIUM_MUTED, fontWeight: '700', fontSize: 12 },
+    activeTabText: { color: '#F8FAFC' },
 
-    listContent: { paddingTop: theme.spacing.md },
-
-    // --- ACTIVE CARD STYLES ---
-    activeCard: { backgroundColor: '#fff', borderRadius: 20, marginBottom: 20, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
-
-    activeHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', alignItems: 'center' },
-    liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+    activeCard: {
+        backgroundColor: 'rgba(17,24,39,0.85)', borderRadius: 20, marginBottom: 16,
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', overflow: 'hidden',
+    },
+    activeHeader: {
+        flexDirection: 'row', justifyContent: 'space-between', padding: 16,
+        borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)', alignItems: 'center',
+    },
+    liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(22,163,74,0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
     pulsingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#16A34A' },
     liveText: { fontSize: 10, fontWeight: '800', color: '#16A34A' },
-    dateText: { color: '#94A3B8', fontSize: 12, fontWeight: '500' },
-
+    dateText: { color: PREMIUM_MUTED, fontSize: 12, fontWeight: '500' },
     activeContent: { padding: 20 },
-    activeTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
+    activeTitle: { fontSize: 20, fontWeight: '800', color: '#F8FAFC', marginBottom: 8 },
     locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    locationText: { color: '#64748B', fontWeight: '500' },
+    locationText: { color: PREMIUM_MUTED, fontWeight: '500' },
+    actionBar: {
+        backgroundColor: 'rgba(0,0,0,0.25)', padding: 16, flexDirection: 'row',
+        justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)',
+    },
+    actionLeft: { gap: 2, flex: 1, marginRight: 8 },
+    nextTaskLabel: { fontSize: 10, fontWeight: '700', color: PREMIUM_MUTED },
+    nextTaskValue: { fontSize: 13, fontWeight: '600', color: '#CBD5E1' },
+    actionBarBtns: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' },
+    toolBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#10B981', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, gap: 4 },
+    toolBtnText: { color: '#fff', fontWeight: '700', fontSize: 11 },
+    enterBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: PREMIUM_GOLD, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, gap: 4 },
+    enterText: { color: '#0A0F1A', fontWeight: '800', fontSize: 12 },
 
-    actionBar: { backgroundColor: '#F8FAFC', padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-    actionLeft: { gap: 2 },
-    nextTaskLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8' },
-    nextTaskValue: { fontSize: 13, fontWeight: '600', color: '#334155' },
-    actionBarBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    receiptBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.emerald, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, gap: 6 },
-    enterBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, gap: 6 },
-    enterText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-
-    // --- TICKET (APPLIED) CARD STYLES ---
-    ticketCard: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 16, marginBottom: 12, overflow: 'hidden', elevation: 1, borderWidth: 1, borderColor: '#F1F5F9' },
+    ticketCard: {
+        flexDirection: 'row', backgroundColor: 'rgba(17,24,39,0.85)', borderRadius: 16, marginBottom: 12,
+        overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    },
     statusStrip: { width: 6, height: '100%' },
     ticketContent: { flex: 1, padding: 16 },
     ticketHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
-    ticketTitle: { fontSize: 16, fontWeight: '700', color: '#334155', flex: 1, marginRight: 10 },
-    pendingTag: { backgroundColor: '#FFFBEB', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#FEF3C7' },
-    pendingTagText: { fontSize: 10, fontWeight: '800', color: '#D97706' },
-
+    ticketTitle: { fontSize: 16, fontWeight: '700', color: '#F8FAFC', flex: 1, marginRight: 10 },
+    pendingTag: { backgroundColor: 'rgba(245,158,11,0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(245,158,11,0.3)' },
+    pendingTagText: { fontSize: 10, fontWeight: '800', color: '#F59E0B' },
     ticketInfo: { flexDirection: 'row', alignItems: 'center', gap: 20 },
-    ticketLabel: { fontSize: 10, color: '#94A3B8', fontWeight: '700', marginBottom: 2 },
-    ticketValue: { fontSize: 14, fontWeight: '600', color: '#64748B' },
-    verticalLine: { width: 1, height: 24, backgroundColor: '#E2E8F0' },
+    ticketLabel: { fontSize: 10, color: PREMIUM_MUTED, fontWeight: '700', marginBottom: 2 },
+    ticketValue: { fontSize: 14, fontWeight: '600', color: PREMIUM_MUTED },
+    verticalLine: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.12)' },
 
-    // EMPTY STATE
-    emptyContainer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
-    emptyTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginTop: 16 },
-    emptySub: { textAlign: 'center', color: '#64748B', marginTop: 8, lineHeight: 22 },
+    emptyContainer: { alignItems: 'center', marginTop: 40, paddingHorizontal: 32, gap: 8 },
+    emptyTitle: { fontSize: 18, fontWeight: '700', color: '#F8FAFC', marginTop: 8 },
+    emptySub: { textAlign: 'center', color: PREMIUM_MUTED, lineHeight: 22 },
+    emptyBtn: { marginTop: 12, backgroundColor: PREMIUM_GOLD, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
+    emptyBtnText: { color: '#0A0F1A', fontWeight: '800', fontSize: 14 },
 });

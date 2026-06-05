@@ -3,14 +3,19 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'reac
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
-import NavigationBar from '@/components/NavigationBar';
+import { useLanguage } from '@/context/LanguageContext';
+import PremiumHeader from '@/components/PremiumHeader';
+import { providerMenuItems } from '@/constants/premiumMenus';
 import { useAuth } from '@/context/AuthContext';
+import { theme } from '@/constants/theme';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 
 export default function RequestPayout() {
     const insets = useSafeAreaInsets();
     const { projectId } = useLocalSearchParams();
     const { user } = useAuth();
     const router = useRouter();
+    const { t } = useLanguage();
     const [amount, setAmount] = useState('');
     const [desc, setDesc] = useState('');
 
@@ -33,9 +38,15 @@ export default function RequestPayout() {
     };
 
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <NavigationBar title="Request Payout" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
-            <View style={styles.form}>
+        <View style={[styles.container, { backgroundColor: PREMIUM_BG }]}>
+            <PremiumHeader
+                title={t('requestPayoutTitle')}
+                subtitle={t('walletTitle')}
+                showBack
+                fallbackRoute="/provider/earnings"
+                menuItems={providerMenuItems(router, t)}
+            />
+            <View style={[styles.form, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}>
             <Text style={styles.title}>Request Payment</Text>
             <Text style={styles.label}>Amount (CFA)</Text>
             <TextInput style={styles.input} keyboardType="numeric" value={amount} onChangeText={setAmount} placeholder="e.g. 500000" />

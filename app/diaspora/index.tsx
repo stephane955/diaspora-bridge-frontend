@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TouchableOpacity, Image,
-    ImageBackground, ScrollView, Pressable, ListRenderItem, Modal, StatusBar
+    ImageBackground, ScrollView, Pressable, ListRenderItem, StatusBar, RefreshControl
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -13,28 +13,36 @@ import { useAuth } from '@/context/AuthContext';
 import { theme } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/context/LanguageContext';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 import PulseLoader from '@/components/PulseLoader';
 import { mediumFeedback } from '@/utils/haptics';
+import { clientMenuItems } from '@/constants/premiumMenus';
 
 import ProjectStories from '@/components/ProjectStories';
 
 export default function DiasporaDashboard() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
-    const { session, signOut } = useAuth();
+    const { session } = useAuth();
     const { t } = useLanguage();
 
     const [projects, setProjects] = useState<any[]>([]);
     const [activities, setActivities] = useState<any[]>([]);
     const [balance, setBalance] = useState(0);
     const [profile, setProfile] = useState<any>(null);
-    const [menuOpen, setMenuOpen] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const navigation = useNavigation();
 
     // --- 1. Data Fetching ---
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (opts?: { background?: boolean }) => {
         if (!session?.user) return;
+        if (opts?.background) {
+            setRefreshing(true);
+        } else {
+            setLoading(true);
+        }
         try {
             // A. Profile
             const { data: profileData } = await supabase
@@ -69,16 +77,27 @@ export default function DiasporaDashboard() {
             console.error("Dashboard Load Error:", e);
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     }, [session]);
 
-    useEffect(() => {
-        fetchData();
+    useFocusEffect(
+        useCallback(() => {
+            fetchData({ background: true });
+        }, [fetchData])
+    );
 
-        // Realtime Subscription
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('tabPress', () => {
+            fetchData({ background: true });
+        });
+        return unsubscribe;
+    }, [navigation, fetchData]);
+
+    useEffect(() => {
         const channel = supabase.channel('dashboard_realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => fetchData())
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => fetchData({ background: true }))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => fetchData({ background: true }))
             .subscribe();
 
         return () => { supabase.removeChannel(channel); };
@@ -139,19 +158,26 @@ export default function DiasporaDashboard() {
     }
 
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <StatusBar barStyle="light-content" />
-            <NavigationBar
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <PremiumHeader
                 title={profile?.full_name?.split(' ')[0] || t('tabHome') || 'Home'}
-                subtitle="Building dreams abroad"
-                showBack={false}
-                onRefresh={() => router.push('/diaspora/inbox')}
-                onMenuPress={() => setMenuOpen(true)}
-                dynamicColor={theme.colors.active}
-                showNotifDot
+                subtitle={t('buildingDreams')}
+                onNotificationsPress={() => router.push('/diaspora/inbox')}
+                menuItems={clientMenuItems(router, t)}
             />
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: theme.spacing.lg }}>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingTop: insets.top + 72, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: theme.spacing.lg }}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={() => fetchData({ background: true })}
+                        tintColor={theme.colors.active}
+                    />
+                }
+            >
 
                 {/* --- HERO SECTION --- */}
                 <ImageBackground
@@ -271,71 +297,16 @@ export default function DiasporaDashboard() {
                     )}
                 </View>
             </ScrollView>
-
-            {/* Full Navigation Menu */}
-            <Modal visible={menuOpen} transparent animationType="slide">
-                <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setMenuOpen(false)}>
-                    <View style={styles.modalCard}>
-                        <View style={styles.modalHandle} />
-                        <Text style={styles.modalTitle}>Navigate</Text>
-
-                        <Text style={styles.modalSection}>Projects</Text>
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/diaspora/projects'); }} activeOpacity={0.7}>
-                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.active + '18' }]}><Ionicons name="folder-open" size={20} color={theme.colors.active} /></View>
-                            <View style={{ flex: 1 }}><Text style={styles.modalText}>My Projects</Text><Text style={styles.modalSub}>View all your active & past projects</Text></View>
-                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/diaspora/new'); }} activeOpacity={0.7}>
-                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.emerald + '18' }]}><Ionicons name="add-circle" size={20} color={theme.colors.emerald} /></View>
-                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Post New Project</Text><Text style={styles.modalSub}>Find local talent for your next build</Text></View>
-                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/diaspora/timeline'); }} activeOpacity={0.7}>
-                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.warning + '18' }]}><Ionicons name="time" size={20} color={theme.colors.warning} /></View>
-                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Timeline</Text><Text style={styles.modalSub}>Track milestones and progress</Text></View>
-                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
-                        </TouchableOpacity>
-
-                        <View style={styles.divider} />
-                        <Text style={styles.modalSection}>Account</Text>
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/diaspora/profile'); }} activeOpacity={0.7}>
-                            <View style={[styles.modalIconBox, { backgroundColor: '#6366F118' }]}><Ionicons name="person" size={20} color="#6366F1" /></View>
-                            <View style={{ flex: 1 }}><Text style={styles.modalText}>{t('tabProfile')}</Text><Text style={styles.modalSub}>Edit info, payment methods</Text></View>
-                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/diaspora/wallet'); }} activeOpacity={0.7}>
-                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.active + '18' }]}><Ionicons name="wallet" size={20} color={theme.colors.active} /></View>
-                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Wallet & Escrow</Text><Text style={styles.modalSub}>Funds, transactions, top-up</Text></View>
-                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.modalItem} onPress={() => { mediumFeedback(); setMenuOpen(false); router.push('/diaspora/settings'); }} activeOpacity={0.7}>
-                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.surfaceAlt }]}><Ionicons name="settings" size={20} color={theme.colors.textMuted} /></View>
-                            <View style={{ flex: 1 }}><Text style={styles.modalText}>Settings</Text><Text style={styles.modalSub}>Language, notifications, preferences</Text></View>
-                            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSubtle} />
-                        </TouchableOpacity>
-
-                        <View style={styles.divider} />
-                        <TouchableOpacity
-                            style={styles.modalItem}
-                            onPress={async () => { mediumFeedback(); setMenuOpen(false); await signOut(); router.replace('/login'); }}
-                            activeOpacity={0.7}
-                        >
-                            <View style={[styles.modalIconBox, { backgroundColor: theme.colors.danger + '15' }]}><Ionicons name="log-out-outline" size={20} color={theme.colors.danger} /></View>
-                            <Text style={[styles.modalText, { color: theme.colors.danger }]}>{t('signOut')}</Text>
-                        </TouchableOpacity>
-                    </View>
-                </TouchableOpacity>
-            </Modal>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
+    container: { flex: 1, backgroundColor: PREMIUM_BG },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
     // --- HERO ---
-    heroContainer: { width: '100%', height: 340 },
+    heroContainer: { width: '100%', height: 340, marginHorizontal: -theme.spacing.lg, borderRadius: 0, overflow: 'hidden' },
     heroGradient: { flex: 1, paddingHorizontal: 20, justifyContent: 'space-between', paddingBottom: 28 },
 
     topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 },
@@ -366,21 +337,21 @@ const styles = StyleSheet.create({
         ...theme.shadow.soft,
     },
     statItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    statValue: { fontSize: 22, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
-    statLabel: { fontSize: 11, color: theme.colors.textMuted, marginTop: 4, fontWeight: '700' },
+    statValue: { fontSize: 22, fontWeight: '800', color: '#F8FAFC', letterSpacing: -0.5 },
+    statLabel: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '700' },
     statDivider: { width: 1, height: '60%', backgroundColor: theme.colors.border },
 
     // --- QUICK ACTIONS ---
     quickActions: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 8 },
     quickActionBtn: { alignItems: 'center', gap: 8 },
     quickActionIconColor: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', ...theme.shadow.glow },
-    quickActionLabel: { fontSize: 12, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
+    quickActionLabel: { fontSize: 12, fontWeight: '800', color: '#F8FAFC', letterSpacing: -0.5 },
 
     bodyContent: { paddingTop: 8 },
 
     // --- SECTIONS ---
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 16, paddingHorizontal: 20 },
-    sectionTitle: { fontSize: 18, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#F8FAFC', letterSpacing: -0.5 },
     seeAll: { color: theme.colors.active, fontWeight: '700', fontSize: 14 },
 
     // --- PROJECT CARD ---

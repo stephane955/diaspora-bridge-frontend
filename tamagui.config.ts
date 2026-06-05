@@ -5,8 +5,46 @@
  */
 
 import { createTamagui, createTokens } from 'tamagui';
+import { createAnimations } from '@tamagui/animations-react-native';
 import { shorthands } from '@tamagui/shorthands';
 import { themes, tokens as defaultTokens } from '@tamagui/themes';
+
+const animations = createAnimations({
+  bouncy: {
+    type: 'spring',
+    damping: 10,
+    mass: 0.9,
+    stiffness: 100,
+  },
+  lazy: {
+    type: 'spring',
+    damping: 20,
+    stiffness: 60,
+  },
+  quick: {
+    type: 'spring',
+    damping: 20,
+    mass: 1.2,
+    stiffness: 250,
+  },
+  medium: {
+    type: 'spring',
+    damping: 15,
+    stiffness: 120,
+    mass: 1,
+  },
+  slow: {
+    type: 'spring',
+    damping: 15,
+    stiffness: 40,
+  },
+  tooltip: {
+    type: 'spring',
+    damping: 10,
+    mass: 0.9,
+    stiffness: 100,
+  },
+});
 
 const customTokens = createTokens({
   color: {
@@ -124,6 +162,7 @@ const darkTheme = {
 };
 
 export const tamaguiConfig = createTamagui({
+  animations,
   tokens: customTokens,
   themes: {
     light: lightTheme,

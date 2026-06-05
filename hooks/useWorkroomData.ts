@@ -2,6 +2,7 @@
  * Workroom data with TanStack Query: aggressive cache + optimistic milestone update.
  * When Provider uploads proof, UI instantly shows "Pending Approval"; mutation runs in background.
  */
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 
@@ -62,4 +63,31 @@ export function useMilestoneUploadEvidence(projectId: string | undefined) {
       }
     },
   });
+}
+
+export function useMilestoneRealtimeSync(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!projectId) return;
+    const channel = supabase
+      .channel(`workroom-milestones:${projectId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'milestones', filter: `project_id=eq.${projectId}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: WORKROOM_KEY(projectId) });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'milestones', filter: `project_id=eq.${projectId}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: WORKROOM_KEY(projectId) });
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [projectId, queryClient]);
 }

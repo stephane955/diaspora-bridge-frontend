@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, Image, ScrollView,
-    Switch, Alert, ImageBackground, Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform
+    Switch, Alert, ImageBackground, Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, StatusBar
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,10 +12,11 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { mediumFeedback } from '@/utils/haptics';
-import NavigationBar from '@/components/NavigationBar';
-import ScreenGradient from '@/components/ScreenGradient';
+import PremiumHeader from '@/components/PremiumHeader';
 import PulseLoader from '@/components/PulseLoader';
+import { clientMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 
 type HubItem = {
     key: string;
@@ -118,19 +119,32 @@ export default function ClientProfileScreen() {
 
     if (loading) {
         return (
-            <ScreenGradient>
-                <NavigationBar title={t('tabProfile') ?? 'Profile'} showBack={false} onMenuPress={() => router.push('/diaspora/menu')} dynamicColor={theme.colors.active} />
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <View style={styles.screen}>
+                <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+                <PremiumHeader
+                    title={t('tabProfile') ?? 'Profile'}
+                    subtitle="Your account"
+                    menuItems={clientMenuItems(router, t)}
+                />
+                <View style={styles.center}>
                     <PulseLoader />
                 </View>
-            </ScreenGradient>
+            </View>
         );
     }
 
     return (
-        <ScreenGradient>
-            <NavigationBar title={t('tabProfile') ?? 'Profile'} showBack={false} onMenuPress={() => router.push('/diaspora/menu')} dynamicColor={theme.colors.active} />
-            <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]} showsVerticalScrollIndicator={false}>
+        <View style={styles.screen}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <PremiumHeader
+                title={profile?.full_name || t('tabProfile') || 'Profile'}
+                subtitle={profile?.city || user?.email || 'Your account'}
+                menuItems={clientMenuItems(router, t)}
+            />
+            <ScrollView
+                contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 72, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}
+                showsVerticalScrollIndicator={false}
+            >
 
                 {/* --- HERO HEADER --- */}
                 <ImageBackground
@@ -318,11 +332,13 @@ export default function ClientProfileScreen() {
                 </View>
             </Modal>
 
-        </ScreenGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: PREMIUM_BG },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     scrollContent: { paddingHorizontal: theme.spacing.lg },
 
     headerImage: { width: '100%', height: 200 },

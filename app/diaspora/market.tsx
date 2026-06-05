@@ -11,11 +11,12 @@ import { Image } from 'expo-image';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import NavigationBar from '@/components/NavigationBar';
-import ScreenGradient from '@/components/ScreenGradient';
+import PremiumHeader from '@/components/PremiumHeader';
 import PulseLoader from '@/components/PulseLoader';
+import { clientMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
 import { mediumFeedback } from '@/utils/haptics';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_MUTED } from '@/constants/layout';
 
 const blurhash = 'L6PZfSi_.AyE_3t7t7R**0o#DgR4';
 
@@ -102,11 +103,17 @@ export default function MarketScreen() {
     };
 
     return (
-        <ScreenGradient>
-            <NavigationBar title="My Projects" showBack={false} dynamicColor={theme.colors.active} />
+        <View style={styles.screen}>
+            <PremiumHeader
+                title={t('myProjectsTitle')}
+                subtitle={t('clientDashboard.activeProjects')}
+                showBack
+                fallbackRoute="/diaspora"
+                menuItems={clientMenuItems(router, t)}
+            />
 
             {loading ? (
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <View style={styles.center}>
                     <PulseLoader />
                 </View>
             ) : (
@@ -114,30 +121,36 @@ export default function MarketScreen() {
                     data={projects}
                     renderItem={renderProject}
                     estimatedItemSize={220}
-                    contentContainerStyle={{ paddingBottom: 120, paddingTop: theme.spacing.md, paddingHorizontal: theme.spacing.lg }}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchProjects(); }} />}
+                    contentContainerStyle={{
+                        paddingTop: insets.top + 88,
+                        paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32,
+                        paddingHorizontal: theme.spacing.lg,
+                    }}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchProjects(); }} tintColor="#D4AF37" />}
                     ListEmptyComponent={
                         <View style={styles.emptyState}>
-                            <Ionicons name="briefcase-outline" size={56} color={theme.colors.border} />
-                            <Text style={styles.emptyTitle}>No projects yet</Text>
-                            <Text style={styles.emptySub}>Post your first project and find local talent!</Text>
+                            <Ionicons name="briefcase-outline" size={56} color="#334155" />
+                            <Text style={styles.emptyTitle}>{t('clientDashboard.noProjects')}</Text>
+                            <Text style={styles.emptySub}>{t('postProjectSub')}</Text>
                             <TouchableOpacity
                                 style={styles.emptyBtn}
                                 onPress={() => { mediumFeedback(); router.push('/diaspora/new'); }}
                                 activeOpacity={0.7}
                             >
-                                <Ionicons name="add-circle-outline" size={18} color="#fff" />
-                                <Text style={styles.emptyBtnText}>Post a Project</Text>
+                                <Ionicons name="add-circle-outline" size={18} color="#0A0F1A" />
+                                <Text style={styles.emptyBtnText}>{t('tabPostJob')}</Text>
                             </TouchableOpacity>
                         </View>
                     }
                 />
             )}
-        </ScreenGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: PREMIUM_BG },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     card: {
         height: 220,
         borderRadius: theme.radii.xl,

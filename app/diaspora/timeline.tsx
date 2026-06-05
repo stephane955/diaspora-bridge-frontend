@@ -1,15 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, RefreshControl, StatusBar } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
-import NavigationBar from '@/components/NavigationBar';
+import { useLanguage } from '@/context/LanguageContext';
+import PremiumHeader from '@/components/PremiumHeader';
+import PulseLoader from '@/components/PulseLoader';
+import { clientMenuItems } from '@/constants/premiumMenus';
+import { useRouter } from 'expo-router';
 import { theme } from '@/constants/theme';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_MUTED } from '@/constants/layout';
 
 export default function ProjectTimeline() {
     const insets = useSafeAreaInsets();
+    const router = useRouter();
     const { id } = useLocalSearchParams();
+    const { t } = useLanguage();
 
     const [updates, setUpdates] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -41,21 +48,30 @@ export default function ProjectTimeline() {
     const onRefresh = () => { setRefreshing(true); fetchUpdates(); };
 
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <NavigationBar title="Timeline" showBack dynamicColor={theme.colors.active} />
+        <View style={styles.screen}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <PremiumHeader
+                title={t('timelineTitle')}
+                subtitle={t('portfolioTitle')}
+                showBack
+                fallbackRoute={`/diaspora/project/${id}`}
+                menuItems={clientMenuItems(router, t)}
+            />
             <ScrollView
-                contentContainerStyle={[styles.scrollContent, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                contentContainerStyle={{
+                    paddingTop: insets.top + 88,
+                    paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32,
+                    paddingHorizontal: theme.spacing.lg,
+                }}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4AF37" />}
             >
                 {loading ? (
-                    <ActivityIndicator size="large" color={theme.colors.active} style={{ marginTop: 50 }} />
+                    <View style={styles.center}><PulseLoader /></View>
                 ) : updates.length === 0 ? (
                     <View style={styles.emptyState}>
-                        <Ionicons name="construct-outline" size={48} color={theme.colors.textSubtle} />
-                        <Text style={styles.emptyText}>No updates yet</Text>
-                        <Text style={styles.emptySub}>
-                            When the provider posts photos, they will appear here.
-                        </Text>
+                        <Ionicons name="construct-outline" size={48} color="#334155" />
+                        <Text style={styles.emptyText}>{t('noUpdatesYet')}</Text>
+                        <Text style={styles.emptySub}>{t('noUpdatesSub')}</Text>
                     </View>
                 ) : (
                     <View style={styles.timelineContainer}>
@@ -92,46 +108,32 @@ export default function ProjectTimeline() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-    scrollContent: { paddingTop: theme.spacing.md },
+    screen: { flex: 1, backgroundColor: PREMIUM_BG },
+    center: { paddingTop: 40, alignItems: 'center' },
     timelineContainer: { marginTop: theme.spacing.sm },
     itemWrapper: { flexDirection: 'row' },
     leftColumn: { alignItems: 'center', width: 30, marginRight: 12 },
     dot: {
-        width: 12,
-        height: 12,
-        borderRadius: 6,
-        backgroundColor: theme.colors.active,
-        zIndex: 2,
-        marginTop: 6,
-        borderWidth: 2,
-        borderColor: theme.colors.surface,
+        width: 12, height: 12, borderRadius: 6, backgroundColor: '#D4AF37',
+        zIndex: 2, marginTop: 6, borderWidth: 2, borderColor: PREMIUM_BG,
     },
-    line: { width: 2, flex: 1, backgroundColor: theme.colors.border, marginVertical: -2 },
+    line: { width: 2, flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', marginVertical: -2 },
     rightContent: { flex: 1, paddingBottom: 30 },
-    date: {
-        fontSize: 12,
-        color: theme.colors.textMuted,
-        marginBottom: 6,
-        fontWeight: '600',
-    },
+    date: { fontSize: 12, color: PREMIUM_MUTED, marginBottom: 6, fontWeight: '600' },
     card: {
-        backgroundColor: theme.colors.surface,
+        backgroundColor: 'rgba(17,24,39,0.85)',
         padding: theme.spacing.sm,
         borderRadius: theme.radii.md,
-        ...theme.shadow.soft,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
     },
-    title: { fontSize: 16, fontWeight: '700', color: theme.colors.text, marginBottom: 4 },
-    desc: { fontSize: 14, color: theme.colors.textMuted, lineHeight: 22 },
+    title: { fontSize: 16, fontWeight: '700', color: '#F8FAFC', marginBottom: 4 },
+    desc: { fontSize: 14, color: PREMIUM_MUTED, lineHeight: 22 },
     updateImage: {
-        width: '100%',
-        height: 180,
-        borderRadius: theme.radii.sm,
-        marginBottom: theme.spacing.sm,
-        backgroundColor: theme.colors.background,
-        resizeMode: 'cover',
+        width: '100%', height: 180, borderRadius: theme.radii.sm,
+        marginBottom: theme.spacing.sm, backgroundColor: PREMIUM_BG,
     },
     emptyState: { alignItems: 'center', marginTop: 80, gap: 10 },
-    emptyText: { fontSize: 18, fontWeight: '700', color: theme.colors.textSubtle },
-    emptySub: { color: theme.colors.textSubtle, textAlign: 'center', paddingHorizontal: 40 },
+    emptyText: { fontSize: 18, fontWeight: '700', color: '#F8FAFC' },
+    emptySub: { color: PREMIUM_MUTED, textAlign: 'center', paddingHorizontal: 40 },
 });

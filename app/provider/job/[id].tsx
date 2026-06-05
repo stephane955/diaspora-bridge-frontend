@@ -6,11 +6,15 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
+import { providerMenuItems } from '@/constants/premiumMenus';
+import { useLanguage } from '@/context/LanguageContext';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { theme } from '@/constants/theme';
+import { safeGoBack } from '@/utils/navigation';
 
 const { width } = Dimensions.get('window');
 
@@ -19,6 +23,7 @@ export default function JobDetailsScreen() {
     const { id } = useLocalSearchParams();
     const router = useRouter();
     const { user } = useAuth();
+    const { t } = useLanguage();
 
     const [job, setJob] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -109,11 +114,17 @@ export default function JobDetailsScreen() {
     );
 
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <StatusBar barStyle="light-content" />
-            <NavigationBar title={job?.title ?? 'Job Details'} showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+        <View style={[styles.container, { backgroundColor: PREMIUM_BG }]}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <PremiumHeader
+                title={job?.title ?? t('marketTitle')}
+                subtitle={job?.city ?? t('unknownLocation')}
+                showBack
+                fallbackRoute="/provider/market"
+                menuItems={providerMenuItems(router, t)}
+            />
 
-            <ScrollView contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: 20 }} bounces={false}>
+            <ScrollView contentContainerStyle={{ paddingTop: insets.top + 72, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: 20 }} bounces={false}>
                 {/* HERO IMAGE */}
                 <View style={styles.imageContainer}>
                     <Image
@@ -122,7 +133,7 @@ export default function JobDetailsScreen() {
                     />
                     <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.imageOverlay} />
 
-                    <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+                    <TouchableOpacity style={styles.backBtn} onPress={() => safeGoBack(router, '/provider/market')}>
                         <Ionicons name="arrow-back" size={24} color="#fff" />
                     </TouchableOpacity>
 

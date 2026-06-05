@@ -8,14 +8,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
-import NavigationBar from '@/components/NavigationBar';
+import { useLanguage } from '@/context/LanguageContext';
+import PremiumHeader from '@/components/PremiumHeader';
+import PulseLoader from '@/components/PulseLoader';
+import { clientMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_MUTED } from '@/constants/layout';
 import { rankBids, type ProviderStats } from '@/utils/bidScoring';
 
 export default function ProposalsScreen() {
     const insets = useSafeAreaInsets();
     const { id } = useLocalSearchParams(); // Project ID
     const router = useRouter();
+    const { t } = useLanguage();
 
     const [project, setProject] = useState<any>(null);
     const [proposals, setProposals] = useState<any[]>([]);
@@ -74,8 +79,8 @@ export default function ProposalsScreen() {
     const handleHire = async (application: any) => {
         mediumFeedback();
         Alert.alert(
-            "Confirm Hiring",
-            `Hire ${application.profiles.full_name} for ${application.bid_amount?.toLocaleString()} CFA?`,
+            t('confirmHire'),
+            `${t('hirePrompt')} ${application.profiles.full_name}?`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
@@ -173,7 +178,7 @@ export default function ProposalsScreen() {
                 {isAlgorithmRecommended && (
                     <View style={styles.recommendedBadge}>
                         <Ionicons name="sparkles" size={12} color={theme.colors.emerald} />
-                        <Text style={styles.recommendedText}>Algorithm Recommended</Text>
+                        <Text style={styles.recommendedText}>{t('algorithmRecommended')}</Text>
                     </View>
                 )}
                 {/* Header Row */}
@@ -247,21 +252,31 @@ export default function ProposalsScreen() {
     };
 
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <NavigationBar title="Proposals" showBack dynamicColor={theme.colors.active} />
+        <View style={styles.screen}>
+            <PremiumHeader
+                title={t('proposalsTitle')}
+                subtitle={t('applicantsTitle')}
+                showBack
+                fallbackRoute={`/diaspora/project/${id}`}
+                menuItems={clientMenuItems(router, t)}
+            />
             {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.text} /></View>
+                <View style={styles.center}><PulseLoader /></View>
             ) : (
                 <FlatList
                     data={proposals}
                     keyExtractor={item => item.id}
                     renderItem={renderProposal}
-                    contentContainerStyle={[styles.list, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}
+                    contentContainerStyle={{
+                        paddingTop: insets.top + 88,
+                        paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32,
+                        paddingHorizontal: theme.spacing.lg,
+                    }}
                     ListEmptyComponent={
                         <View style={styles.emptyState}>
-                            <Ionicons name="documents-outline" size={48} color={theme.colors.textSubtle} />
-                            <Text style={styles.emptyText}>No bids yet.</Text>
-                            <Text style={styles.emptySub}>Wait for providers to apply.</Text>
+                            <Ionicons name="documents-outline" size={48} color="#334155" />
+                            <Text style={styles.emptyText}>{t('noBidsYet')}</Text>
+                            <Text style={styles.emptySub}>{t('waitForProvidersApply')}</Text>
                         </View>
                     }
                 />
@@ -271,7 +286,7 @@ export default function ProposalsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
+    screen: { flex: 1, backgroundColor: PREMIUM_BG },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
     list: { paddingTop: theme.spacing.md },

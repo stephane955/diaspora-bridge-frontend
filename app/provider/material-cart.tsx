@@ -11,10 +11,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import NavigationBar from '@/components/NavigationBar';
-import ScreenGradient from '@/components/ScreenGradient';
+import { useLanguage } from '@/context/LanguageContext';
+import PremiumHeader from '@/components/PremiumHeader';
+import { providerMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 
 type CartItem = { id: string; name: string; quantity: number; price: number };
 type SupplierProfile = { id: string; full_name: string; avatar_url?: string; city?: string };
@@ -41,6 +43,7 @@ export default function BuildCartScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
+    const { t } = useLanguage();
 
     const [items, setItems] = useState<CartItem[]>([]);
     const [supplierId, setSupplierId] = useState<string | null>(null);
@@ -158,10 +161,16 @@ export default function BuildCartScreen() {
 
     if (loading) {
         return (
-            <ScreenGradient>
-                <NavigationBar title="Build Material Cart" showBack dynamicColor={theme.colors.emerald} />
+            <View style={styles.screen}>
+                <PremiumHeader
+                    title={t('materialCartTitle')}
+                    subtitle={t('createCartSub')}
+                    showBack
+                    fallbackRoute="/provider/active"
+                    menuItems={providerMenuItems(router, t)}
+                />
                 <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.emerald} /></View>
-            </ScreenGradient>
+            </View>
         );
     }
 
@@ -177,9 +186,15 @@ export default function BuildCartScreen() {
         const qrValue = JSON.stringify(qrPayload);
 
         return (
-            <ScreenGradient>
-                <NavigationBar title="Success" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
-                <LinearGradient colors={theme.gradient.emerald as [string, string]} style={styles.successCard}>
+            <View style={styles.screen}>
+                <PremiumHeader
+                    title={t('success')}
+                    subtitle={t('materialCartTitle')}
+                    showBack
+                    fallbackRoute="/provider/active"
+                    menuItems={providerMenuItems(router, t)}
+                />
+                <LinearGradient colors={theme.gradient.emerald as [string, string]} style={[styles.successCard, { marginTop: insets.top + 88 }]}>
                     <View style={styles.successIcon}><Ionicons name="checkmark-circle" size={64} color="#fff" /></View>
                     <Text style={styles.successTitle}>Cart submitted</Text>
                     <Text style={styles.successSub}>Show this QR to the supplier for collection verification</Text>
@@ -191,15 +206,21 @@ export default function BuildCartScreen() {
                     <Text style={styles.cartIdLabel}>Cart ID</Text>
                     <Text style={styles.cartIdValue} selectable>{submittedCartId}</Text>
                 </LinearGradient>
-            </ScreenGradient>
+            </View>
         );
     }
 
     return (
-        <ScreenGradient>
-            <NavigationBar title="Build Material Cart" showBack dynamicColor={theme.colors.emerald} />
+        <View style={styles.screen}>
+            <PremiumHeader
+                title={t('materialCartTitle')}
+                subtitle={t('createCartSub')}
+                showBack
+                fallbackRoute="/provider/active"
+                menuItems={providerMenuItems(router, t)}
+            />
             <ScrollView
-                contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+                contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}
                 keyboardShouldPersistTaps="handled"
             >
                 <BlurView intensity={30} tint="dark" style={styles.glass}>
@@ -297,11 +318,12 @@ export default function BuildCartScreen() {
                     </BlurView>
                 </View>
             </Modal>
-        </ScreenGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: PREMIUM_BG },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     scroll: { padding: theme.spacing.lg },
     glass: { padding: theme.spacing.lg, borderRadius: theme.radii.lg, marginBottom: theme.spacing.lg, borderWidth: 1, borderColor: theme.colors.border + '80' },

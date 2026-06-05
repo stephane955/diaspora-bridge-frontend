@@ -6,17 +6,21 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import NavigationBar from '@/components/NavigationBar';
+import { useLanguage } from '@/context/LanguageContext';
+import PremiumHeader from '@/components/PremiumHeader';
+import { providerMenuItems } from '@/constants/premiumMenus';
 import VaultGate from '@/components/VaultGate';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { theme } from '@/constants/theme';
 import { validateCarrierNumber } from '@/utils/carrierValidation';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 
 export default function WithdrawScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
+    const { t } = useLanguage();
 
     const [amount, setAmount] = useState('');
     const [phone, setPhone] = useState('');
@@ -51,10 +55,16 @@ export default function WithdrawScreen() {
     };
 
     return (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <NavigationBar title="Withdraw" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.container, { backgroundColor: PREMIUM_BG }]}>
+            <PremiumHeader
+                title={t('withdrawTitle')}
+                subtitle={t('walletTitle')}
+                showBack
+                fallbackRoute="/provider/earnings"
+                menuItems={providerMenuItems(router, t)}
+            />
             <VaultGate promptMessage="Unlock to withdraw funds." lockOnBlur>
-            <View style={[styles.content, { paddingHorizontal: 20, paddingBottom: 120 }]}>
+            <View style={[styles.content, { paddingTop: insets.top + 88, paddingHorizontal: 20, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}>
                 <Text style={styles.label}>Select Method</Text>
                 <View style={styles.methodRow}>
                     <TouchableOpacity

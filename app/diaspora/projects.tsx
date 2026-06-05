@@ -11,8 +11,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
+import PulseLoader from '@/components/PulseLoader';
+import { clientMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_MUTED } from '@/constants/layout';
 
 export default function MyProjectsScreen() {
     const insets = useSafeAreaInsets();
@@ -74,7 +77,7 @@ export default function MyProjectsScreen() {
                             <BlurView intensity={20} tint="light" style={styles.statusBadge}>
                                 <View style={[styles.statusDot, { backgroundColor: isActive ? theme.colors.success : theme.colors.warning }]} />
                                 <Text style={styles.statusText}>
-                                    {isActive ? "ACTIVE SITE" : "PENDING PROVIDER"}
+                                    {isActive ? t('activeSiteLabel').toUpperCase() : t('pendingProviderLabel').toUpperCase()}
                                 </Text>
                             </BlurView>
                         </View>
@@ -96,9 +99,9 @@ export default function MyProjectsScreen() {
                                     <Text style={styles.metaValue}>{item.budget?.toLocaleString()} CFA</Text>
                                 </View>
                                 <View style={{ alignItems: 'flex-end' }}>
-                                    <Text style={styles.metaLabel}>Provider</Text>
+                                    <Text style={styles.metaLabel}>{t('providerLabel')}</Text>
                                     <Text style={styles.metaValue}>
-                                        {hasProvider ? item.provider.full_name : "Searching..."}
+                                        {hasProvider ? item.provider.full_name : t('searchingProvider')}
                                     </Text>
                                 </View>
                             </View>
@@ -110,20 +113,30 @@ export default function MyProjectsScreen() {
     };
 
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <StatusBar barStyle="dark-content" />
-            <NavigationBar title={t('tabProjects') ?? 'Projects'} showBack dynamicColor={theme.colors.active} />
+        <View style={styles.screen}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <PremiumHeader
+                title={t('tabProjects')}
+                subtitle={t('clientDashboard.activeProjects')}
+                showBack
+                fallbackRoute="/diaspora"
+                menuItems={clientMenuItems(router, t)}
+            />
 
             {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.active} /></View>
+                <View style={styles.center}><PulseLoader /></View>
             ) : (
                 <FlatList
                     data={projects}
                     keyExtractor={(item) => item.id}
                     renderItem={renderProjectCard}
-                    contentContainerStyle={styles.listContent}
+                    contentContainerStyle={{
+                        paddingTop: insets.top + 88,
+                        paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32,
+                        paddingHorizontal: theme.spacing.lg,
+                    }}
                     showsVerticalScrollIndicator={false}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchProjects(); }} />}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchProjects(); }} tintColor="#D4AF37" />}
 
                     ListHeaderComponent={
                         <TouchableOpacity
@@ -140,7 +153,7 @@ export default function MyProjectsScreen() {
                                 </View>
                                 <View>
                                     <Text style={styles.createTitle}>{t('tabPostJob')}</Text>
-                                    <Text style={styles.createSub}>Find a new provider for your next job</Text>
+                                    <Text style={styles.createSub}>{t('postProjectSub')}</Text>
                                 </View>
                             </LinearGradient>
                         </TouchableOpacity>
@@ -158,10 +171,8 @@ export default function MyProjectsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
+    screen: { flex: 1, backgroundColor: PREMIUM_BG },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-
-    listContent: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: 120 },
 
     createBtn: { marginBottom: theme.spacing.xl, ...theme.shadow.soft },
     createGradient: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.lg, borderRadius: theme.radii.lg, gap: theme.spacing.md, borderWidth: 1, borderColor: theme.colors.activeSoft + '80' },

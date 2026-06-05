@@ -6,7 +6,10 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import NavigationBar from '@/components/NavigationBar';
+import PremiumHeader from '@/components/PremiumHeader';
+import { providerMenuItems } from '@/constants/premiumMenus';
+import { useLanguage } from '@/context/LanguageContext';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from '@/lib/supabase';
@@ -20,6 +23,7 @@ export default function PostUpdateScreen() {
     const insets = useSafeAreaInsets();
     const { projectId } = useLocalSearchParams();
     const { user } = useAuth();
+    const { t } = useLanguage();
 
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
@@ -136,10 +140,16 @@ export default function PostUpdateScreen() {
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={[styles.container, { paddingBottom: insets.bottom }]}
+            style={[styles.container, { backgroundColor: PREMIUM_BG }]}
         >
-            <NavigationBar title="Post Update" showBack onMenuPress={() => router.replace('/provider')} dynamicColor={theme.colors.emerald} />
-            <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120, paddingHorizontal: 20 }]}>
+            <PremiumHeader
+                title={t('postUpdateTitle')}
+                subtitle={t('uploadProof')}
+                showBack
+                fallbackRoute="/provider/active"
+                menuItems={providerMenuItems(router, t)}
+            />
+            <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: 20 }]}>
 
                 {/* Image Section */}
                 <Text style={styles.label}>Visual Proof</Text>

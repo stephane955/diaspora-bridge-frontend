@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { theme } from '@/constants/theme';
 import { successFeedback } from '@/utils/haptics';
+import { safeGoBack } from '@/utils/navigation';
 
 type SignedCartQrPayload = {
     cart_id: string;
@@ -102,7 +103,7 @@ export default function CollectionScannerScreen() {
                     project_id: cart.project_id,
                     provider_id: cart.provider_id ?? null,
                     title: 'Materials collected',
-                    description: 'Supplier verified collection and uploaded handover evidence photo.',
+                    description: `Supplier handover photo for cart ${cart.id}.`,
                     image_url: imageUrl,
                     update_type: 'material_collection',
                 });
@@ -227,7 +228,7 @@ export default function CollectionScannerScreen() {
                         style: 'cancel',
                         onPress: () => {
                             successFeedback();
-                            Alert.alert('Success', 'Collection verified!', [{ text: 'OK', onPress: () => router.back() }]);
+                            Alert.alert('Success', 'Collection verified!', [{ text: 'OK', onPress: () => safeGoBack(router, '/supplier/dashboard') }]);
                         },
                     },
                     {
@@ -236,7 +237,7 @@ export default function CollectionScannerScreen() {
                             await uploadCollectionPhoto(cart);
                             successFeedback();
                             Alert.alert('Success', 'Collection verified and timeline updated.', [
-                                { text: 'OK', onPress: () => router.back() },
+                                { text: 'OK', onPress: () => safeGoBack(router, '/supplier/dashboard') },
                             ]);
                         },
                     },
@@ -265,7 +266,7 @@ export default function CollectionScannerScreen() {
                 <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
                     <Text style={styles.permissionBtnText}>Grant permission</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => router.back()}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => safeGoBack(router, '/supplier/dashboard')}>
                     <Text style={styles.cancelBtnText}>Cancel</Text>
                 </TouchableOpacity>
             </View>
@@ -289,7 +290,7 @@ export default function CollectionScannerScreen() {
             </View>
             <TouchableOpacity
                 style={[styles.closeBtn, { top: insets.top + 12 }]}
-                onPress={() => router.back()}
+                onPress={() => safeGoBack(router, '/supplier/dashboard')}
             >
                 <Ionicons name="close" size={28} color="#fff" />
             </TouchableOpacity>
