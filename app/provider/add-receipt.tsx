@@ -96,7 +96,7 @@ export default function AddReceiptScreen() {
                 fallbackRoute="/provider/active"
                 menuItems={providerMenuItems(router, t)}
             />
-            <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}>
+            <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40 }]}>
                 <Text style={styles.hint}>Upload a hardware store receipt. Amount can be scanned or entered manually.</Text>
                 <TouchableOpacity style={styles.uploadBox} onPress={pickImage}>
                     {receiptUri ? (

@@ -2,17 +2,18 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { useLanguage } from '@/context/LanguageContext';
 import GlassTabBar from '@/components/GlassTabBar';
-import { PREMIUM_BG } from '@/constants/layout';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
 
 export default function DiasporaLayout() {
     const { t } = useLanguage();
+    const c = usePremiumColors();
 
     return (
         <Tabs
             tabBar={(props) => <GlassTabBar {...props} role="client" />}
             screenOptions={{
                 headerShown: false,
-                sceneContainerStyle: { backgroundColor: PREMIUM_BG },
+                sceneContainerStyle: { backgroundColor: c.bg },
                 tabBarStyle: { display: 'none' },
             }}
         >
@@ -30,6 +31,7 @@ export default function DiasporaLayout() {
             <Tabs.Screen name="project/[id]" options={{ href: null, title: '' }} />
             <Tabs.Screen name="project/proposals" options={{ href: null, title: 'Proposals' }} />
             <Tabs.Screen name="project/[id]/applicants" options={{ href: null, title: t('applicantsTitle') ?? 'Applicants' }} />
+            <Tabs.Screen name="saved-providers" options={{ href: null, title: t('savedProviders') ?? 'Saved Providers' }} />
         </Tabs>
     );
 }

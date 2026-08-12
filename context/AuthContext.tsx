@@ -3,6 +3,7 @@ import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { resolveAccountRole } from '@/lib/resolveAccountRole';
 
 export type UserRole = 'client' | 'provider' | 'supplier' | null;
 
@@ -20,12 +21,6 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function getRoleFromUser(user: User | null): UserRole {
-    const role = user?.user_metadata?.role ?? user?.raw_user_meta_data?.role;
-    if (role === 'client' || role === 'provider' || role === 'supplier') return role;
-    return null;
-}
-
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
@@ -34,19 +29,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const router = useRouter();
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(async ({ data: { session } }) => {
             setSession(session);
             const u = session?.user ?? null;
             setUser(u);
-            setRole(getRoleFromUser(u));
+            setRole(u ? await resolveAccountRole(u) : null);
             setLoading(false);
         });
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             const u = session?.user ?? null;
             setSession(session);
             setUser(u);
-            setRole(getRoleFromUser(u));
+            setRole(u ? await resolveAccountRole(u) : null);
 
             if (event === 'SIGNED_OUT') {
                 router.replace('/login');
@@ -60,21 +55,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const logout = async () => {
         try {
-            // 1. Kill Supabase Session
             await supabase.auth.signOut();
-
-            // 2. MANUALLY reset state to fix the "Stuck" bug
             setUser(null);
             setSession(null);
+            setRole(null);
 
-            // 3. Clear all local persistence
-            await AsyncStorage.multiRemove(['loggedIn', 'userRole']);
+            const keys = await AsyncStorage.getAllKeys();
+            const purge = keys.filter(
+                (k) =>
+                    k.startsWith('chat_read_') ||
+                    k === 'loggedIn' ||
+                    k === 'userRole',
+            );
+            if (purge.length) await AsyncStorage.multiRemove(purge);
 
-            // 4. Force Redirect
             router.replace('/login');
         } catch (error) {
-            console.error("Logout error:", error);
-            // Fallback
+            console.error('Logout error:', error);
+            setUser(null);
+            setSession(null);
+            setRole(null);
             router.replace('/login');
         }
     };

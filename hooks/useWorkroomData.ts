@@ -15,7 +15,7 @@ export function useWorkroomQuery(projectId: string | undefined) {
       if (!projectId) return { project: null, milestones: [] };
       const [projRes, milesRes] = await Promise.all([
         supabase.from('projects').select('*, profiles:owner_id(full_name, avatar_url, city)').eq('id', projectId).single(),
-        supabase.from('milestones').select('*').eq('project_id', projectId).order('created_at', { ascending: true }),
+        supabase.from('milestones').select('*').eq('project_id', projectId).order('step_order', { ascending: true }),
       ]);
       if (projRes.error) throw projRes.error;
       if (milesRes.error) throw milesRes.error;

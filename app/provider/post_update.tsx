@@ -149,7 +149,7 @@ export default function PostUpdateScreen() {
                 fallbackRoute="/provider/active"
                 menuItems={providerMenuItems(router, t)}
             />
-            <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: 20 }]}>
+            <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40, paddingHorizontal: 20 }]}>
 
                 {/* Image Section */}
                 <Text style={styles.label}>Visual Proof</Text>

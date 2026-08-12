@@ -11,12 +11,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { mediumFeedback } from '@/utils/haptics';
+import { mediumFeedback, successFeedback } from '@/utils/haptics';
 import PremiumHeader from '@/components/PremiumHeader';
+import PremiumEmptyState from '@/components/PremiumEmptyState';
 import { providerMenuItems } from '@/constants/premiumMenus';
 import PulseLoader from '@/components/PulseLoader';
 import { theme } from '@/constants/theme';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
+import { SCROLL_BOTTOM_INSET, PREMIUM_BG, PREMIUM_GOLD, TEXT_PRIMARY, TEXT_SECONDARY } from '@/constants/layout';
 
 type HubItem = {
     key: string;
@@ -105,7 +106,19 @@ export default function ProviderProfileScreen() {
         if (profile?.verification_status === 'verified') Alert.alert(t('verified'), t('identityConfirmed'));
         else router.push('/provider/verification');
     };
-    const handleSignOut = async () => { await signOut(); router.replace('/login'); };
+    const handleSignOut = async () => {
+        Alert.alert(t('signOut'), t('signOutConfirmBody'), [
+            { text: t('cancel'), style: 'cancel' },
+            {
+                text: t('signOut'),
+                style: 'destructive',
+                onPress: async () => {
+                    successFeedback();
+                    await signOut();
+                },
+            },
+        ]);
+    };
     const handleLanguageSelect = (code: any) => { setLanguage(code); setLangModalVisible(false); };
 
     const saveSkills = async () => {
@@ -113,6 +126,7 @@ export default function ProviderProfileScreen() {
         try {
             await supabase.from('profiles').update({ skills: mySkills }).eq('id', user?.id);
             setSkillsModalVisible(false);
+            successFeedback();
             Alert.alert(t('success'), t('profileSaved'));
         } catch (err: any) { Alert.alert("Error", err.message); } finally { setSaving(false); }
     };
@@ -124,6 +138,7 @@ export default function ProviderProfileScreen() {
             await supabase.from('profiles').update(updates).eq('id', user?.id);
             setProfile({ ...profile, ...updates });
             setEditModalVisible(false);
+            successFeedback();
             Alert.alert(t('success'), t('profileUpdated'));
         } catch (err: any) { Alert.alert("Error", err.message); } finally { setSaving(false); }
     };
@@ -226,7 +241,7 @@ export default function ProviderProfileScreen() {
                ============================================================ */}
             <ScrollView
                 style={styles.scrollableContent}
-                contentContainerStyle={{ paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingTop: theme.spacing.md, paddingHorizontal: theme.spacing.lg }}
+                contentContainerStyle={{ paddingBottom: SCROLL_BOTTOM_INSET, paddingTop: theme.spacing.md, paddingHorizontal: theme.spacing.lg }}
                 showsVerticalScrollIndicator={false}
             >
                 {/* COMMAND CENTER (Icon Grid) */}
@@ -305,15 +320,34 @@ export default function ProviderProfileScreen() {
                 {/* PORTFOLIO */}
                 <View style={[styles.sectionContainer, {marginBottom: 20}]}>
                     <Text style={styles.sectionHeader}>{t('recentWork')}</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 12}}>
-                        <TouchableOpacity style={styles.addPortfolioBtn} onPress={() => Alert.alert("Tip", "Upload photos in the 'Active Sites' tab.")}>
-                            <Ionicons name="camera" size={28} color="#CBD5E1" />
-                            <Text style={styles.addText}>{t('fromJobs')}</Text>
-                        </TouchableOpacity>
-                        {portfolio.map((item, index) => (
-                            <Image key={index} source={{ uri: item.image_url }} style={styles.portfolioImg} />
-                        ))}
-                    </ScrollView>
+                    {portfolio.length === 0 ? (
+                        <PremiumEmptyState
+                            icon="images-outline"
+                            title={t('noPortfolioYet') || 'No portfolio photos yet'}
+                            subtitle={t('portfolioFromJobsHint') || 'Upload proof photos from Active Sites / Workroom — they appear here automatically.'}
+                            actionLabel={t('tabActive') || 'Active Sites'}
+                            onAction={() => {
+                                successFeedback();
+                                router.push('/provider/active');
+                            }}
+                        />
+                    ) : (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 12}}>
+                            <TouchableOpacity
+                                style={styles.addPortfolioBtn}
+                                onPress={() => {
+                                    successFeedback();
+                                    router.push('/provider/active');
+                                }}
+                            >
+                                <Ionicons name="camera" size={28} color={PREMIUM_GOLD} />
+                                <Text style={styles.addText}>{t('fromJobs')}</Text>
+                            </TouchableOpacity>
+                            {portfolio.map((item, index) => (
+                                <Image key={index} source={{ uri: item.image_url }} style={styles.portfolioImg} />
+                            ))}
+                        </ScrollView>
+                    )}
                 </View>
             </ScrollView>
 
@@ -430,17 +464,17 @@ const styles = StyleSheet.create({
     locationText: { color: '#94A3B8', fontSize: 13, fontWeight: '500' },
 
     // --- FLOATING CARD (Positioned Absolute inside Fixed Header) ---
-    floatingCard: { flexDirection: 'row', backgroundColor: '#fff', marginHorizontal: 24, position: 'absolute', bottom: 10, left: 0, right: 0, borderRadius: 20, padding: 20, shadowColor: '#0F172A', shadowOpacity: 0.1, shadowRadius: 15, elevation: 5, justifyContent: 'space-around', alignItems: 'center' },
+    floatingCard: { flexDirection: 'row', backgroundColor: 'rgba(17,24,39,0.92)', marginHorizontal: 24, position: 'absolute', bottom: 10, left: 0, right: 0, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: 'rgba(212,175,55,0.25)', justifyContent: 'space-around', alignItems: 'center' },
     statItem: { alignItems: 'center', flex: 1 },
-    statValue: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-    statLabel: { color: '#64748B', fontSize: 11, fontWeight: '600', marginTop: 4, textTransform: 'uppercase' },
-    statDivider: { width: 1, height: 24, backgroundColor: '#E2E8F0' },
+    statValue: { fontSize: 18, fontWeight: '800', color: TEXT_PRIMARY },
+    statLabel: { color: TEXT_SECONDARY, fontSize: 11, fontWeight: '600', marginTop: 4, textTransform: 'uppercase' },
+    statDivider: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.12)' },
 
     // --- SCROLLABLE AREA ---
     scrollableContent: { flex: 1, backgroundColor: PREMIUM_BG },
 
     hubSection: { marginTop: theme.spacing.xl },
-    hubTitle: { fontSize: 13, ...theme.typography.label, color: theme.colors.textSubtle, marginBottom: theme.spacing.sm },
+    hubTitle: { fontSize: 13, ...theme.typography.label, color: TEXT_SECONDARY, marginBottom: theme.spacing.sm },
     hubGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
@@ -448,16 +482,14 @@ const styles = StyleSheet.create({
     },
     hubCard: {
         width: '30%',
-        backgroundColor: theme.colors.surface,
+        backgroundColor: 'rgba(17,24,39,0.75)',
         borderRadius: theme.radii.md,
         paddingVertical: 18,
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
-        ...theme.shadow.soft,
-        shadowOpacity: 0.06,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.border,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
     },
     hubIconWrap: {
         width: 48,
@@ -466,25 +498,25 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    hubLabel: { fontSize: 12, fontWeight: '700', color: theme.colors.text },
+    hubLabel: { fontSize: 12, fontWeight: '700', color: TEXT_PRIMARY },
 
     // SECTIONS
     sectionContainer: { marginTop: 24 },
-    sectionHeader: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
-    bioText: { fontSize: 14, color: '#475569', lineHeight: 22 },
+    sectionHeader: { fontSize: 16, fontWeight: '800', color: TEXT_PRIMARY, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
+    bioText: { fontSize: 14, color: TEXT_SECONDARY, lineHeight: 22 },
 
     // MENU
-    menuContainer: { marginTop: 32, paddingHorizontal: 24 },
-    menuTitle: { fontSize: 18, ...theme.typography.title, color: theme.colors.text, marginBottom: 16 },
-    menuItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 5 },
+    menuContainer: { marginTop: 32 },
+    menuTitle: { fontSize: 18, ...theme.typography.title, color: TEXT_PRIMARY, marginBottom: 16 },
+    menuItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(17,24,39,0.75)', padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
     iconBox: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-    menuText: { fontSize: 16, fontWeight: '700', color: '#334155' },
-    menuSub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+    menuText: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY },
+    menuSub: { fontSize: 12, color: TEXT_SECONDARY, marginTop: 2 },
 
     // PORTFOLIO
-    addPortfolioBtn: { width: 100, height: 120, borderRadius: 16, borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
-    addText: { color: '#94A3B8', fontWeight: '700', marginTop: 8, fontSize: 11 },
-    portfolioImg: { width: 160, height: 120, borderRadius: 16, backgroundColor: '#CBD5E1' },
+    addPortfolioBtn: { width: 100, height: 120, borderRadius: 16, borderWidth: 1.5, borderColor: 'rgba(212,175,55,0.35)', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(212,175,55,0.08)' },
+    addText: { color: PREMIUM_GOLD, fontWeight: '700', marginTop: 8, fontSize: 11 },
+    portfolioImg: { width: 160, height: 120, borderRadius: 16, backgroundColor: '#1E293B' },
 
     // MODALS
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },

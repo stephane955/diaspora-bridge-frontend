@@ -163,7 +163,7 @@ export default function ClientWalletScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[
                 styles.scrollContent,
-                { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 },
+                { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40 },
             ]}
             refreshControl={
                 <RefreshControl

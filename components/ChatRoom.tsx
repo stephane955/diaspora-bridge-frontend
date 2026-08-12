@@ -12,18 +12,20 @@ import {
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
-import { YStack, XStack, Text, Button } from 'tamagui';
+import { YStack, XStack, Text } from 'tamagui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { lightFeedback, successFeedback } from '@/utils/haptics';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_GOLD } from '@/constants/layout';
+import { PREMIUM_GOLD } from '@/constants/layout';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { useLanguage } from '@/context/LanguageContext';
+import { BlurView } from 'expo-blur';
 import {
   useProjectMessages,
   type ChatMessage,
 } from '@/hooks/useProjectMessages';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 
-const CHAT_BG = '#111827';
 const CHAT_HEADER_HEIGHT = 44;
 const INPUT_MIN_HEIGHT = 42;
 const INPUT_LINE_HEIGHT = 20;
@@ -37,6 +39,8 @@ type ChatRoomProps = {
   bottomInset?: number;
   /** Extra offset when embedded under PremiumHeader (full-screen chat) */
   headerOffset?: number;
+  /** Hide the built-in "Project Chat" strip when parent renders a richer header */
+  hideInternalHeader?: boolean;
 };
 
 function formatDuration(seconds: number) {
@@ -106,11 +110,11 @@ function AudioBubble({ uri, isMine }: { uri: string; isMine: boolean }) {
 
   const elapsed = playing ? positionSec : 0;
   const progress = durationSec ? Math.min(100, (elapsed / durationSec) * 100) : 0;
-  const iconColor = isMine ? '#0A0F1A' : '#FFFFFF';
+  const iconColor = isMine ? '#0A0F1A' : '#E2E8F0';
 
   return (
     <XStack alignItems="center" gap={10} minWidth={140}>
-      <Pressable onPress={togglePlayback} hitSlop={8}>
+      <Pressable onPress={togglePlayback} hitSlop={12}>
         {loading ? (
           <ActivityIndicator size="small" color={iconColor} />
         ) : (
@@ -122,10 +126,10 @@ function AudioBubble({ uri, isMine }: { uri: string; isMine: boolean }) {
         )}
       </Pressable>
       <YStack flex={1} gap={4}>
-        <XStack height={4} borderRadius={2} backgroundColor="rgba(255,255,255,0.25)" overflow="hidden">
+        <XStack height={4} borderRadius={2} backgroundColor="rgba(148,163,184,0.35)" overflow="hidden">
           <XStack width={`${progress}%`} backgroundColor={isMine ? '#FDE68A' : '#94A3B8'} />
         </XStack>
-        <Text fontSize={11} color="rgba(255,255,255,0.85)">
+        <Text fontSize={11} color={isMine ? 'rgba(10,15,26,0.75)' : 'rgba(248,250,252,0.85)'}>
           {formatDuration(durationSec || 0)}
         </Text>
       </YStack>
@@ -136,15 +140,19 @@ function AudioBubble({ uri, isMine }: { uri: string; isMine: boolean }) {
 function MessageBubble({
   message,
   isMine,
+  colors,
 }: {
   message: ChatMessage;
   isMine: boolean;
+  colors: ReturnType<typeof usePremiumColors>;
 }) {
   const time = new Date(message.createdAt).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
   });
   const isAudio = !!message.audioUrl;
+  const mineBg = colors.isDark ? colors.gold : colors.blue;
+  const mineText = colors.isDark ? '#0A0F1A' : '#FFFFFF';
 
   return (
     <XStack
@@ -159,28 +167,28 @@ function MessageBubble({
           borderRadius={18}
           borderBottomRightRadius={isMine ? 2 : 18}
           borderBottomLeftRadius={isMine ? 18 : 2}
-          backgroundColor={isMine ? PREMIUM_GOLD : 'rgba(255,255,255,0.1)'}
+          backgroundColor={isMine ? mineBg : colors.bubbleOther}
           borderWidth={1}
-          borderColor={isMine ? 'rgba(212,175,55,0.6)' : 'rgba(255,255,255,0.12)'}
+          borderColor={isMine ? 'rgba(212,175,55,0.45)' : colors.border}
           style={styles.bubbleShadow}
         >
           {isAudio ? (
             <AudioBubble uri={message.audioUrl!} isMine={isMine} />
           ) : (
-            <Text fontSize={15} lineHeight={20} color={isMine ? '#0A0F1A' : '#FFFFFF'}>
+            <Text fontSize={15} lineHeight={20} color={isMine ? mineText : colors.bubbleOtherText}>
               {message.content}
             </Text>
           )}
         </YStack>
         <XStack alignItems="center" gap={4} marginTop={4}>
-          <Text fontSize={10} color="#94A3B8">
+          <Text fontSize={10} color={colors.textSecondary}>
             {time}
           </Text>
           {isMine && (
             message.pending ? (
-              <Ionicons name="time-outline" size={12} color="#94A3B8" />
+              <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
             ) : (
-              <Ionicons name="checkmark-done" size={12} color={message.pending ? '#94A3B8' : '#34D399'} />
+              <Ionicons name="checkmark-done" size={12} color="#34D399" />
             )
           )}
         </XStack>
@@ -195,10 +203,12 @@ export default function ChatRoom({
   readOnly = false,
   bottomInset,
   headerOffset = 0,
+  hideInternalHeader = false,
 }: ChatRoomProps) {
   const { user } = useAuth();
+  const colors = usePremiumColors();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
-  const resolvedBottomInset = bottomInset ?? FLOATING_TAB_BAR_HEIGHT;
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const [text, setText] = useState('');
   const [inputHeight, setInputHeight] = useState(INPUT_MIN_HEIGHT);
@@ -217,7 +227,7 @@ export default function ChatRoom({
 
   const keyboardVerticalOffset =
     Platform.OS === 'ios'
-      ? insets.top + CHAT_HEADER_HEIGHT + headerOffset + 8
+      ? insets.top + (hideInternalHeader ? 0 : CHAT_HEADER_HEIGHT) + headerOffset + 8
       : insets.top + headerOffset;
 
   const scrollToBottom = useCallback((animated = true) => {
@@ -276,57 +286,66 @@ export default function ChatRoom({
   const renderItem = useCallback(
     ({ item }: { item: ChatMessage }) => {
       const isMine = item.senderId === user?.id;
-      return <MessageBubble message={item} isMine={isMine} />;
+      return <MessageBubble message={item} isMine={isMine} colors={colors} />;
     },
-    [user?.id]
+    [user?.id, colors]
   );
 
   const showInput = !readOnly && !!user?.id;
 
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { height: maxHeight }]}
+      style={[
+        styles.root,
+        {
+          height: maxHeight,
+          backgroundColor: colors.bg,
+          borderColor: colors.border,
+        },
+      ]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={keyboardVerticalOffset}
     >
       <View style={styles.inner}>
-        <XStack
-          paddingHorizontal={14}
-          paddingVertical={10}
-          backgroundColor="rgba(15,23,42,0.95)"
-          borderBottomWidth={1}
-          borderBottomColor="rgba(255,255,255,0.06)"
-          alignItems="center"
-          justifyContent="space-between"
-          height={CHAT_HEADER_HEIGHT + 8}
-        >
-          <Text fontSize={15} fontWeight="700" color="#F8FAFC">
-            Project Chat
-          </Text>
-          <XStack alignItems="center" gap={6}>
-            <YStack width={8} height={8} borderRadius={4} backgroundColor="#22C55E" />
-            <Text fontSize={12} color="#94A3B8" fontWeight="600">
-              Live
+        {!hideInternalHeader ? (
+          <XStack
+            paddingHorizontal={14}
+            paddingVertical={10}
+            backgroundColor={colors.glassStrong}
+            borderBottomWidth={1}
+            borderBottomColor={colors.border}
+            alignItems="center"
+            justifyContent="space-between"
+            height={CHAT_HEADER_HEIGHT + 8}
+          >
+            <Text fontSize={15} fontWeight="700" color={colors.textPrimary}>
+              {t('projectChatTitle')}
             </Text>
+            <XStack alignItems="center" gap={6}>
+              <YStack width={8} height={8} borderRadius={4} backgroundColor="#22C55E" />
+              <Text fontSize={12} color={colors.textSecondary} fontWeight="600">
+                Live
+              </Text>
+            </XStack>
           </XStack>
-        </XStack>
+        ) : null}
 
         <View style={styles.listWrap}>
           {loading ? (
             <YStack flex={1} alignItems="center" justifyContent="center">
-              <ActivityIndicator size="small" color="#2563EB" />
+              <ActivityIndicator size="small" color={colors.gold} />
             </YStack>
           ) : error ? (
             <YStack flex={1} alignItems="center" justifyContent="center" padding={16}>
-              <Text color="#94A3B8" textAlign="center">
+              <Text color={colors.textSecondary} textAlign="center">
                 {error}
               </Text>
             </YStack>
           ) : messages.length === 0 ? (
             <YStack flex={1} alignItems="center" justifyContent="center" padding={16}>
-              <Ionicons name="chatbubbles-outline" size={28} color="#94A3B8" />
-              <Text color="#94A3B8" marginTop={8} textAlign="center">
-                No messages yet. Start the conversation with your project partner.
+              <Ionicons name="chatbubbles-outline" size={28} color={colors.textSecondary} />
+              <Text color={colors.textSecondary} marginTop={8} textAlign="center">
+                {t('noConversationsSub')}
               </Text>
             </YStack>
           ) : (
@@ -345,18 +364,24 @@ export default function ChatRoom({
         </View>
 
         {showInput && (
-          <View
+          <BlurView
+            intensity={55}
+            tint={colors.blurTint}
             style={[
               styles.inputBar,
-              { paddingBottom: Math.max(10, Platform.OS === 'ios' ? insets.bottom * 0.25 : 10) },
+              {
+                paddingBottom: Math.max(10, Platform.OS === 'ios' ? insets.bottom * 0.25 : 10),
+                backgroundColor: colors.glass,
+                borderTopColor: colors.border,
+              },
             ]}
           >
             <View style={styles.inputRow}>
               <TextInput
                 value={text}
                 onChangeText={setText}
-                placeholder="Type a message..."
-                placeholderTextColor="#64748B"
+                placeholder={t('typeMessage')}
+                placeholderTextColor={colors.muted}
                 multiline
                 maxLength={2000}
                 editable={!isRecording && !uploading}
@@ -376,6 +401,9 @@ export default function ChatRoom({
                   {
                     height: Math.max(INPUT_MIN_HEIGHT, inputHeight),
                     maxHeight: INPUT_MAX_HEIGHT,
+                    color: colors.textPrimary,
+                    backgroundColor: colors.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)',
+                    borderColor: colors.border,
                   },
                 ]}
               />
@@ -389,40 +417,44 @@ export default function ChatRoom({
                 disabled={uploading || sending}
                 style={({ pressed }) => [
                   styles.iconBtn,
+                  {
+                    backgroundColor: colors.isDark
+                      ? 'rgba(255,255,255,0.08)'
+                      : 'rgba(15,23,42,0.06)',
+                  },
                   isRecording && styles.iconBtnRecording,
                   pressed && { opacity: 0.85 },
                 ]}
               >
                 {uploading ? (
-                  <ActivityIndicator size="small" color="#F8FAFC" />
+                  <ActivityIndicator size="small" color={colors.textPrimary} />
                 ) : (
                   <Ionicons
                     name={isRecording ? 'mic' : 'mic-outline'}
                     size={22}
-                    color={isRecording ? '#FFFFFF' : '#F8FAFC'}
+                    color={isRecording ? '#FFFFFF' : colors.textPrimary}
                   />
                 )}
               </Pressable>
 
-              <Button
-                size="$3"
-                height={42}
-                paddingHorizontal={16}
-                borderRadius={20}
-                backgroundColor={PREMIUM_GOLD}
-                opacity={!text.trim() || sending || isRecording || uploading ? 0.5 : 1}
-                disabled={!text.trim() || sending || isRecording || uploading}
+              <Pressable
                 onPress={handleSendText}
-                pressStyle={{ opacity: 0.85 }}
+                disabled={!text.trim() || sending || isRecording || uploading}
+                hitSlop={8}
+                style={({ pressed }) => [
+                  styles.sendBtn,
+                  {
+                    backgroundColor: PREMIUM_GOLD,
+                    opacity: !text.trim() || sending || isRecording || uploading ? 0.45 : pressed ? 0.88 : 1,
+                  },
+                ]}
               >
                 {sending ? (
                   <ActivityIndicator size="small" color="#0A0F1A" />
                 ) : (
-                  <Text color="#0A0F1A" fontWeight="800" fontSize={14}>
-                    Send
-                  </Text>
+                  <Ionicons name="send" size={18} color="#0A0F1A" />
                 )}
-              </Button>
+              </Pressable>
             </View>
 
             {isRecording && (
@@ -433,7 +465,7 @@ export default function ChatRoom({
                 </Text>
               </XStack>
             )}
-          </View>
+          </BlurView>
         )}
       </View>
     </KeyboardAvoidingView>
@@ -442,11 +474,9 @@ export default function ChatRoom({
 
 const styles = StyleSheet.create({
   root: {
-    backgroundColor: CHAT_BG,
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
   },
   inner: {
     flex: 1,
@@ -460,17 +490,16 @@ const styles = StyleSheet.create({
   },
   bubbleShadow: {
     shadowColor: '#000',
-    shadowOpacity: 0.22,
+    shadowOpacity: 0.18,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
   inputBar: {
-    backgroundColor: 'rgba(10,15,26,0.98)',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 10,
     paddingTop: 10,
+    overflow: 'hidden',
   },
   inputRow: {
     flexDirection: 'row',
@@ -479,24 +508,27 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingTop: Platform.OS === 'ios' ? 10 : 8,
     paddingBottom: Platform.OS === 'ios' ? 10 : 8,
     fontSize: 15,
     lineHeight: INPUT_LINE_HEIGHT,
-    color: '#F8FAFC',
   },
   iconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  sendBtn: {
+    width: 48,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   iconBtnRecording: {
     backgroundColor: '#EF4444',

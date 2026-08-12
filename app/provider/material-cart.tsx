@@ -16,7 +16,8 @@ import PremiumHeader from '@/components/PremiumHeader';
 import { providerMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
+import { SCROLL_BOTTOM_INSET, PREMIUM_BG, PREMIUM_GOLD, TEXT_PRIMARY, TEXT_SECONDARY } from '@/constants/layout';
+import PremiumEmptyState from '@/components/PremiumEmptyState';
 
 type CartItem = { id: string; name: string; quantity: number; price: number };
 type SupplierProfile = { id: string; full_name: string; avatar_url?: string; city?: string };
@@ -220,38 +221,47 @@ export default function BuildCartScreen() {
                 menuItems={providerMenuItems(router, t)}
             />
             <ScrollView
-                contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}
+                contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 88, paddingBottom: SCROLL_BOTTOM_INSET }]}
                 keyboardShouldPersistTaps="handled"
             >
                 <BlurView intensity={30} tint="dark" style={styles.glass}>
-                    <Text style={styles.glassTitle}>Material cart</Text>
-                    <Text style={styles.glassSub}>Add items, select a verified store, and submit for client approval.</Text>
+                    <Text style={styles.glassTitle}>{t('materialCartTitle') || 'Material cart'}</Text>
+                    <Text style={styles.glassSub}>{t('createCartSub') || 'Add items, select a verified store, and submit for client approval.'}</Text>
                 </BlurView>
 
-                <TouchableOpacity style={styles.supplierSelector} onPress={() => setShowSupplierModal(true)}>
-                    <Ionicons name="storefront-outline" size={22} color={theme.colors.textMuted} />
+                <TouchableOpacity style={styles.supplierSelector} onPress={() => { successFeedback(); setShowSupplierModal(true); }}>
+                    <Ionicons name="storefront-outline" size={22} color={PREMIUM_GOLD} />
                     <Text style={[styles.supplierText, !supplierId && styles.supplierPlaceholder]}>
-                        {supplierName || 'Select Verified Store'}
+                        {supplierName || (t('selectVerifiedStore') || 'Select Verified Store')}
                     </Text>
-                    <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+                    <Ionicons name="chevron-forward" size={20} color={TEXT_SECONDARY} />
                 </TouchableOpacity>
 
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Items</Text>
+                        <Text style={styles.sectionTitle}>{t('items') || 'Items'}</Text>
                         <TouchableOpacity onPress={addItem} style={styles.addItemBtn}>
-                            <Ionicons name="add-circle-outline" size={22} color={theme.colors.emerald} />
-                            <Text style={styles.addItemText}>Add</Text>
+                            <Ionicons name="add-circle-outline" size={22} color={PREMIUM_GOLD} />
+                            <Text style={styles.addItemText}>{t('add') || 'Add'}</Text>
                         </TouchableOpacity>
                     </View>
-                    {items.map((item) => (
+                    {items.length === 0 ? (
+                        <PremiumEmptyState
+                            icon="construct-outline"
+                            title={t('emptyCartTitle') || 'Cart is empty'}
+                            subtitle={t('emptyCartSub') || 'Add cement, steel, or other materials with quantity and unit price.'}
+                            actionLabel={t('addItem') || 'Add item'}
+                            onAction={addItem}
+                        />
+                    ) : (
+                        items.map((item) => (
                         <View key={item.id} style={styles.itemRow}>
                             <TextInput
                                 style={[styles.itemInput, { flex: 2 }]}
                                 placeholder="Name"
                                 value={item.name}
                                 onChangeText={v => updateItem(item.id, 'name', v)}
-                                placeholderTextColor={theme.colors.textMuted}
+                                placeholderTextColor={TEXT_SECONDARY}
                             />
                             <TextInput
                                 style={[styles.itemInput, { width: 56 }]}
@@ -259,7 +269,7 @@ export default function BuildCartScreen() {
                                 keyboardType="numeric"
                                 value={String(item.quantity)}
                                 onChangeText={v => updateItem(item.id, 'quantity', v)}
-                                placeholderTextColor={theme.colors.textMuted}
+                                placeholderTextColor={TEXT_SECONDARY}
                             />
                             <TextInput
                                 style={[styles.itemInput, { flex: 1 }]}
@@ -267,13 +277,14 @@ export default function BuildCartScreen() {
                                 keyboardType="numeric"
                                 value={item.price ? String(item.price) : ''}
                                 onChangeText={v => updateItem(item.id, 'price', v)}
-                                placeholderTextColor={theme.colors.textMuted}
+                                placeholderTextColor={TEXT_SECONDARY}
                             />
                             <TouchableOpacity onPress={() => removeItem(item.id)} style={styles.removeBtn}>
-                                <Ionicons name="close-circle" size={24} color={theme.colors.danger} />
+                                <Ionicons name="close-circle" size={24} color="#F87171" />
                             </TouchableOpacity>
                         </View>
-                    ))}
+                        ))
+                    )}
                 </View>
 
                 <View style={styles.totalRow}>
@@ -282,7 +293,7 @@ export default function BuildCartScreen() {
                 </View>
 
                 <TouchableOpacity style={[styles.submitBtn, saving && styles.submitDisabled]} onPress={handleSubmit} disabled={saving}>
-                    {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>Submit for approval</Text>}
+                    {saving ? <ActivityIndicator color="#0A0F1A" /> : <Text style={styles.submitBtnText}>{t('submitForApproval') || 'Submit for approval'}</Text>}
                 </TouchableOpacity>
             </ScrollView>
 
@@ -326,26 +337,26 @@ const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: PREMIUM_BG },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     scroll: { padding: theme.spacing.lg },
-    glass: { padding: theme.spacing.lg, borderRadius: theme.radii.lg, marginBottom: theme.spacing.lg, borderWidth: 1, borderColor: theme.colors.border + '80' },
-    glassTitle: { fontSize: 18, ...theme.typography.title, color: theme.colors.text },
-    glassSub: { fontSize: 13, color: theme.colors.textMuted, marginTop: 4 },
-    supplierSelector: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.md, backgroundColor: theme.colors.surface, borderRadius: theme.radii.md, marginBottom: theme.spacing.lg, borderWidth: 1, borderColor: theme.colors.border },
-    supplierText: { flex: 1, fontSize: 16, color: theme.colors.text },
-    supplierPlaceholder: { color: theme.colors.textMuted },
+    glass: { padding: theme.spacing.lg, borderRadius: theme.radii.lg, marginBottom: theme.spacing.lg, borderWidth: 1, borderColor: 'rgba(212,175,55,0.22)', overflow: 'hidden', backgroundColor: 'rgba(17,24,39,0.65)' },
+    glassTitle: { fontSize: 18, ...theme.typography.title, color: TEXT_PRIMARY },
+    glassSub: { fontSize: 13, color: TEXT_SECONDARY, marginTop: 4 },
+    supplierSelector: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.md, backgroundColor: 'rgba(17,24,39,0.75)', borderRadius: theme.radii.md, marginBottom: theme.spacing.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', gap: 10 },
+    supplierText: { flex: 1, fontSize: 16, color: TEXT_PRIMARY },
+    supplierPlaceholder: { color: TEXT_SECONDARY },
     section: { marginBottom: theme.spacing.lg },
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.sm },
-    sectionTitle: { fontSize: 16, ...theme.typography.label, color: theme.colors.textMuted },
+    sectionTitle: { fontSize: 16, ...theme.typography.label, color: TEXT_SECONDARY },
     addItemBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    addItemText: { color: theme.colors.emerald, fontWeight: '600', fontSize: 14 },
+    addItemText: { color: PREMIUM_GOLD, fontWeight: '700', fontSize: 14 },
     itemRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-    itemInput: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radii.sm, padding: 12, fontSize: 14, color: theme.colors.text },
+    itemInput: { backgroundColor: 'rgba(17,24,39,0.85)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: theme.radii.sm, padding: 12, fontSize: 14, color: TEXT_PRIMARY },
     removeBtn: { padding: 4 },
-    totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: theme.spacing.lg, backgroundColor: theme.colors.warning + '15', borderRadius: theme.radii.lg, marginBottom: theme.spacing.lg },
-    totalLabel: { fontSize: 16, fontWeight: '700', color: theme.colors.text },
-    totalValue: { fontSize: 20, fontWeight: '800', color: theme.colors.warning },
-    submitBtn: { backgroundColor: theme.colors.primary, paddingVertical: 18, borderRadius: theme.radii.lg, alignItems: 'center', ...theme.shadow.glowEmerald },
+    totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: theme.spacing.lg, backgroundColor: 'rgba(212,175,55,0.12)', borderRadius: theme.radii.lg, marginBottom: theme.spacing.lg, borderWidth: 1, borderColor: 'rgba(212,175,55,0.28)' },
+    totalLabel: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY },
+    totalValue: { fontSize: 20, fontWeight: '800', color: PREMIUM_GOLD },
+    submitBtn: { backgroundColor: PREMIUM_GOLD, paddingVertical: 18, borderRadius: theme.radii.lg, alignItems: 'center' },
     submitDisabled: { opacity: 0.7 },
-    submitBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+    submitBtnText: { color: '#0A0F1A', fontWeight: '800', fontSize: 16 },
     successCard: { margin: theme.spacing.lg, padding: theme.spacing.xl, borderRadius: theme.radii.xl, alignItems: 'center' },
     successIcon: { marginBottom: 12 },
     successTitle: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 4 },

@@ -95,7 +95,7 @@ export default function NewProjectScreen() {
             />
             <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: theme.spacing.lg }]}
+                contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40, paddingHorizontal: theme.spacing.lg }]}
             >
                 {/* --- IMAGE PICKER --- */}
                 <TouchableOpacity onPress={pickImage} activeOpacity={0.9} style={styles.imagePickerContainer}>

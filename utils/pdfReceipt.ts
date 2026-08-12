@@ -7,54 +7,109 @@ export type ReceiptData = {
     recipient?: string;
 };
 
-/**
- * Generate a branded PDF receipt and offer share/print.
- * Call when payment is released (milestone paid).
- * Uses expo-print + expo-sharing when available; no-op otherwise.
- */
-export async function generateAndShareReceipt(data: ReceiptData): Promise<void> {
-    try {
-        const printModule = 'expo-' + 'print';
-        const sharingModule = 'expo-' + 'sharing';
-        const Print = require(printModule) as typeof import('expo-print');
-        const Sharing = require(sharingModule) as typeof import('expo-sharing');
+export type MilestoneReceiptData = ReceiptData & {
+    milestoneTitle?: string;
+    projectId?: string;
+    milestoneId?: string;
+};
 
-        const html = `
+/**
+ * Generate a dark-themed branded PDF receipt and share via expo-print + expo-sharing.
+ */
+export async function generateAndShareReceipt(
+    data: MilestoneReceiptData,
+): Promise<void> {
+    const Print = await import('expo-print');
+    const Sharing = await import('expo-sharing');
+
+    const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Receipt</title>
+  <title>Diaspora Bridge Receipt</title>
   <style>
-    body { font-family: system-ui, sans-serif; padding: 24px; color: #0F172A; }
-    .brand { font-weight: 800; color: #0EA5E9; margin-bottom: 24px; }
-    h1 { font-size: 20px; margin: 0 0 16px 0; }
-    .row { display: flex; justify-content: space-between; margin: 8px 0; }
-    .label { color: #64748B; }
-    .amount { font-size: 24px; font-weight: 800; color: #10B981; margin: 16px 0; }
-    .footer { margin-top: 32px; font-size: 12px; color: #94A3B8; }
+    @page { margin: 0; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0A0F1A;
+      color: #F8FAFC;
+      padding: 40px 36px;
+    }
+    .brand {
+      font-size: 13px;
+      letter-spacing: 3px;
+      font-weight: 800;
+      color: #D4AF37;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .rule {
+      height: 1px;
+      background: linear-gradient(90deg, #D4AF37, transparent);
+      margin: 18px 0 28px;
+    }
+    h1 { font-size: 26px; margin: 0 0 6px; font-weight: 800; }
+    .sub { color: #94A3B8; font-size: 13px; margin-bottom: 28px; }
+    .card {
+      background: rgba(17,24,39,0.95);
+      border: 1px solid rgba(212,175,55,0.28);
+      border-radius: 16px;
+      padding: 22px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+    .label { color: #94A3B8; font-weight: 600; }
+    .value { color: #F8FAFC; font-weight: 700; text-align: right; }
+    .amount {
+      margin-top: 22px;
+      font-size: 32px;
+      font-weight: 800;
+      color: #D4AF37;
+    }
+    .footer {
+      margin-top: 36px;
+      font-size: 11px;
+      color: #64748B;
+      line-height: 1.5;
+    }
   </style>
 </head>
 <body>
-  <div class="brand">DIASPORA BRIDGE</div>
-  <h1>Payment Receipt</h1>
-  <div class="row"><span class="label">Project</span><span>${escapeHtml(data.projectTitle)}</span></div>
-  <div class="row"><span class="label">Date</span><span>${escapeHtml(data.date)}</span></div>
-  ${data.recipient ? `<div class="row"><span class="label">Recipient</span><span>${escapeHtml(data.recipient)}</span></div>` : ''}
-  <div class="amount">${escapeHtml(data.amount)} ${data.currency ?? 'CFA'}</div>
-  ${data.description ? `<p>${escapeHtml(data.description)}</p>` : ''}
-  <div class="footer">Secured by Stripe & Supabase · This is a computer-generated receipt.</div>
+  <div class="brand">Diaspora Bridge</div>
+  <div class="rule"></div>
+  <h1>Escrow Payment Receipt</h1>
+  <div class="sub">Secured milestone release · Computer-generated</div>
+  <div class="card">
+    <div class="row"><span class="label">Project</span><span class="value">${escapeHtml(data.projectTitle)}</span></div>
+    ${data.milestoneTitle ? `<div class="row"><span class="label">Milestone</span><span class="value">${escapeHtml(data.milestoneTitle)}</span></div>` : ''}
+    <div class="row"><span class="label">Date</span><span class="value">${escapeHtml(data.date)}</span></div>
+    ${data.recipient ? `<div class="row"><span class="label">Recipient</span><span class="value">${escapeHtml(data.recipient)}</span></div>` : ''}
+    ${data.description ? `<div class="row"><span class="label">Note</span><span class="value">${escapeHtml(data.description)}</span></div>` : ''}
+    <div class="amount">${escapeHtml(data.amount)}${data.currency && !String(data.amount).includes(data.currency) ? ` ${escapeHtml(data.currency)}` : ''}</div>
+  </div>
+  <div class="footer">
+    Diaspora Bridge Escrow · Stripe-secured settlements<br/>
+    Keep this receipt for your records. ID refs are stored in your project activity.
+  </div>
 </body>
 </html>
   `.trim();
 
-        const { uri } = await Print.printToFileAsync({ html });
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-            await Sharing.shareAsync(uri, { mimeType: 'application/pdf' });
-        }
-    } catch (_) {
-        // expo-print or expo-sharing not installed / unavailable
+    const { uri } = await Print.printToFileAsync({ html });
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+        await Sharing.shareAsync(uri, {
+            mimeType: 'application/pdf',
+            UTI: 'com.adobe.pdf',
+            dialogTitle: 'Share Escrow Receipt',
+        });
     }
 }
 

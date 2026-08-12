@@ -132,7 +132,7 @@ export default function MyProjectsScreen() {
                     renderItem={renderProjectCard}
                     contentContainerStyle={{
                         paddingTop: insets.top + 88,
-                        paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32,
+                        paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40,
                         paddingHorizontal: theme.spacing.lg,
                     }}
                     showsVerticalScrollIndicator={false}

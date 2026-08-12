@@ -12,11 +12,12 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import PremiumHeader from '@/components/PremiumHeader';
+import PremiumEmptyState from '@/components/PremiumEmptyState';
 import PulseLoader from '@/components/PulseLoader';
 import { providerMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
-import { mediumFeedback } from '@/utils/haptics';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_GOLD, PREMIUM_MUTED } from '@/constants/layout';
+import { mediumFeedback, successFeedback } from '@/utils/haptics';
+import { SCROLL_BOTTOM_INSET, PREMIUM_BG, PREMIUM_GOLD, PREMIUM_MUTED } from '@/constants/layout';
 
 export default function ActiveSites() {
     const insets = useSafeAreaInsets();
@@ -123,7 +124,7 @@ export default function ActiveSites() {
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={styles.enterBtn}
-                        onPress={() => { mediumFeedback(); router.push(`/provider/project/${item.id}`); }}
+                        onPress={() => { successFeedback(); router.push(`/provider/project/${item.id}`); }}
                     >
                         <Text style={styles.enterText}>{t('open')}</Text>
                         <Ionicons name="arrow-forward" size={16} color="#fff" />
@@ -279,29 +280,25 @@ export default function ActiveSites() {
                 ListHeaderComponent={listHeader}
                 contentContainerStyle={{
                     paddingTop: insets.top + 72,
-                    paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32,
+                    paddingBottom: SCROLL_BOTTOM_INSET,
                     paddingHorizontal: theme.spacing.lg,
                 }}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PREMIUM_GOLD} />}
                 ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <Ionicons
-                            name={activeTab === 'active' ? 'hammer-outline' : 'document-text-outline'}
-                            size={48}
-                            color="#94A3B8"
-                        />
-                        <Text style={styles.emptyTitle}>
-                            {activeTab === 'active' ? t('noActiveJobs') : t('noApplications')}
-                        </Text>
-                        <Text style={styles.emptySub}>
-                            {activeTab === 'active' ? t('clientDashboard.noProjects') : t('checkMarketHint')}
-                        </Text>
-                        {activeTab === 'applied' && (
-                            <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/provider/market')}>
-                                <Text style={styles.emptyBtnText}>{t('marketTitle')}</Text>
-                            </TouchableOpacity>
-                        )}
-                    </View>
+                    <PremiumEmptyState
+                        icon={activeTab === 'active' ? 'hammer-outline' : 'document-text-outline'}
+                        title={activeTab === 'active' ? (t('noActiveJobs') ?? 'No active jobs') : (t('noApplications') ?? 'No applications')}
+                        subtitle={
+                            activeTab === 'active'
+                                ? (t('clientDashboard.noProjects') ?? 'Browse the market and win a site to get started.')
+                                : (t('checkMarketHint') ?? 'Apply to open jobs in the market to fill this list.')
+                        }
+                        actionLabel={t('marketTitle') ?? 'Browse Market'}
+                        onAction={() => {
+                            successFeedback();
+                            router.push('/provider/market');
+                        }}
+                    />
                 }
             />
         </View>
@@ -391,9 +388,4 @@ const styles = StyleSheet.create({
     ticketValue: { fontSize: 14, fontWeight: '600', color: PREMIUM_MUTED },
     verticalLine: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.12)' },
 
-    emptyContainer: { alignItems: 'center', marginTop: 40, paddingHorizontal: 32, gap: 8 },
-    emptyTitle: { fontSize: 18, fontWeight: '700', color: '#F8FAFC', marginTop: 8 },
-    emptySub: { textAlign: 'center', color: PREMIUM_MUTED, lineHeight: 22 },
-    emptyBtn: { marginTop: 12, backgroundColor: PREMIUM_GOLD, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
-    emptyBtnText: { color: '#0A0F1A', fontWeight: '800', fontSize: 14 },
 });

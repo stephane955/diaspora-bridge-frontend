@@ -64,7 +64,7 @@ export default function WithdrawScreen() {
                 menuItems={providerMenuItems(router, t)}
             />
             <VaultGate promptMessage="Unlock to withdraw funds." lockOnBlur>
-            <View style={[styles.content, { paddingTop: insets.top + 88, paddingHorizontal: 20, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}>
+            <View style={[styles.content, { paddingTop: insets.top + 88, paddingHorizontal: 20, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40 }]}>
                 <Text style={styles.label}>Select Method</Text>
                 <View style={styles.methodRow}>
                     <TouchableOpacity

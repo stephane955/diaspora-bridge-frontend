@@ -10,11 +10,14 @@ import { supabase } from '@/lib/supabase';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
 import { useLanguage } from '@/context/LanguageContext';
 import PremiumHeader from '@/components/PremiumHeader';
+import PremiumEmptyState from '@/components/PremiumEmptyState';
 import PulseLoader from '@/components/PulseLoader';
 import { clientMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_MUTED } from '@/constants/layout';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_GOLD, TEXT_PRIMARY, TEXT_SECONDARY } from '@/constants/layout';
 import { rankBids, type ProviderStats } from '@/utils/bidScoring';
+import { hireProvider } from '@/lib/hireProvider';
+import FavoriteProviderButton from '@/components/FavoriteProviderButton';
 
 export default function ProposalsScreen() {
     const insets = useSafeAreaInsets();
@@ -78,84 +81,38 @@ export default function ProposalsScreen() {
 
     const handleHire = async (application: any) => {
         mediumFeedback();
+        const name = application.profiles?.full_name || 'this provider';
+        const amount = Number(application.bid_amount || 0).toLocaleString();
         Alert.alert(
-            t('confirmHire'),
-            `${t('hirePrompt')} ${application.profiles.full_name}?`,
+            t('confirmHire') || 'Confirm Hire',
+            `Are you sure you want to hire ${name} for ${amount} CFA? This will initialize the Escrow contract.`,
             [
-                { text: "Cancel", style: "cancel" },
+                { text: t('cancel') || 'Cancel', style: 'cancel' },
                 {
-                    text: "Hire Now",
-                    style: "default",
+                    text: t('hireNow') || 'Hire & Start Escrow',
+                    style: 'default',
                     onPress: async () => {
                         setHiringId(application.id);
                         try {
-                            // 1. Assign Provider & Start Project
-                            const { error: updateError } = await supabase
-                                .from('projects')
-                                .update({
-                                    assigned_provider_id: application.provider_id,
-                                    status: 'in_progress' // <--- The Project Goes Live!
-                                })
-                                .eq('id', id);
-
-                            if (updateError) throw updateError;
-
-                            // 2. Mark this app as accepted
-                            await supabase
-                                .from('project_applications')
-                                .update({ status: 'accepted' })
-                                .eq('id', application.id);
-
-                            // 3. Reject others (Optional cleanup)
-                            await supabase
-                                .from('project_applications')
-                                .update({ status: 'rejected' })
-                                .eq('project_id', id)
-                                .neq('id', application.id);
-
-                            // --- 4. NEW: AUTO-CREATE MILESTONES ---
-                            // This ensures the Workroom is not empty.
-                            // We split the bid into 2 chunks (50% / 50%) for simplicity.
-                            // --- 4. NEW: AUTO-CREATE MILESTONES ---
-                            // This ensures the Workroom is not empty.
-                            // We split the bid into 2 chunks (50% / 50%) for simplicity.
-                            const halfAmount = Math.floor(application.bid_amount / 2);
-                            const remainder = application.bid_amount - halfAmount;
-
-                            const { error: milesError } = await supabase.from('milestones').insert([
-                                {
-                                    project_id: id,
-                                    title: "Phase 1: Mobilization & Materials",
-                                    amount_cfa: halfAmount, // <-- FIXED: Changed from 'amount'
-                                    status: 'locked',
-                                    step_order: 1,
-                                },
-                                {
-                                    project_id: id,
-                                    title: "Phase 2: Completion & Handover",
-                                    amount_cfa: remainder, // <-- FIXED: Changed from 'amount'
-                                    status: 'locked',
-                                    step_order: 2,
-                                },
-                            ]);
-
-                            if (milesError) throw milesError;
-
-                            // <-- FIXED: Removed the 'funds_status' update because that column
-                            // doesn't exist and isn't needed.
-
+                            await hireProvider({
+                                projectId: String(id),
+                                applicationId: application.id,
+                                providerId: application.provider_id,
+                                bidAmount: Number(application.bid_amount || 0),
+                            });
                             successFeedback();
-                            Alert.alert("Success", "Provider Hired! Workroom created.");
-                            // Go back to Project Details so Client can see the "Active Provider" view
+                            Alert.alert(
+                                t('success') || 'Success',
+                                t('providerHiredEscrow') || 'Provider hired! Escrow workroom is ready.',
+                            );
                             router.replace(`/diaspora/project/${id}`);
-
                         } catch (err: any) {
-                            Alert.alert("Error", err.message);
+                            Alert.alert(t('errorTitle') || 'Error', err.message);
                             setHiringId(null);
                         }
-                    }
-                }
-            ]
+                    },
+                },
+            ],
         );
     };
 
@@ -197,6 +154,7 @@ export default function ProposalsScreen() {
                     <View style={styles.bidBadge}>
                         <Text style={styles.bidAmount}>{item.bid_amount?.toLocaleString()} CFA</Text>
                     </View>
+                    <FavoriteProviderButton providerId={item.provider_id} size={18} />
                 </View>
 
                 {/* Smart Bid details */}
@@ -241,9 +199,9 @@ export default function ProposalsScreen() {
                         disabled={!!hiringId}
                     >
                         {hiringId === item.id ? (
-                            <ActivityIndicator color={theme.colors.surface} />
+                            <ActivityIndicator color="#0A0F1A" />
                         ) : (
-                            <Text style={styles.hireText}>HIRE FOR {item.bid_amount?.toLocaleString()}</Text>
+                            <Text style={styles.hireText}>HIRE FOR {item.bid_amount?.toLocaleString()} CFA</Text>
                         )}
                     </TouchableOpacity>
                 )}
@@ -261,7 +219,7 @@ export default function ProposalsScreen() {
                 menuItems={clientMenuItems(router, t)}
             />
             {loading ? (
-                <View style={styles.center}><PulseLoader /></View>
+                <View style={styles.center}><PulseLoader color={PREMIUM_GOLD} /></View>
             ) : (
                 <FlatList
                     data={proposals}
@@ -269,15 +227,15 @@ export default function ProposalsScreen() {
                     renderItem={renderProposal}
                     contentContainerStyle={{
                         paddingTop: insets.top + 88,
-                        paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32,
+                        paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40,
                         paddingHorizontal: theme.spacing.lg,
                     }}
                     ListEmptyComponent={
-                        <View style={styles.emptyState}>
-                            <Ionicons name="documents-outline" size={48} color="#334155" />
-                            <Text style={styles.emptyText}>{t('noBidsYet')}</Text>
-                            <Text style={styles.emptySub}>{t('waitForProvidersApply')}</Text>
-                        </View>
+                        <PremiumEmptyState
+                            icon="documents-outline"
+                            title={t('noBidsYet') || 'No bids yet'}
+                            subtitle={t('waitForProvidersApply') || 'Providers will appear here once they apply.'}
+                        />
                     }
                 />
             )}
@@ -291,37 +249,37 @@ const styles = StyleSheet.create({
 
     list: { paddingTop: theme.spacing.md },
 
-    card: { backgroundColor: theme.colors.surface, borderRadius: theme.radii.md, padding: theme.spacing.md, marginBottom: theme.spacing.md, ...theme.shadow.soft, borderWidth: 1, borderColor: theme.colors.border },
-    cardExpanded: { borderColor: theme.colors.active, borderWidth: 1 },
-    cardRecommended: { borderColor: theme.colors.emerald, borderWidth: 2, ...theme.shadow.glowEmerald },
-    recommendedBadge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, marginBottom: theme.spacing.sm, paddingHorizontal: 10, paddingVertical: 6, borderRadius: theme.radii.pill, backgroundColor: theme.colors.emeraldSoft + '30', borderWidth: 1, borderColor: theme.colors.emerald + '60' },
-    recommendedText: { fontSize: 11, fontWeight: '800', color: theme.colors.emerald, letterSpacing: 0.5 },
+    card: { backgroundColor: 'rgba(17,24,39,0.75)', borderRadius: theme.radii.md, padding: theme.spacing.md, marginBottom: theme.spacing.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+    cardExpanded: { borderColor: PREMIUM_GOLD, borderWidth: 1.5 },
+    cardRecommended: { borderColor: PREMIUM_GOLD, borderWidth: 2, backgroundColor: 'rgba(212,175,55,0.08)' },
+    recommendedBadge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, marginBottom: theme.spacing.sm, paddingHorizontal: 10, paddingVertical: 6, borderRadius: theme.radii.pill, backgroundColor: 'rgba(212,175,55,0.15)', borderWidth: 1, borderColor: 'rgba(212,175,55,0.35)' },
+    recommendedText: { fontSize: 11, fontWeight: '800', color: PREMIUM_GOLD, letterSpacing: 0.5 },
     smartBidRow: { flexDirection: 'row', gap: theme.spacing.md, marginBottom: theme.spacing.sm },
-    smartBidText: { fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' },
+    smartBidText: { fontSize: 12, color: TEXT_SECONDARY, fontWeight: '600' },
 
     cardHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
-    avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.border },
-    name: { fontSize: 16, fontWeight: '700', color: theme.colors.text },
+    avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#1E293B' },
+    name: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY },
     ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-    rating: { fontSize: 12, color: theme.colors.textMuted },
+    rating: { fontSize: 12, color: TEXT_SECONDARY },
 
-    bidBadge: { backgroundColor: theme.colors.activeSoft + '25', paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, borderRadius: theme.radii.xs },
-    bidAmount: { fontSize: 14, fontWeight: '800', color: theme.colors.active },
+    bidBadge: { backgroundColor: 'rgba(212,175,55,0.12)', paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, borderRadius: theme.radii.xs, borderWidth: 1, borderColor: 'rgba(212,175,55,0.3)' },
+    bidAmount: { fontSize: 14, fontWeight: '800', color: PREMIUM_GOLD },
 
-    budgetRow: { marginBottom: theme.spacing.sm, paddingBottom: theme.spacing.sm, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
-    overBudget: { color: theme.colors.danger, fontSize: 12, fontWeight: '600' },
-    underBudget: { color: theme.colors.success, fontSize: 12, fontWeight: '600' },
+    budgetRow: { marginBottom: theme.spacing.sm, paddingBottom: theme.spacing.sm, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
+    overBudget: { color: '#F87171', fontSize: 12, fontWeight: '600' },
+    underBudget: { color: '#34D399', fontSize: 12, fontWeight: '600' },
 
     letterContainer: { marginBottom: theme.spacing.md },
-    letterLabel: { fontSize: 12, fontWeight: '700', color: theme.colors.textSubtle, marginBottom: 4, textTransform: 'uppercase' },
-    letterText: { fontSize: 14, color: theme.colors.text, lineHeight: 22 },
-    readMore: { fontSize: 12, color: theme.colors.active, fontWeight: '600', marginTop: 4 },
+    letterLabel: { fontSize: 12, fontWeight: '700', color: TEXT_SECONDARY, marginBottom: 4, textTransform: 'uppercase' },
+    letterText: { fontSize: 14, color: TEXT_PRIMARY, lineHeight: 22 },
+    readMore: { fontSize: 12, color: PREMIUM_GOLD, fontWeight: '600', marginTop: 4 },
 
-    hireBtn: { backgroundColor: theme.colors.primary, paddingVertical: theme.spacing.md, borderRadius: theme.radii.sm, alignItems: 'center' },
+    hireBtn: { backgroundColor: PREMIUM_GOLD, paddingVertical: theme.spacing.md, borderRadius: 14, alignItems: 'center' },
     hireBtnDisabled: { opacity: 0.7 },
-    hireText: { color: theme.colors.surface, fontWeight: '700', fontSize: 14, letterSpacing: 0.5 },
+    hireText: { color: '#0A0F1A', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
 
     emptyState: { alignItems: 'center', marginTop: 60, gap: theme.spacing.sm },
-    emptyText: { fontSize: 18, fontWeight: '700', color: theme.colors.text },
-    emptySub: { color: theme.colors.textMuted },
+    emptyText: { fontSize: 18, fontWeight: '700', color: TEXT_PRIMARY },
+    emptySub: { color: TEXT_SECONDARY },
 });

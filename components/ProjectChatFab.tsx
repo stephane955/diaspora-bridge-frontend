@@ -5,8 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
 import { useProjectUnreadCount } from '@/hooks/useProjectUnreadCount';
 import { markProjectChatRead } from '@/lib/chatReadState';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_GOLD } from '@/constants/layout';
-import { mediumFeedback } from '@/utils/haptics';
+import { SCROLL_BOTTOM_INSET, PREMIUM_GOLD } from '@/constants/layout';
+import { successFeedback } from '@/utils/haptics';
 
 type Props = {
     projectId: string;
@@ -17,14 +17,15 @@ type Props = {
 export default function ProjectChatFab({ projectId, bottomOffset, onPress }: Props) {
     const { user } = useAuth();
     const { unreadCount, refreshUnread } = useProjectUnreadCount(projectId, user?.id);
-    const bottom = bottomOffset ?? FLOATING_TAB_BAR_HEIGHT + 20;
+    /** Sit clearly above the floating glass tab bar */
+    const bottom = bottomOffset ?? SCROLL_BOTTOM_INSET + 8;
 
     return (
         <TouchableOpacity
             activeOpacity={0.9}
             style={[styles.wrap, { bottom }]}
             onPress={async () => {
-                mediumFeedback();
+                successFeedback();
                 if (user?.id) {
                     await markProjectChatRead(user.id, projectId);
                     await refreshUnread();

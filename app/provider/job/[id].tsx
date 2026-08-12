@@ -1,250 +1,389 @@
 import React, { useEffect, useState } from 'react';
 import {
-    View, Text, StyleSheet, Image, ScrollView, TouchableOpacity,
-    Alert, ActivityIndicator, Dimensions, StatusBar
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  StatusBar,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import PremiumHeader from '@/components/PremiumHeader';
 import { providerMenuItems } from '@/constants/premiumMenus';
 import { useLanguage } from '@/context/LanguageContext';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
-import { LinearGradient } from 'expo-linear-gradient';
+import {
+  FLOATING_TAB_BAR_HEIGHT,
+  PREMIUM_BG,
+  PREMIUM_GOLD,
+  TEXT_PRIMARY,
+  TEXT_SECONDARY,
+} from '@/constants/layout';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { theme } from '@/constants/theme';
+import { successFeedback, mediumFeedback } from '@/utils/haptics';
+import { formatTimePosted } from '@/lib/hireProvider';
 import { safeGoBack } from '@/utils/navigation';
 
-const { width } = Dimensions.get('window');
-
 export default function JobDetailsScreen() {
-    const insets = useSafeAreaInsets();
-    const { id } = useLocalSearchParams();
-    const router = useRouter();
-    const { user } = useAuth();
-    const { t } = useLanguage();
+  const insets = useSafeAreaInsets();
+  const { id } = useLocalSearchParams();
+  const router = useRouter();
+  const { user } = useAuth();
+  const { t } = useLanguage();
 
-    const [job, setJob] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const [applying, setApplying] = useState(false);
-    const [hasApplied, setHasApplied] = useState(false);
-    const [isAssigned, setIsAssigned] = useState(false);
+  const [job, setJob] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [applying, setApplying] = useState(false);
+  const [hasApplied, setHasApplied] = useState(false);
+  const [isAssigned, setIsAssigned] = useState(false);
+  const [showApply, setShowApply] = useState(false);
+  const [bidAmount, setBidAmount] = useState('');
+  const [coverLetter, setCoverLetter] = useState('');
 
-    useEffect(() => {
-        const fetchJobData = async () => {
-            if (!id || !user) return;
+  useEffect(() => {
+    const fetchJobData = async () => {
+      if (!id || !user) return;
+      try {
+        const { data: jobData, error } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('id', id)
+          .single();
+        if (error) throw error;
+        setJob(jobData);
+        if (jobData.assigned_provider_id === user.id) setIsAssigned(true);
 
-            try {
-                // 1. Fetch Job Details
-                const { data: jobData, error } = await supabase.from('projects').select('*').eq('id', id).single();
-                if (error) throw error;
-                setJob(jobData);
-
-                // 2. Check if this specific user is the hired provider
-                if (jobData.provider_id === user.id) {
-                    setIsAssigned(true);
-                }
-
-                // 3. Check if already applied (if not hired)
-                const { data: appData } = await supabase
-                    .from('project_applications')
-                    .select('*')
-                    .eq('project_id', id)
-                    .eq('provider_id', user.id)
-                    .maybeSingle();
-
-                if (appData) setHasApplied(true);
-            } catch (err) {
-                console.error("Error loading job details:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchJobData();
-    }, [id, user]);
-
-    const handleApply = async () => {
-        if (isAssigned) {
-            // This triggers when you click "Manage Project"
-            router.push(`/provider/job/${id}`);
-            return;
-        }
-
-        Alert.alert(
-            "Submit Application",
-            "The client will review your profile. You will be notified if accepted.",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Apply Now",
-                    onPress: async () => {
-                        setApplying(true);
-                        try {
-                            const { error } = await supabase
-                                .from('project_applications')
-                                .insert({
-                                    project_id: id,
-                                    provider_id: user?.id,
-                                    status: 'pending'
-                                });
-
-                            if (error) throw error;
-
-                            setHasApplied(true);
-                            Alert.alert("Success", "Application sent!");
-                        } catch (error: any) {
-                            Alert.alert("Error", error.message || "Could not send application.");
-                        } finally {
-                            setApplying(false);
-                        }
-                    }
-                }
-            ]
-        );
+        const { data: appData } = await supabase
+          .from('project_applications')
+          .select('*')
+          .eq('project_id', id)
+          .eq('provider_id', user.id)
+          .maybeSingle();
+        if (appData) setHasApplied(true);
+      } catch (err) {
+        console.error('Error loading job details:', err);
+      } finally {
+        setLoading(false);
+      }
     };
+    fetchJobData();
+  }, [id, user]);
 
-    if (loading) return (
-        <View style={styles.center}><ActivityIndicator color="#0F172A" size="large" /></View>
-    );
+  const submitApplication = async () => {
+    if (!bidAmount || !coverLetter.trim()) {
+      Alert.alert('Missing Info', t('missingFields') || 'Enter your bid and a short cover letter.');
+      return;
+    }
+    setApplying(true);
+    try {
+      const { error } = await supabase.from('project_applications').insert({
+        project_id: id,
+        provider_id: user?.id,
+        bid_amount: parseFloat(bidAmount),
+        cover_letter: coverLetter.trim(),
+        status: 'pending',
+      });
+      if (error) {
+        if (error.code === '23505') Alert.alert('Already Applied', 'You have already bid on this job.');
+        else throw error;
+      } else {
+        successFeedback();
+        setHasApplied(true);
+        setShowApply(false);
+        Alert.alert(
+          t('success') || 'Successfully Applied',
+          t('applicationSentBody') || 'Your proposal was sent. The client will review your bid shortly.',
+        );
+        router.replace('/provider/active');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Could not send application.');
+    } finally {
+      setApplying(false);
+    }
+  };
 
-    if (!job) return (
-        <View style={styles.center}><Text>Job not found</Text></View>
-    );
+  const handlePrimary = () => {
+    if (isAssigned) {
+      router.push(`/workroom/${id}`);
+      return;
+    }
+    mediumFeedback();
+    setShowApply(true);
+  };
 
+  if (loading) {
     return (
-        <View style={[styles.container, { backgroundColor: PREMIUM_BG }]}>
-            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-            <PremiumHeader
-                title={job?.title ?? t('marketTitle')}
-                subtitle={job?.city ?? t('unknownLocation')}
-                showBack
-                fallbackRoute="/provider/market"
-                menuItems={providerMenuItems(router, t)}
-            />
-
-            <ScrollView contentContainerStyle={{ paddingTop: insets.top + 72, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: 20 }} bounces={false}>
-                {/* HERO IMAGE */}
-                <View style={styles.imageContainer}>
-                    <Image
-                        source={{ uri: job.image_url || 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5' }}
-                        style={styles.image}
-                    />
-                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.imageOverlay} />
-
-                    <TouchableOpacity style={styles.backBtn} onPress={() => safeGoBack(router, '/provider/market')}>
-                        <Ionicons name="arrow-back" size={24} color="#fff" />
-                    </TouchableOpacity>
-
-                    <View style={styles.titleContainer}>
-                        <View style={[styles.tag, isAssigned && { backgroundColor: '#16A34A' }]}>
-                            <Text style={styles.tagText}>{isAssigned ? "MY ACTIVE JOB" : "OPEN OPPORTUNITY"}</Text>
-                        </View>
-                        <Text style={styles.title}>{job.title}</Text>
-                        <View style={styles.locationRow}>
-                            <Ionicons name="location" size={16} color="#CBD5E1" />
-                            <Text style={styles.location}>{job.city}</Text>
-                        </View>
-                    </View>
-                </View>
-
-                {/* DETAILS BODY */}
-                <View style={styles.body}>
-                    <View style={styles.statsRow}>
-                        <View style={styles.statItem}>
-                            <Text style={styles.statLabel}>BUDGET</Text>
-                            <Text style={styles.statValue}>{job.budget?.toLocaleString()} CFA</Text>
-                        </View>
-                        <View style={styles.divider} />
-                        <View style={styles.statItem}>
-                            <Text style={styles.statLabel}>STATUS</Text>
-                            <Text style={styles.statValue}>{job.status?.toUpperCase()}</Text>
-                        </View>
-                    </View>
-
-                    <Text style={styles.sectionTitle}>Scope of Work</Text>
-                    <Text style={styles.description}>{job.description}</Text>
-
-                    <Text style={styles.sectionTitle}>Client Requirements</Text>
-                    <View style={styles.reqList}>
-                        <View style={styles.reqItem}>
-                            <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
-                            <Text style={styles.reqText}>Professional tools required</Text>
-                        </View>
-                        <View style={styles.reqItem}>
-                            <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
-                            <Text style={styles.reqText}>Daily photo updates</Text>
-                        </View>
-                    </View>
-                </View>
-            </ScrollView>
-
-            {/* FLOATING FOOTER ACTION */}
-            <View style={styles.footer}>
-                <View>
-                    <Text style={styles.footerLabel}>Total Payout</Text>
-                    <Text style={styles.footerPrice}>{job.budget?.toLocaleString()} CFA</Text>
-                </View>
-
-                <TouchableOpacity
-                    style={[
-                        styles.acceptBtn,
-                        hasApplied && !isAssigned && { backgroundColor: '#94A3B8' },
-                        isAssigned && { backgroundColor: '#0EA5E9' }
-                    ]}
-                    onPress={handleApply}
-                    disabled={(hasApplied && !isAssigned) || applying}
-                >
-                    {isAssigned ? (
-                        <>
-                            <Text style={styles.btnText}>Manage Project</Text>
-                            <Ionicons name="construct" size={20} color="#fff" />
-                        </>
-                    ) : hasApplied ? (
-                        <>
-                            <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                            <Text style={styles.btnText}>Application Sent</Text>
-                        </>
-                    ) : (
-                        <>
-                            <Text style={styles.btnText}>Request This Job</Text>
-                            <Ionicons name="paper-plane" size={20} color="#fff" />
-                        </>
-                    )}
-                </TouchableOpacity>
-            </View>
-        </View>
+      <View style={styles.center}>
+        <ActivityIndicator color={PREMIUM_GOLD} size="large" />
+      </View>
     );
+  }
+
+  if (!job) {
+    return (
+      <View style={styles.center}>
+        <Text style={{ color: TEXT_PRIMARY }}>Job not found</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <PremiumHeader
+        title={job?.title ?? t('marketTitle')}
+        subtitle={job?.city ?? t('unknownLocation')}
+        showBack
+        fallbackRoute="/provider/market"
+        menuItems={providerMenuItems(router, t)}
+      />
+
+      <ScrollView
+        contentContainerStyle={{
+          paddingTop: insets.top + 72,
+          paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40,
+          paddingHorizontal: 20,
+        }}
+        bounces={false}
+      >
+        <View style={styles.imageContainer}>
+          <Image
+            source={{
+              uri:
+                job.image_url ||
+                'https://images.unsplash.com/photo-1541888946425-d81bb19240f5',
+            }}
+            style={styles.image}
+          />
+          <LinearGradient colors={['transparent', 'rgba(10,15,26,0.92)']} style={styles.imageOverlay} />
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => safeGoBack(router, '/provider/market')}
+          >
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.titleContainer}>
+            <View style={[styles.tag, isAssigned && { backgroundColor: '#16A34A' }]}>
+              <Text style={styles.tagText}>
+                {isAssigned ? 'MY ACTIVE JOB' : 'OPEN OPPORTUNITY'}
+              </Text>
+            </View>
+            <Text style={styles.title}>{job.title}</Text>
+            <View style={styles.locationRow}>
+              <Ionicons name="location" size={16} color={TEXT_SECONDARY} />
+              <Text style={styles.location}>
+                {job.city} · {formatTimePosted(job.created_at)}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>BUDGET</Text>
+            <Text style={styles.statValue}>{job.budget?.toLocaleString()} CFA</Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>STATUS</Text>
+            <Text style={styles.statValue}>{job.status?.toUpperCase()}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.sectionTitle}>Scope of Work</Text>
+        <Text style={styles.description}>{job.description || 'No description provided.'}</Text>
+      </ScrollView>
+
+      <BlurView intensity={70} tint="dark" style={styles.footer}>
+        <View>
+          <Text style={styles.footerLabel}>Total Payout</Text>
+          <Text style={styles.footerPrice}>{job.budget?.toLocaleString()} CFA</Text>
+        </View>
+        <TouchableOpacity
+          style={[
+            styles.acceptBtn,
+            hasApplied && !isAssigned && { backgroundColor: '#475569' },
+            isAssigned && { backgroundColor: PREMIUM_GOLD },
+          ]}
+          onPress={handlePrimary}
+          disabled={(hasApplied && !isAssigned) || applying}
+        >
+          <Text style={styles.acceptText}>
+            {isAssigned
+              ? 'Open Workroom'
+              : hasApplied
+                ? 'Applied'
+                : t('submitApplication') || 'Apply'}
+          </Text>
+        </TouchableOpacity>
+      </BlurView>
+
+      <Modal visible={showApply} transparent animationType="slide">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setShowApply(false)} />
+          <BlurView intensity={55} tint="dark" style={styles.modal}>
+            <Text style={styles.modalTitle}>{t('submitApplication') || 'Submit Application'}</Text>
+            <Text style={styles.label}>{t('yourBid') || 'Your Bid Amount'} (CFA)</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="numeric"
+              placeholder="e.g. 50000"
+              placeholderTextColor={TEXT_SECONDARY}
+              value={bidAmount}
+              onChangeText={setBidAmount}
+            />
+            <Text style={styles.label}>{t('coverLetterWhyMe') || 'Cover Letter / Why me'}</Text>
+            <TextInput
+              style={[styles.input, { height: 110, textAlignVertical: 'top' }]}
+              multiline
+              placeholder="I have 5 years experience..."
+              placeholderTextColor={TEXT_SECONDARY}
+              value={coverLetter}
+              onChangeText={setCoverLetter}
+            />
+            <TouchableOpacity
+              style={styles.submitBtn}
+              onPress={submitApplication}
+              disabled={applying}
+            >
+              {applying ? (
+                <ActivityIndicator color="#0A0F1A" />
+              ) : (
+                <Text style={styles.submitText}>
+                  {t('submitApplication') || 'Submit Application'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </BlurView>
+        </KeyboardAvoidingView>
+      </Modal>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#fff' },
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    imageContainer: { height: 300, width: width, position: 'relative' },
-    image: { width: '100%', height: '100%' },
-    imageOverlay: { ...StyleSheet.absoluteFillObject },
-    backBtn: { position: 'absolute', top: 50, left: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
-    titleContainer: { position: 'absolute', bottom: 20, left: 20, right: 20 },
-    tag: { backgroundColor: '#0EA5E9', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 8 },
-    tagText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-    title: { fontSize: 28, fontWeight: '800', color: '#fff', marginBottom: 4 },
-    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    location: { color: '#E2E8F0', fontSize: 16 },
-    body: { padding: 24, backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30, marginTop: -20 },
-    statsRow: { flexDirection: 'row', backgroundColor: '#F8FAFC', padding: 16, borderRadius: 16, marginBottom: 30 },
-    statItem: { flex: 1, alignItems: 'center' },
-    divider: { width: 1, backgroundColor: '#E2E8F0' },
-    statLabel: { fontSize: 12, color: '#64748B', fontWeight: '700', marginBottom: 4 },
-    statValue: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-    sectionTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 12, marginTop: 10 },
-    description: { fontSize: 16, color: '#475569', lineHeight: 24, marginBottom: 30 },
-    reqList: { gap: 12 },
-    reqItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    reqText: { fontSize: 15, color: '#334155' },
-    footer: { position: 'absolute', bottom: 90, left: 20, right: 20, borderRadius: 20, backgroundColor: '#fff', padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', shadowColor: '#000', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.15, shadowRadius: 12, elevation: 10, zIndex: 100 },
-    footerLabel: { fontSize: 12, color: '#64748B' },
-    footerPrice: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
-    acceptBtn: { backgroundColor: '#0F172A', flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 14, gap: 8 },
-    btnText: { color: '#fff', fontSize: 16, fontWeight: '700' }
+  container: { flex: 1, backgroundColor: PREMIUM_BG },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: PREMIUM_BG,
+  },
+  imageContainer: { height: 260, borderRadius: 24, overflow: 'hidden', marginBottom: 18 },
+  image: { width: '100%', height: '100%' },
+  imageOverlay: { ...StyleSheet.absoluteFillObject },
+  backBtn: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  titleContainer: { position: 'absolute', left: 16, right: 16, bottom: 16 },
+  tag: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(212,175,55,0.25)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  tagText: { color: PREMIUM_GOLD, fontSize: 11, fontWeight: '800' },
+  title: { color: TEXT_PRIMARY, fontSize: 24, fontWeight: '800' },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  location: { color: TEXT_SECONDARY, fontWeight: '600' },
+  statsRow: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(17,24,39,0.75)',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    marginBottom: 20,
+  },
+  statItem: { flex: 1, alignItems: 'center' },
+  divider: { width: 1, backgroundColor: 'rgba(255,255,255,0.1)' },
+  statLabel: { color: TEXT_SECONDARY, fontSize: 11, fontWeight: '800', marginBottom: 4 },
+  statValue: { color: PREMIUM_GOLD, fontSize: 16, fontWeight: '800' },
+  sectionTitle: { color: TEXT_PRIMARY, fontSize: 18, fontWeight: '800', marginBottom: 8 },
+  description: { color: TEXT_SECONDARY, fontSize: 14, lineHeight: 22 },
+  footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(10,15,26,0.92)',
+  },
+  footerLabel: { color: TEXT_SECONDARY, fontSize: 12, fontWeight: '700' },
+  footerPrice: { color: TEXT_PRIMARY, fontSize: 20, fontWeight: '800' },
+  acceptBtn: {
+    backgroundColor: PREMIUM_GOLD,
+    paddingHorizontal: 22,
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  acceptText: { color: '#0A0F1A', fontWeight: '800', fontSize: 14 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(10,15,26,0.7)', justifyContent: 'flex-end' },
+  modal: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 22,
+    paddingBottom: 36,
+    backgroundColor: 'rgba(17,24,39,0.96)',
+    borderTopWidth: 1,
+    borderColor: 'rgba(212,175,55,0.25)',
+    overflow: 'hidden',
+  },
+  modalTitle: { color: TEXT_PRIMARY, fontSize: 20, fontWeight: '800', marginBottom: 12 },
+  label: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 8,
+    marginTop: 10,
+    textTransform: 'uppercase',
+  },
+  input: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 14,
+    padding: 14,
+    color: TEXT_PRIMARY,
+    fontSize: 16,
+  },
+  submitBtn: {
+    marginTop: 20,
+    backgroundColor: PREMIUM_GOLD,
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitText: { color: '#0A0F1A', fontWeight: '800', fontSize: 15 },
 });

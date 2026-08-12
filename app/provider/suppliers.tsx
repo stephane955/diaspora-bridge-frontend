@@ -54,7 +54,7 @@ export default function SuppliersScreen() {
                 <FlatList
                     data={suppliers}
                     keyExtractor={(item) => item.id}
-                    contentContainerStyle={[styles.list, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}
+                    contentContainerStyle={[styles.list, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40 }]}
                     refreshControl={
                         <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchSuppliers(); }} />
                     }

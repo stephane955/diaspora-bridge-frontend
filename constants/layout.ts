@@ -1,4 +1,6 @@
 export const FLOATING_TAB_BAR_HEIGHT = 98;
+/** Strict bottom inset so list content never sits under the floating glass tab bar */
+export const SCROLL_BOTTOM_INSET = FLOATING_TAB_BAR_HEIGHT + 40;
 export const PREMIUM_BG = '#0A0F1A';
 export const PREMIUM_SURFACE = '#111827';
 export const PREMIUM_GOLD = '#D4AF37';

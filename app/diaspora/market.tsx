@@ -123,7 +123,7 @@ export default function MarketScreen() {
                     estimatedItemSize={220}
                     contentContainerStyle={{
                         paddingTop: insets.top + 88,
-                        paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32,
+                        paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40,
                         paddingHorizontal: theme.spacing.lg,
                     }}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchProjects(); }} tintColor="#D4AF37" />}

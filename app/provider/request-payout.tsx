@@ -46,7 +46,7 @@ export default function RequestPayout() {
                 fallbackRoute="/provider/earnings"
                 menuItems={providerMenuItems(router, t)}
             />
-            <View style={[styles.form, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}>
+            <View style={[styles.form, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40 }]}>
             <Text style={styles.title}>Request Payment</Text>
             <Text style={styles.label}>Amount (CFA)</Text>
             <TextInput style={styles.input} keyboardType="numeric" value={amount} onChangeText={setAmount} placeholder="e.g. 500000" />

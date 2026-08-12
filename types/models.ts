@@ -111,6 +111,7 @@ export type ProjectContract = {
     updated_at: string;
 };
 
+/** Legacy project_disputes row (may still exist alongside `disputes`) */
 export type ProjectDispute = {
     id: string;
     project_id: string;
@@ -121,6 +122,41 @@ export type ProjectDispute = {
     status: 'open' | 'resolved';
     created_at: string;
     resolved_at: string | null;
+};
+
+/** Enterprise disputes table */
+export type DisputeStatus = 'open' | 'under_review' | 'resolved';
+
+export type Dispute = {
+    id: string;
+    project_id: string;
+    milestone_id: string | null;
+    raised_by_id: string;
+    reason: string;
+    status: DisputeStatus;
+    admin_decision: string | null;
+    created_at: string;
+    updated_at?: string;
+};
+
+export type FavoriteProvider = {
+    id: string;
+    client_id: string;
+    provider_id: string;
+    created_at: string;
+    provider?: Profile | null;
+};
+
+export type SupportTicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+
+export type SupportTicket = {
+    id: string;
+    user_id: string;
+    issue_type: string;
+    description: string;
+    status: SupportTicketStatus;
+    created_at: string;
+    updated_at?: string;
 };
 
 export type ProjectAccessRole = 'owner' | 'provider' | 'observer' | null;

@@ -14,10 +14,11 @@ import { theme } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/context/LanguageContext';
 import PremiumHeader from '@/components/PremiumHeader';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
+import { FLOATING_TAB_BAR_HEIGHT } from '@/constants/layout';
 import PulseLoader from '@/components/PulseLoader';
 import { mediumFeedback } from '@/utils/haptics';
 import { clientMenuItems } from '@/constants/premiumMenus';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
 
 import ProjectStories from '@/components/ProjectStories';
 
@@ -26,6 +27,7 @@ export default function DiasporaDashboard() {
     const router = useRouter();
     const { session } = useAuth();
     const { t } = useLanguage();
+    const c = usePremiumColors();
 
     const [projects, setProjects] = useState<any[]>([]);
     const [activities, setActivities] = useState<any[]>([]);
@@ -158,8 +160,8 @@ export default function DiasporaDashboard() {
     }
 
     return (
-        <View style={styles.container}>
-            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <View style={[styles.container, { backgroundColor: c.bg }]}>
+            <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
             <PremiumHeader
                 title={profile?.full_name?.split(' ')[0] || t('tabHome') || 'Home'}
                 subtitle={t('buildingDreams')}
@@ -169,7 +171,7 @@ export default function DiasporaDashboard() {
 
             <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingTop: insets.top + 72, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: theme.spacing.lg }}
+                contentContainerStyle={{ paddingTop: insets.top + 72, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40, paddingHorizontal: theme.spacing.lg }}
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}
@@ -302,7 +304,7 @@ export default function DiasporaDashboard() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: PREMIUM_BG },
+    container: { flex: 1 },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
     // --- HERO ---

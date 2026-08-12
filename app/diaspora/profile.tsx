@@ -142,7 +142,7 @@ export default function ClientProfileScreen() {
                 menuItems={clientMenuItems(router, t)}
             />
             <ScrollView
-                contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 72, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32 }]}
+                contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 72, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40 }]}
                 showsVerticalScrollIndicator={false}
             >
 

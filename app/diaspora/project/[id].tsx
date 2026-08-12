@@ -23,6 +23,12 @@ import ClientApprovalCard from '@/components/ClientApprovalCard';
 import ChatRoom from '@/components/ChatRoom';
 import EvidenceImage from '@/components/EvidenceImage';
 import ProjectChatFab from '@/components/ProjectChatFab';
+import ApplicantCard from '@/components/ApplicantCard';
+import PremiumEmptyState from '@/components/PremiumEmptyState';
+import RequestRevisionSheet from '@/components/RequestRevisionSheet';
+import OpenDisputeSheet from '@/components/OpenDisputeSheet';
+import FavoriteProviderButton from '@/components/FavoriteProviderButton';
+import DownloadReceiptButton from '@/components/DownloadReceiptButton';
 import { markProjectChatRead } from '@/lib/chatReadState';
 
 const NAVY = '#0F172A';
@@ -91,6 +97,10 @@ export default function ProjectDetailsScreen() {
     const [submittingReview, setSubmittingReview] = useState(false);
     const [approvingId, setApprovingId] = useState<string | null>(null);
     const [rejectingId, setRejectingId] = useState<string | null>(null);
+    const [revisionTarget, setRevisionTarget] = useState<{ id: string; title: string } | null>(null);
+    const [disputeTarget, setDisputeTarget] = useState<{ id: string; title: string } | null>(null);
+    const [revisionBusy, setRevisionBusy] = useState(false);
+    const [disputeBusy, setDisputeBusy] = useState(false);
     const [chatModalVisible, setChatModalVisible] = useState(false);
 
     // Note: 'hiring' state removed here because hiring moved to Proposals screen
@@ -263,10 +273,14 @@ export default function ProjectDetailsScreen() {
         }
     }, [openApproval, pendingReviewMilestone, nextReleasableMilestone]);
 
-    // Pulsing Live badge
+    // Pulsing Live badge — derive flags from project status (avoid TDZ before later consts)
     const liveOpacity = useRef(new Animated.Value(1)).current;
     useEffect(() => {
-        if (!isCommandCenter || isCompleted) return;
+        const status = project?.status;
+        const completed = status === 'completed';
+        const commandCenter =
+            status === 'in_progress' || status === 'In Progress' || status === 'completed';
+        if (!commandCenter || completed) return;
         const pulse = Animated.loop(
             Animated.sequence([
                 Animated.timing(liveOpacity, { toValue: 0.5, duration: 800, useNativeDriver: true }),
@@ -275,7 +289,7 @@ export default function ProjectDetailsScreen() {
         );
         pulse.start();
         return () => pulse.stop();
-    }, [isCommandCenter, isCompleted]);
+    }, [project?.status, liveOpacity]);
 
     // --- ANIMATION CONFIG ---
     const headerTranslateY = scrollY.interpolate({
@@ -366,33 +380,86 @@ export default function ProjectDetailsScreen() {
         ]);
     };
 
-    const handleRejectMilestone = async (milestoneId: string) => {
-        Alert.alert(t('rejectProof'), t('rejectPhaseConfirm'), [
-            { text: t('cancel'), style: 'cancel' },
-            {
-                text: t('rejectProof'),
-                style: 'destructive',
-                onPress: async () => {
-                    setRejectingId(milestoneId);
-                    patchMilestone(milestoneId, { status: 'in_progress', evidence_url: null });
-                    try {
-                        const { error } = await supabase
-                            .from('milestones')
-                            .update({ status: 'in_progress', evidence_url: null })
-                            .eq('id', milestoneId)
-                            .eq('status', 'in_review');
-                        if (error) throw error;
-                        mediumFeedback();
-                        fetchData();
-                    } catch (err: any) {
-                        fetchData();
-                        Alert.alert('Error', err.message || 'Could not reject phase.');
-                    } finally {
-                        setRejectingId(null);
-                    }
-                },
-            },
-        ]);
+    const handleRequestRevision = async (reason: string) => {
+        if (!revisionTarget || !user?.id || !id) return;
+        const milestoneId = revisionTarget.id;
+        setRevisionBusy(true);
+        setRejectingId(milestoneId);
+        patchMilestone(milestoneId, { status: 'in_progress' });
+        try {
+            const { error } = await supabase
+                .from('milestones')
+                .update({ status: 'in_progress' })
+                .eq('id', milestoneId)
+                .eq('status', 'in_review');
+            if (error) throw error;
+
+            const chatBody = `${t('revisionChatPrefix', { title: revisionTarget.title })}\n${reason.trim()}`;
+            const { error: msgErr } = await supabase.from('messages').insert({
+                project_id: id,
+                sender_id: user.id,
+                content: chatBody,
+            } as any);
+            if (msgErr) throw msgErr;
+
+            setRevisionTarget(null);
+            mediumFeedback();
+            Alert.alert(t('revisionSentTitle'), t('revisionSentBody'));
+            fetchData();
+        } catch (err: any) {
+            fetchData();
+            Alert.alert(t('errorTitle'), err.message || t('errorTitle'));
+        } finally {
+            setRevisionBusy(false);
+            setRejectingId(null);
+        }
+    };
+
+    const handleOpenDispute = async (reason: string) => {
+        if (!disputeTarget || !user?.id || !id) return;
+        setDisputeBusy(true);
+        try {
+            const { error: dErr } = await supabase.from('disputes').insert({
+                project_id: id,
+                milestone_id: disputeTarget.id,
+                raised_by_id: user.id,
+                reason: reason.trim(),
+                status: 'open',
+            });
+            if (dErr) throw dErr;
+
+            const { error: mErr } = await supabase
+                .from('milestones')
+                .update({
+                    status: 'disputed',
+                    dispute_status: 'open',
+                    disputed_at: new Date().toISOString(),
+                })
+                .eq('id', disputeTarget.id);
+            if (mErr) {
+                await supabase
+                    .from('milestones')
+                    .update({ dispute_status: 'open', disputed_at: new Date().toISOString() })
+                    .eq('id', disputeTarget.id);
+            }
+
+            await supabase.from('projects').update({ dispute_milestone_id: disputeTarget.id }).eq('id', id);
+
+            await supabase.from('project_disputes').insert({
+                project_id: id,
+                milestone_id: disputeTarget.id,
+                opened_by: user.id,
+                status: 'open',
+            });
+
+            setDisputeTarget(null);
+            Alert.alert(t('disputeOpenedTitle'), t('disputeOpenedBody'));
+            fetchData();
+        } catch (err: any) {
+            Alert.alert(t('errorTitle'), err.message || t('errorTitle'));
+        } finally {
+            setDisputeBusy(false);
+        }
     };
 
     const handleContractSign = async () => {
@@ -711,26 +778,58 @@ export default function ProjectDetailsScreen() {
                                                                             borderRadius={14}
                                                                             disabled={!!approvingId || !!rejectingId}
                                                                             opacity={approvingId === m.id || rejectingId === m.id ? 0.7 : 1}
-                                                                            backgroundColor="rgba(239,68,68,0.15)"
+                                                                            backgroundColor="rgba(212,175,55,0.16)"
                                                                             borderWidth={1}
-                                                                            borderColor="rgba(239,68,68,0.35)"
-                                                                            pressStyle={{ backgroundColor: 'rgba(239,68,68,0.25)', scale: 0.98 }}
-                                                                            onPress={() => handleRejectMilestone(m.id)}
+                                                                            borderColor="rgba(212,175,55,0.45)"
+                                                                            pressStyle={{ backgroundColor: 'rgba(212,175,55,0.28)', scale: 0.98 }}
+                                                                            onPress={() => {
+                                                                                mediumFeedback();
+                                                                                setRevisionTarget({ id: m.id, title: m.title || 'Milestone' });
+                                                                            }}
                                                                         >
                                                                             <XStack alignItems="center" justifyContent="center" gap={8}>
                                                                                 {rejectingId === m.id ? (
-                                                                                    <ActivityIndicator color="#FCA5A5" />
+                                                                                    <ActivityIndicator color={PREMIUM_GOLD} />
                                                                                 ) : (
-                                                                                    <Ionicons name="close-circle-outline" size={20} color="#FCA5A5" />
+                                                                                    <Ionicons name="refresh-circle-outline" size={20} color={PREMIUM_GOLD} />
                                                                                 )}
-                                                                                <TamaguiText color="#FCA5A5" fontWeight="700" fontSize={15}>
-                                                                                    {t('rejectProof')}
+                                                                                <TamaguiText color={PREMIUM_GOLD} fontWeight="700" fontSize={15}>
+                                                                                    {t('requestRevision')}
                                                                                 </TamaguiText>
                                                                             </XStack>
                                                                         </Button>
+
+                                                                        <TouchableOpacity
+                                                                            onPress={() => {
+                                                                                mediumFeedback();
+                                                                                setDisputeTarget({ id: m.id, title: m.title || 'Milestone' });
+                                                                            }}
+                                                                            style={{ alignSelf: 'center', paddingVertical: 8 }}
+                                                                            disabled={!!approvingId || !!rejectingId || !!disputeBusy}
+                                                                        >
+                                                                            <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 13, textDecorationLine: 'underline' }}>
+                                                                                {t('openDispute')}
+                                                                            </Text>
+                                                                        </TouchableOpacity>
                                                                     </YStack>
                                                                 )}
                                                             </View>
+                                                        )}
+
+                                                        {isPaid && (
+                                                            <DownloadReceiptButton
+                                                                data={{
+                                                                    projectTitle: project?.title ?? 'Project',
+                                                                    milestoneTitle: m.title,
+                                                                    amount: `${amount.toLocaleString()} CFA`,
+                                                                    currency: 'CFA',
+                                                                    date: new Date(m.updated_at || m.created_at || Date.now()).toLocaleDateString(),
+                                                                    recipient: project?.profiles?.full_name || undefined,
+                                                                    description: `Milestone release · ${m.title}`,
+                                                                    projectId: String(id),
+                                                                    milestoneId: m.id,
+                                                                }}
+                                                            />
                                                         )}
 
                                                         {isApproved && !isPaid && (
@@ -883,28 +982,21 @@ export default function ProjectDetailsScreen() {
 
                     {isPending ? (
                         applications.length === 0 ? (
-                            <View style={styles.emptyCard}>
-                                <Ionicons name="people-outline" size={32} color="#CBD5E1" />
-                                <Text style={styles.emptyText}>Waiting for providers...</Text>
-                            </View>
+                            <PremiumEmptyState
+                                icon="people-outline"
+                                title={t('waitingForProviders') || 'Waiting for providers...'}
+                                subtitle={t('applicantsWillAppear') || 'When providers apply, you can compare bids and hire from here.'}
+                            />
                         ) : (
-                            // Show top 3 max, guide user to click "View" to see details
                             applications.slice(0, 3).map((app) => (
-                                <View key={app.id} style={styles.applicantCard}>
-                                    <View style={styles.applicantInfo}>
-                                        <Image source={{ uri: app.profiles?.avatar_url || 'https://i.pravatar.cc/150' }} style={styles.avatar} />
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.appName}>{app.profiles?.full_name}</Text>
-                                            <Text style={styles.appRating}>⭐ {app.profiles?.rating || 'New'} • Bid: {app.bid_amount?.toLocaleString()}</Text>
-                                        </View>
-                                    </View>
-                                    <TouchableOpacity
-                                        style={[styles.hireBtn, { backgroundColor: '#F1F5F9' }]}
-                                        onPress={() => router.push(`/diaspora/project/proposals?id=${id}`)}
-                                    >
-                                        <Text style={[styles.hireText, { color: '#0F172A' }]}>View</Text>
-                                    </TouchableOpacity>
-                                </View>
+                                <ApplicantCard
+                                    key={app.id}
+                                    application={app}
+                                    projectId={String(id)}
+                                    compact
+                                    onPressView={() => router.push(`/diaspora/project/proposals?id=${id}`)}
+                                    onHired={() => fetchData()}
+                                />
                             ))
                         )
                     ) : (
@@ -914,6 +1006,7 @@ export default function ProjectDetailsScreen() {
                                 <Text style={styles.provName}>{project.profiles?.full_name}</Text>
                                 <Text style={styles.provStatus}>Verified Professional</Text>
                             </View>
+                            <FavoriteProviderButton providerId={project.assigned_provider_id} />
                             <TouchableOpacity
                                 style={styles.callBtn}
                                 onPress={() => {
@@ -1457,6 +1550,21 @@ export default function ProjectDetailsScreen() {
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
+
+            <RequestRevisionSheet
+                visible={!!revisionTarget}
+                milestoneTitle={revisionTarget?.title}
+                loading={revisionBusy}
+                onClose={() => !revisionBusy && setRevisionTarget(null)}
+                onSubmit={handleRequestRevision}
+            />
+            <OpenDisputeSheet
+                visible={!!disputeTarget}
+                milestoneTitle={disputeTarget?.title}
+                loading={disputeBusy}
+                onClose={() => !disputeBusy && setDisputeTarget(null)}
+                onSubmit={handleOpenDispute}
+            />
 
         </View>
     );

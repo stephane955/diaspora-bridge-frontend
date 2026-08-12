@@ -183,7 +183,7 @@ export default function RequestsScreen() {
                     data={requests}
                     keyExtractor={item => item.id.toString()}
                     renderItem={renderItem}
-                    contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: 20 }]}
+                    contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40, paddingHorizontal: 20 }]}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4AF37" />}
                     ListHeaderComponent={
                         <View style={styles.listHeader}>

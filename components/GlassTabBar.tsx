@@ -10,8 +10,9 @@ import {
   HardHat,
   ScanLine,
 } from 'lucide-react-native';
-import { mediumFeedback } from '@/utils/haptics';
+import { successFeedback } from '@/utils/haptics';
 import { FLOATING_TAB_BAR_HEIGHT } from '@/constants/layout';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
 
 export type TabBarRole = 'client' | 'provider';
 
@@ -39,6 +40,7 @@ type Props = BottomTabBarProps & {
 };
 
 export default function GlassTabBar({ state, descriptors, navigation, role = 'client' }: Props) {
+  const c = usePremiumColors();
   const allowed = role === 'provider' ? PROVIDER_ROUTES : CLIENT_ROUTES;
   const iconMap = role === 'provider' ? PROVIDER_ICONS : CLIENT_ICONS;
 
@@ -52,11 +54,16 @@ export default function GlassTabBar({ state, descriptors, navigation, role = 'cl
 
   return (
     <View style={styles.container} pointerEvents="box-none">
-      <BlurView intensity={Platform.OS === 'ios' ? 88 : 72} tint="dark" style={styles.glass}>
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 92 : 80}
+        tint={c.blurTint}
+        style={[styles.glass, { borderColor: c.isDark ? 'rgba(212,175,55,0.18)' : 'rgba(15,23,42,0.08)' }]}
+      >
+        <View style={[styles.glassTint, { backgroundColor: c.glass }]} pointerEvents="none" />
         {visibleRoutes.map((route) => {
           const isFocused = state.routes[state.index].key === route.key;
           const Icon = iconMap[route.name] ?? Home;
-          const color = isFocused ? '#F8FAFC' : '#64748B';
+          const color = isFocused ? c.gold : c.textSecondary;
 
           const onPress = () => {
             const event = navigation.emit({
@@ -64,7 +71,7 @@ export default function GlassTabBar({ state, descriptors, navigation, role = 'cl
               target: route.key,
               canPreventDefault: true,
             });
-            if (isFocused) mediumFeedback();
+            successFeedback();
             if (!isFocused && !event.defaultPrevented) {
               navigation.navigate(route.name, route.params);
             }
@@ -80,9 +87,9 @@ export default function GlassTabBar({ state, descriptors, navigation, role = 'cl
               activeOpacity={0.85}
             >
               <View style={[styles.iconWrap, isFocused && styles.iconWrapActive]}>
-                <Icon size={22} color={color} strokeWidth={isFocused ? 2.4 : 2} />
+                <Icon size={22} color={color} strokeWidth={isFocused ? 2.5 : 2} />
               </View>
-              {isFocused ? <View style={styles.activePill} /> : null}
+              {isFocused ? <View style={styles.activeGlow} /> : null}
             </TouchableOpacity>
           );
         })}
@@ -106,10 +113,10 @@ const styles = StyleSheet.create({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.35,
-        shadowRadius: 24,
+        shadowOpacity: 0.4,
+        shadowRadius: 28,
       },
-      android: { elevation: 16 },
+      android: { elevation: 18 },
     }),
   },
   glass: {
@@ -120,8 +127,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(15,23,42,0.55)',
+  },
+  glassTint: {
+    ...StyleSheet.absoluteFillObject,
   },
   tab: {
     flex: 1,
@@ -137,13 +145,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconWrapActive: {
-    backgroundColor: 'rgba(37,99,235,0.22)',
+    backgroundColor: 'rgba(212,175,55,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.35)',
   },
-  activePill: {
+  activeGlow: {
     position: 'absolute',
     bottom: 8,
-    width: 4,
-    height: 4,
+    width: 18,
+    height: 3,
     borderRadius: 2,
     backgroundColor: '#D4AF37',
   },

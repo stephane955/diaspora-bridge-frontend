@@ -1,27 +1,34 @@
 import React, { useState } from 'react';
 import {
-    View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Platform,
+    View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '@/context/LanguageContext';
-import { lightFeedback } from '@/utils/haptics';
+import { useAuth } from '@/context/AuthContext';
+import { lightFeedback, successFeedback } from '@/utils/haptics';
 import PremiumHeader from '@/components/PremiumHeader';
+import ThemeToggleRow from '@/components/ThemeToggleRow';
 import { clientMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
+import { FLOATING_TAB_BAR_HEIGHT } from '@/constants/layout';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
 
 const LANGUAGES = [
     { code: 'en', label: 'English', flag: '🇺🇸' },
     { code: 'fr', label: 'Français', flag: '🇫🇷' },
     { code: 'es', label: 'Español', flag: '🇪🇸' },
+    { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
+    { code: 'it', label: 'Italiano', flag: '🇮🇹' },
 ];
 
 export default function ClientSettingsScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { t, setLanguage, language } = useLanguage();
+    const { signOut } = useAuth();
+    const c = usePremiumColors();
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
     const cycleLanguage = () => {
@@ -31,8 +38,21 @@ export default function ClientSettingsScreen() {
         setLanguage(LANGUAGES[nextIndex].code);
     };
 
+    const handleSignOut = () => {
+        Alert.alert(t('signOut'), t('signOutConfirmBody'), [
+            { text: t('cancel'), style: 'cancel' },
+            {
+                text: t('signOut'),
+                style: 'destructive',
+                onPress: async () => {
+                    successFeedback();
+                    await signOut();
+                },
+            },
+        ]);
+    };
     return (
-        <View style={[styles.container, { backgroundColor: PREMIUM_BG }]}>
+        <View style={[styles.container, { backgroundColor: c.bg }]}>
             <PremiumHeader
                 title={t('menuSettings')}
                 subtitle={t('preferences')}
@@ -42,10 +62,11 @@ export default function ClientSettingsScreen() {
             />
             <ScrollView
                 style={styles.scroll}
-                contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: theme.spacing.lg }]}
+                contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40, paddingHorizontal: theme.spacing.lg }]}
                 showsVerticalScrollIndicator={false}
             >
                 <Text style={styles.sectionTitle}>{t('preferences') ?? 'Preferences'}</Text>
+                <ThemeToggleRow />
                 <View style={styles.card}>
                     <TouchableOpacity style={styles.row} onPress={cycleLanguage} activeOpacity={0.8}>
                         <View style={styles.rowIconBg}>
@@ -95,6 +116,11 @@ export default function ClientSettingsScreen() {
                         <Ionicons name="chevron-forward" size={20} color={theme.colors.textSubtle} />
                     </TouchableOpacity>
                 </View>
+
+                <TouchableOpacity style={styles.logoutBtn} onPress={handleSignOut} activeOpacity={0.85}>
+                    <Ionicons name="log-out-outline" size={20} color="#F87171" />
+                    <Text style={styles.logoutText}>{t('signOut') ?? 'Log Out'}</Text>
+                </TouchableOpacity>
             </ScrollView>
         </View>
     );
@@ -139,4 +165,17 @@ const styles = StyleSheet.create({
     rowTitle: { fontSize: 16, fontWeight: '600', color: theme.colors.text },
     rowSub: { fontSize: 13, color: theme.colors.textMuted, marginTop: 2 },
     divider: { height: 1, backgroundColor: theme.colors.border, marginLeft: 70 },
+    logoutBtn: {
+        marginTop: 28,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 16,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: 'rgba(248,113,113,0.45)',
+        backgroundColor: 'rgba(248,113,113,0.1)',
+    },
+    logoutText: { color: '#F87171', fontWeight: '800', fontSize: 16 },
 });

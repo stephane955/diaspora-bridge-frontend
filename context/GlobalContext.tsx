@@ -3,6 +3,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { syncIfOnline } from '@/utils/offlineQueue';
+import { syncPendingEvidence } from '@/hooks/useOfflineWorkroom';
 
 // NetInfo: optional; sync queue when connection restored (install @react-native-community/netinfo)
 let NetInfo: { addEventListener: (callback: (state: { isConnected: boolean | null }) => void) => () => void } | null = null;
@@ -103,10 +104,16 @@ export const GlobalProvider = ({ children }: { children: React.ReactNode }) => {
     // On focus (app active) or NetInfo "connected", drain offline queue
     useEffect(() => {
         const appSub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
-            if (nextState === 'active') syncIfOnline();
+            if (nextState === 'active') {
+                syncIfOnline();
+                syncPendingEvidence();
+            }
         });
         const unsubscribeNet = NetInfo?.addEventListener?.((state) => {
-            if (state.isConnected === true) syncIfOnline();
+            if (state.isConnected === true) {
+                syncIfOnline();
+                syncPendingEvidence();
+            }
         });
         return () => {
             appSub.remove();

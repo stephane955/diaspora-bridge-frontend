@@ -131,7 +131,7 @@ export default function PayoutSetupScreen() {
                 fallbackRoute="/provider/earnings"
                 menuItems={providerMenuItems(router, t)}
             />
-            <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32, paddingHorizontal: 20 }]}>
+            <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40, paddingHorizontal: 20 }]}>
                 <Text style={styles.subTitle}>Select Method</Text>
 
                 <View style={styles.methodRow}>
