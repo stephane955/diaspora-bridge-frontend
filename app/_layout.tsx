@@ -1,7 +1,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import 'react-native-reanimated';
 import { View } from 'react-native';
 import * as Notifications from 'expo-notifications';
@@ -15,6 +15,8 @@ import { LanguageProvider } from '@/context/LanguageContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { QueryProvider } from '@/context/QueryProvider';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { resolveAccountRole } from '@/lib/resolveAccountRole';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
 
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -65,12 +67,14 @@ function InitialLayout() {
             return;
         }
 
-        // 2. If logged in and on a public page -> Send to Dashboard (role from AuthContext = Supabase auth metadata)
+        // 2. If logged in and on a public page -> Send to Dashboard (role from metadata + profiles)
         if (session && inPublicGroup) {
-            const r = session.user?.user_metadata?.role ?? session.user?.raw_user_meta_data?.role;
-            if (r === 'provider') router.replace('/provider');
-            else if (r === 'supplier') router.replace('/supplier');
-            else router.replace('/diaspora');
+            resolveAccountRole(session.user).then((r) => {
+                if (r === 'provider') router.replace('/provider');
+                else if (r === 'supplier') router.replace('/supplier');
+                else if (r === 'client') router.replace('/diaspora');
+                else router.replace('/login');
+            });
         }
     }, [router, segments, session, isMounted, loading]);
 
@@ -101,10 +105,10 @@ function InitialLayout() {
 }
 
 function SplashPlaceholder() {
-    const { theme } = useTheme();
+    const c = usePremiumColors();
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' }}>
-            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.active, opacity: 0.6 }} />
+        <View style={{ flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: c.gold, opacity: 0.6 }} />
         </View>
     );
 }
@@ -122,7 +126,7 @@ function RootContent() {
                     </AuthProvider>
                 </LanguageProvider>
             </QueryProvider>
-            <StatusBar style={isDark ? 'light' : 'auto'} />
+            <StatusBar style={isDark ? 'light' : 'dark'} />
         </NavThemeProvider>
     );
 }
@@ -130,11 +134,20 @@ function RootContent() {
 export default function RootLayout() {
     return (
         <SafeAreaProvider>
-            <TamaguiProvider config={tamaguiConfig} defaultTheme="dark">
-                <ThemeProvider>
+            <ThemeProvider>
+                <TamaguiThemeBridge>
                     <RootContent />
-                </ThemeProvider>
-            </TamaguiProvider>
+                </TamaguiThemeBridge>
+            </ThemeProvider>
         </SafeAreaProvider>
+    );
+}
+
+function TamaguiThemeBridge({ children }: { children: React.ReactNode }) {
+    const { isDark } = useTheme();
+    return (
+        <TamaguiProvider config={tamaguiConfig} defaultTheme={isDark ? 'dark' : 'light'}>
+            {children}
+        </TamaguiProvider>
     );
 }

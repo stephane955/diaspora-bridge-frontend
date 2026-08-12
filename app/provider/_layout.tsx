@@ -2,17 +2,18 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { useLanguage } from '@/context/LanguageContext';
 import GlassTabBar from '@/components/GlassTabBar';
-import { PREMIUM_BG } from '@/constants/layout';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
 
 export default function ProviderLayout() {
     const { t } = useLanguage();
+    const c = usePremiumColors();
 
     return (
         <Tabs
             tabBar={(props) => <GlassTabBar {...props} role="provider" />}
             screenOptions={{
                 headerShown: false,
-                sceneContainerStyle: { backgroundColor: PREMIUM_BG },
+                sceneContainerStyle: { backgroundColor: c.bg },
                 tabBarStyle: { display: 'none' },
             }}
         >

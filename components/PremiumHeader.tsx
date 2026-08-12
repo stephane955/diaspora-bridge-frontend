@@ -15,6 +15,8 @@ import { useAuth } from '@/context/AuthContext';
 import { mediumFeedback, lightFeedback } from '@/utils/haptics';
 import { safeGoBack } from '@/utils/navigation';
 import { PREMIUM_GOLD } from '@/constants/layout';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { useLanguage } from '@/context/LanguageContext';
 
 export type PremiumMenuItem = {
   label: string;
@@ -49,11 +51,13 @@ export default function PremiumHeader({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signOut, user } = useAuth();
+  const c = usePremiumColors();
+  const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const defaultItems: PremiumMenuItem[] = [
     {
-      label: 'Profile',
+      label: t('tabProfile'),
       icon: 'profile',
       onPress: () => {
         setMenuOpen(false);
@@ -61,7 +65,7 @@ export default function PremiumHeader({
       },
     },
     {
-      label: 'Settings',
+      label: t('settingsTitle'),
       icon: 'settings',
       onPress: () => {
         setMenuOpen(false);
@@ -71,13 +75,13 @@ export default function PremiumHeader({
   ];
 
   const items = menuItems.length > 0 ? menuItems : defaultItems;
+  const iconColor = c.textPrimary;
 
   const renderMenuIcon = (icon?: PremiumMenuItem['icon']) => {
-    const color = '#E2E8F0';
     const size = 20;
-    if (icon === 'settings') return <Settings size={size} color={color} />;
-    if (icon === 'bell') return <Bell size={size} color={color} />;
-    return <User size={size} color={color} />;
+    if (icon === 'settings') return <Settings size={size} color={c.textSecondary} />;
+    if (icon === 'bell') return <Bell size={size} color={c.textSecondary} />;
+    return <User size={size} color={c.textSecondary} />;
   };
 
   const closeMenu = () => setMenuOpen(false);
@@ -90,8 +94,12 @@ export default function PremiumHeader({
       >
         <BlurView
           intensity={transparent ? 55 : 90}
-          tint="dark"
-          style={[styles.blur, !transparent && styles.blurSolid]}
+          tint={c.blurTint}
+          style={[
+            styles.blur,
+            !transparent && { backgroundColor: c.glassStrong },
+            { borderBottomColor: c.border },
+          ]}
         >
           <View style={styles.row}>
             {showBack ? (
@@ -100,10 +108,10 @@ export default function PremiumHeader({
                   mediumFeedback();
                   safeGoBack(router, fallbackRoute);
                 }}
-                hitSlop={10}
-                style={styles.iconBtn}
+                hitSlop={12}
+                style={[styles.iconBtn, { backgroundColor: c.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)' }]}
               >
-                <ChevronLeft size={22} color="#F8FAFC" strokeWidth={2.5} />
+                <ChevronLeft size={22} color={iconColor} strokeWidth={2.5} />
               </Pressable>
             ) : (
               <Pressable
@@ -111,21 +119,21 @@ export default function PremiumHeader({
                   lightFeedback();
                   setMenuOpen(true);
                 }}
-                hitSlop={10}
-                style={styles.iconBtn}
+                hitSlop={12}
+                style={[styles.iconBtn, { backgroundColor: c.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)' }]}
               >
-                <Menu size={20} color="#F8FAFC" strokeWidth={2.2} />
+                <Menu size={20} color={iconColor} strokeWidth={2.2} />
               </Pressable>
             )}
 
             <View style={styles.titleWrap}>
               {title ? (
-                <Text style={styles.title} numberOfLines={1}>
+                <Text style={[styles.title, { color: c.textPrimary }]} numberOfLines={1}>
                   {title}
                 </Text>
               ) : null}
               {subtitle ? (
-                <Text style={styles.subtitle} numberOfLines={1}>
+                <Text style={[styles.subtitle, { color: c.textSecondary }]} numberOfLines={1}>
                   {subtitle}
                 </Text>
               ) : null}
@@ -138,9 +146,10 @@ export default function PremiumHeader({
                     lightFeedback();
                     onNotificationsPress();
                   }}
-                  style={styles.iconBtn}
+                  hitSlop={10}
+                  style={[styles.iconBtn, { backgroundColor: c.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)' }]}
                 >
-                  <Bell size={20} color="#F8FAFC" />
+                  <Bell size={20} color={iconColor} />
                 </Pressable>
               ) : null}
               {rightSlot ?? (
@@ -149,7 +158,15 @@ export default function PremiumHeader({
                     lightFeedback();
                     setMenuOpen(true);
                   }}
-                  style={[styles.iconBtn, styles.avatarBtn, { borderColor: accent }]}
+                  hitSlop={10}
+                  style={[
+                    styles.iconBtn,
+                    styles.avatarBtn,
+                    {
+                      borderColor: accent,
+                      backgroundColor: c.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
+                    },
+                  ]}
                 >
                   <User size={18} color={accent} />
                 </Pressable>
@@ -172,10 +189,19 @@ export default function PremiumHeader({
           onPress={closeMenu}
         >
           <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-            <View style={[styles.menuSheet, { paddingBottom: insets.bottom + 24 }]}>
-              <View style={styles.menuHandle} />
-              <Text style={styles.menuLabel}>Menu</Text>
-              <Text style={styles.menuUser}>
+            <View
+              style={[
+                styles.menuSheet,
+                {
+                  paddingBottom: insets.bottom + 24,
+                  backgroundColor: c.surface,
+                  borderColor: c.border,
+                },
+              ]}
+            >
+              <View style={[styles.menuHandle, { backgroundColor: c.muted }]} />
+              <Text style={[styles.menuLabel, { color: c.muted }]}>{t('menuTitle')}</Text>
+              <Text style={[styles.menuUser, { color: c.textPrimary }]}>
                 {user?.email?.split('@')[0] ?? 'Account'}
               </Text>
 
@@ -187,12 +213,14 @@ export default function PremiumHeader({
                     item.onPress();
                   }}
                   style={styles.menuRow}
+                  hitSlop={6}
                 >
                   <View style={styles.menuRowInner}>
                     {renderMenuIcon(item.icon)}
                     <Text
                       style={[
                         styles.menuItemText,
+                        { color: c.textPrimary },
                         item.destructive && styles.menuItemDestructive,
                       ]}
                     >
@@ -202,7 +230,7 @@ export default function PremiumHeader({
                 </Pressable>
               ))}
 
-              <View style={styles.menuDivider} />
+              <View style={[styles.menuDivider, { backgroundColor: c.border }]} />
 
               <Pressable
                 onPress={async () => {
@@ -211,11 +239,12 @@ export default function PremiumHeader({
                   await signOut();
                 }}
                 style={styles.menuRow}
+                hitSlop={6}
               >
                 <View style={styles.menuRowInner}>
                   <LogOut size={20} color="#F87171" />
                   <Text style={[styles.menuItemText, styles.menuItemDestructive]}>
-                    Log out
+                    {t('signOut')}
                   </Text>
                 </View>
               </Pressable>
@@ -238,10 +267,6 @@ const styles = StyleSheet.create({
   blur: {
     overflow: 'hidden',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-  blurSolid: {
-    backgroundColor: 'rgba(10,15,26,0.92)',
   },
   row: {
     flexDirection: 'row',
@@ -256,12 +281,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   title: {
-    color: '#F8FAFC',
     fontSize: 17,
     fontWeight: '800',
   },
   subtitle: {
-    color: '#94A3B8',
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
@@ -271,12 +294,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   avatarBtn: {
     borderWidth: 1.5,
@@ -291,29 +313,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.65)',
   },
   menuSheet: {
-    backgroundColor: '#0F172A',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingHorizontal: 20,
     paddingTop: 12,
+    borderTopWidth: 1,
   },
   menuHandle: {
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#334155',
     alignSelf: 'center',
     marginBottom: 16,
   },
   menuLabel: {
-    color: '#64748B',
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   menuUser: {
-    color: '#F8FAFC',
     fontSize: 18,
     fontWeight: '800',
     marginTop: 4,
@@ -321,6 +340,8 @@ const styles = StyleSheet.create({
   },
   menuRow: {
     paddingVertical: 14,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   menuRowInner: {
     flexDirection: 'row',
@@ -328,7 +349,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   menuItemText: {
-    color: '#F1F5F9',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -338,7 +358,6 @@ const styles = StyleSheet.create({
   },
   menuDivider: {
     height: 1,
-    backgroundColor: '#1E293B',
     marginVertical: 12,
   },
 });
