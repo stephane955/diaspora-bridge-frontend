@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 import { theme } from '@/constants/theme';
 import { successFeedback, mediumFeedback } from '@/utils/haptics';
 
@@ -28,6 +29,7 @@ const STATUS_COLORS = {
 
 export default function ClientApprovalCard({ cart, onApproved }: Props) {
     const { user } = useAuth();
+    const { t } = useLanguage();
     const [loading, setLoading] = useState(false);
     const [paymentSuccess, setPaymentSuccess] = useState(false);
 
@@ -55,7 +57,7 @@ export default function ClientApprovalCard({ cart, onApproved }: Props) {
             setPaymentSuccess(true);
             onApproved();
         } catch (e: any) {
-            Alert.alert('Error', e.message || 'Could not approve cart.');
+            Alert.alert(t('error'), e.message || t('couldNotApproveCart'));
         } finally {
             setLoading(false);
         }
@@ -66,7 +68,7 @@ export default function ClientApprovalCard({ cart, onApproved }: Props) {
             <View style={[styles.card, { borderColor: theme.colors.active + '80' }]}>
                 <LinearGradient colors={theme.gradient.active as [string, string]} style={styles.badge}>
                     <Ionicons name="checkmark-circle" size={24} color="#fff" />
-                    <Text style={styles.badgeText}>Mobile Money Payment Success</Text>
+                    <Text style={styles.badgeText}>{t('mobileMoneySuccess')}</Text>
                 </LinearGradient>
             </View>
         );
@@ -89,12 +91,12 @@ export default function ClientApprovalCard({ cart, onApproved }: Props) {
         <View style={[styles.card, { borderColor: theme.colors.warning + '60' }]}>
             <View style={[styles.statusBadge, { backgroundColor: theme.colors.warning + '25' }]}>
                 <Ionicons name="time" size={16} color={theme.colors.warning} />
-                <Text style={[styles.statusText, { color: theme.colors.warning }]}>Pending approval</Text>
+                <Text style={[styles.statusText, { color: theme.colors.warning }]}>{t('pendingApprovalLabel')}</Text>
             </View>
 
             {items.length > 0 ? (
                 <View style={styles.breakdown}>
-                    <Text style={styles.breakdownTitle}>Itemized breakdown</Text>
+                    <Text style={styles.breakdownTitle}>{t('itemizedBreakdown')}</Text>
                     {items.map((item, idx) => (
                         <View key={idx} style={styles.itemRow}>
                             <Text style={styles.itemName}>{item.name || 'Item'}</Text>

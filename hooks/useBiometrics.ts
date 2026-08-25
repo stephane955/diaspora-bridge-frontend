@@ -1,7 +1,9 @@
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Alert } from 'react-native';
+import { useLanguage } from '@/context/LanguageContext';
 
 export const useBiometrics = () => {
+    const { t } = useLanguage();
 
     const authenticate = async (): Promise<boolean> => {
         try {
@@ -15,16 +17,16 @@ export const useBiometrics = () => {
 
             // 3. Prompt the user
             const result = await LocalAuthentication.authenticateAsync({
-                promptMessage: 'Confirm Withdrawal',
-                fallbackLabel: 'Use Passcode',
-                cancelLabel: 'Cancel',
+                promptMessage: t('confirmWithdrawal'),
+                fallbackLabel: t('usePasscode'),
+                cancelLabel: t('cancel'),
                 disableDeviceFallback: false,
             });
 
             if (result.success) {
                 return true;
             } else {
-                Alert.alert("Authentication Failed", "We could not verify your identity.");
+                Alert.alert(t('authFailedTitle'), t('authFailedBody'));
                 return false;
             }
 

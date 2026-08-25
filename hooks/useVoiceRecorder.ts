@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { Audio } from 'expo-av';
 import { supabase } from '@/lib/supabase';
+import { useLanguage } from '@/context/LanguageContext';
 
 const VOICE_BUCKET = 'voice-notes';
 
 export function useVoiceRecorder(projectId: string) {
+  const { t } = useLanguage();
   const recordingRef = useRef<Audio.Recording | null>(null);
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -23,13 +25,13 @@ export function useVoiceRecorder(projectId: string) {
     const { status } = await Audio.requestPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(
-        'Microphone access',
-        'Allow microphone access to send voice notes.'
+        t('microphoneAccess'),
+        t('allowMicrophoneVoice')
       );
       return false;
     }
     return true;
-  }, []);
+  }, [t]);
 
   const startRecording = useCallback(async () => {
     if (isRecording) return;
@@ -113,13 +115,13 @@ export function useVoiceRecorder(projectId: string) {
         return data.publicUrl;
       } catch (e) {
         console.error('uploadVoiceNote:', e);
-        Alert.alert('Upload failed', 'Could not upload voice note. Please try again.');
+        Alert.alert(t('uploadFailed'), t('voiceUploadFailed'));
         return null;
       } finally {
         setUploading(false);
       }
     },
-    [projectId]
+    [projectId, t]
   );
 
   useEffect(() => {

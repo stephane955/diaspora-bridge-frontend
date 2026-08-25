@@ -307,7 +307,63 @@ export default function ProjectDetailsScreen() {
 
     const handleReleaseFunds = async () => {
         if (!paymentAmount || !paymentDesc) {
-            Alert.alert("Missing Info", "Please enter an amount and description.");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            Alert.alert(t('missingInfo'), t('enterAmountAndDescription'));
             return;
         }
 
@@ -333,13 +389,13 @@ export default function ProjectDetailsScreen() {
                     description: paymentDesc,
                 });
             } catch (_) { /* share optional */ }
-            Alert.alert("Success", "Funds released to provider.");
+            Alert.alert(t('success'), t('fundsReleasedToProvider'));
             setShowPaymentModal(false);
             setPaymentAmount('');
             setPaymentDesc('');
             fetchData();
         } catch (err: any) {
-            Alert.alert("Payment Failed", err.message);
+            Alert.alert(t('paymentFailed'), err.message);
         } finally {
             setProcessingPayment(false);
         }
@@ -371,7 +427,7 @@ export default function ProjectDetailsScreen() {
                         fetchData();
                     } catch (err: any) {
                         fetchData();
-                        Alert.alert('Error', err.message || 'Could not approve phase.');
+                        Alert.alert(t('error'), err.message || t('couldNotApprovePhase'));
                     } finally {
                         setApprovingId(null);
                     }
@@ -504,7 +560,7 @@ export default function ProjectDetailsScreen() {
             }
             fetchData();
         } catch (e: any) {
-            Alert.alert('Error', e.message || 'Could not save signature.');
+            Alert.alert(t('error'), e.message || t('couldNotSaveSignature'));
         } finally {
             setSigningContract(false);
         }
@@ -529,7 +585,7 @@ export default function ProjectDetailsScreen() {
             setShowCompleteModal(false);
             fetchData();
         } catch (e: any) {
-            Alert.alert("Error", e.message);
+            Alert.alert(t('error'), e.message);
         } finally {
             setSubmittingReview(false);
         }
@@ -666,7 +722,7 @@ export default function ProjectDetailsScreen() {
                                     <LinearGradient colors={[NAVY, SLATE] as [string, string]} style={StyleSheet.absoluteFill} />
                                     <YStack gap={16} padding={20}>
                                         <XStack justifyContent="space-between" alignItems="center">
-                                            <Text style={styles.financialTitle}>Budget Overview</Text>
+                                            <Text style={styles.financialTitle}>{t('budgetOverview')}</Text>
                                             <Text style={styles.financialPercent}>{Math.min(100, ((totalSpent / project.budget) * 100)).toFixed(0)}%</Text>
                                         </XStack>
                                         <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.min(100, (totalSpent / project.budget) * 100)}%` }]} /></View>
@@ -889,7 +945,7 @@ export default function ProjectDetailsScreen() {
                                     setObserverInviteLink(link);
                                     setShowObserverInviteModal(true);
                                 } catch (e: any) {
-                                    Alert.alert('Error', e.message || 'Could not create invite.');
+                                    Alert.alert(t('error'), e.message || t('couldNotCreateInvite'));
                                 }
                             }}
                         >
@@ -1090,7 +1146,7 @@ export default function ProjectDetailsScreen() {
                                     <Ionicons name="document-text-outline" size={18} color={theme.colors.active} />
                                     <Text style={styles.inviteObserverText}>
                                         {(isOwner && !contract.client_signed_at) || (isProvider && !contract.provider_signed_at)
-                                            ? 'Sign contract'
+                                            ? t('signContract')
                                             : 'View contract'}
                                     </Text>
                                 </TouchableOpacity>
@@ -1251,8 +1307,8 @@ export default function ProjectDetailsScreen() {
                         <TouchableOpacity
                             style={styles.resolveDisputeBtn}
                             onPress={async () => {
-                                Alert.alert('Resolve dispute', 'Clear dispute and unlock this milestone?', [
-                                    { text: 'Cancel', style: 'cancel' },
+                                Alert.alert(t('resolveDisputeTitle'), t('resolveDisputeBody'), [
+                                    { text: t('cancel'), style: 'cancel' },
                                     {
                                         text: 'Resolve',
                                         onPress: async () => {
@@ -1330,7 +1386,7 @@ export default function ProjectDetailsScreen() {
                     <TouchableOpacity style={{flex:1}} onPress={() => setShowPaymentModal(false)} />
                     <View style={styles.modalCard}>
                         <View style={styles.modalHandle} />
-                        <Text style={styles.modalTitle}>Release Payment</Text>
+                        <Text style={styles.modalTitle}>{t('releasePayment')}</Text>
                         <Text style={styles.modalSub}>
                             {nextReleasableMilestone
                                 ? `Escrow · Step ${nextReleasableMilestone.step_order ?? 1} of ${milestones.length}: ${nextReleasableMilestone.title ?? 'Milestone'}`
@@ -1357,10 +1413,10 @@ export default function ProjectDetailsScreen() {
                                 style={styles.disputeMilestoneBtn}
                                 onPress={() => {
                                     setShowPaymentModal(false);
-                                    Alert.alert('Dispute milestone', 'Freeze escrow and open Arbitration Room for this milestone?', [
-                                        { text: 'Cancel', style: 'cancel' },
+                                    Alert.alert(t('disputeMilestoneTitle'), t('disputeMilestoneBody'), [
+                                        { text: t('cancel'), style: 'cancel' },
                                         {
-                                            text: 'Dispute',
+                                            text: t('disputeMilestoneTitle'),
                                             style: 'destructive',
                                             onPress: async () => {
                                                 try {
@@ -1373,25 +1429,25 @@ export default function ProjectDetailsScreen() {
                                                         status: 'open',
                                                     });
                                                     fetchData();
-                                                    Alert.alert('Dispute opened', 'Funds are frozen. Resolve from the project screen when ready.');
+                                                    Alert.alert(t('disputeOpenedAlert'), t('disputeOpenedFundsFrozen'));
                                                 } catch (e: any) {
-                                                    Alert.alert('Error', e.message);
+                                                    Alert.alert(t('error'), e.message);
                                                 }
                                             },
                                         },
                                     ]);
                                 }}
                             >
-                                <Text style={styles.disputeMilestoneText}>Dispute milestone</Text>
+                                <Text style={styles.disputeMilestoneText}>{t('disputeMilestoneTitle')}</Text>
                             </TouchableOpacity>
                         )}
                         <TouchableOpacity
                             style={[styles.disputeMilestoneBtn, { marginTop: 4 }]}
                             onPress={() => {
-                                Alert.alert('Lock project', 'Escalate to full project lock? This revokes update access and notifies platform admins.', [
-                                    { text: 'Cancel', style: 'cancel' },
+                                Alert.alert(t('lockProjectTitle'), t('lockProjectBody'), [
+                                    { text: t('cancel'), style: 'cancel' },
                                     {
-                                        text: 'Lock project',
+                                        text: t('lockProjectTitle'),
                                         style: 'destructive',
                                         onPress: async () => {
                                             try {
@@ -1399,9 +1455,9 @@ export default function ProjectDetailsScreen() {
                                                 if (error) throw error;
                                                 successFeedback();
                                                 fetchData();
-                                                Alert.alert('Project locked', 'Admins have been notified.');
+                                                Alert.alert(t('projectLockedTitle'), t('projectLockedAdminsNotified'));
                                             } catch (e: any) {
-                                                Alert.alert('Error', e.message);
+                                                Alert.alert(t('error'), e.message);
                                             }
                                         },
                                     },
@@ -1457,7 +1513,7 @@ export default function ProjectDetailsScreen() {
                                         try {
                                             const Clipboard = (await import('expo-clipboard')).default;
                                             await Clipboard.setStringAsync(observerInviteLink);
-                                            Alert.alert('Copied', 'Link copied to clipboard.');
+                                            Alert.alert(t('copied'), t('linkCopied'));
                                         } catch (_) {}
                                     }}
                                 >
@@ -1477,7 +1533,7 @@ export default function ProjectDetailsScreen() {
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
                     <TouchableOpacity style={{ flex: 1 }} onPress={() => setShowContractModal(false)} />
                     <View style={styles.modalCard}>
-                        <Text style={styles.modalTitle}>Sign contract</Text>
+                        <Text style={styles.modalTitle}>{t('signContract')}</Text>
                         <Text style={styles.modalSub}>Agreed: {project?.title}, {milestones.length} milestone(s).</Text>
                         {(isOwner && !contract?.client_signed_at) || (isProvider && !contract?.provider_signed_at) ? (
                             <>
@@ -1537,7 +1593,7 @@ export default function ProjectDetailsScreen() {
                                         setDefectDescription('');
                                         fetchData();
                                     } catch (e: any) {
-                                        Alert.alert('Error', e.message);
+                                        Alert.alert(t('error'), e.message);
                                     } finally {
                                         setSubmittingDefect(false);
                                     }

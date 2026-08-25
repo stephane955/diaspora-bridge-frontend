@@ -46,13 +46,13 @@ export default function SignupScreen() {
 
     const onSignup = async () => {
         if (!email || !password || !confirmPassword || !fullName) {
-            return Alert.alert('Error', t('missingFields'));
+            return Alert.alert(t('error'), t('missingFields'));
         }
         if (role === 'provider' && !city) {
-            return Alert.alert('Missing Info', 'Providers must select a base city.');
+            return Alert.alert(t('missingInfo'), t('providersMustSelectCity'));
         }
         if (password !== confirmPassword) {
-            return Alert.alert('Error', t('passwordsDoNotMatch'));
+            return Alert.alert(t('error'), t('passwordsDoNotMatch'));
         }
 
         mediumFeedback();

@@ -71,10 +71,10 @@ export default function VerificationScanScreen() {
         setVerificationScanResult({ type, uri: photo.uri });
         router.back();
       } else {
-        Alert.alert('Error', 'Could not save photo.');
+        Alert.alert(t('error'), t('couldNotSavePhoto'));
       }
     } catch (e: unknown) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Capture failed.');
+      Alert.alert(t('error'), e instanceof Error ? e.message : t('captureFailed'));
     } finally {
       setCapturing(false);
     }

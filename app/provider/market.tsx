@@ -139,7 +139,7 @@ export default function MarketScreen() {
   const handleHideJob = (jobId: string) => {
     mediumFeedback();
     Alert.alert(t('hide') || 'Hide Job', 'Remove this from your feed?', [
-      { text: t('cancel') || 'Cancel', style: 'cancel' },
+      { text: t('cancel'), style: 'cancel' },
       {
         text: t('hide') || 'Hide',
         style: 'destructive',
@@ -162,7 +162,7 @@ export default function MarketScreen() {
         'ID Verification Required',
         t('getVerified') || 'Get verified to apply for jobs.',
         [
-          { text: 'Later', style: 'cancel' },
+          { text: t('cancel'), style: 'cancel' },
           {
             text: t('verified') || 'Verify Now',
             onPress: () => {
@@ -176,7 +176,7 @@ export default function MarketScreen() {
     }
 
     if (!bidAmount || !coverLetter.trim()) {
-      Alert.alert('Missing Info', t('missingFields') || 'Please enter a bid amount and cover letter.');
+      Alert.alert(t('missingInfo'), t('enterBidAndCover'));
       return;
     }
 
@@ -198,7 +198,7 @@ export default function MarketScreen() {
 
       if (error) {
         if (error.code === '23505') {
-          Alert.alert('Already Applied', 'You have already bid on this job.');
+          Alert.alert(t('alreadyApplied'), t('alreadyBidOnJob'));
         } else throw error;
       } else {
         successFeedback();
@@ -209,14 +209,14 @@ export default function MarketScreen() {
           successScale.setValue(0);
           resetApplyForm();
           Alert.alert(
-            t('success') || 'Successfully Applied',
+            t('success'),
             t('applicationSentBody') || 'Your proposal was sent. The client will review your bid.',
           );
           router.replace('/provider/active');
         }, 1200);
       }
     } catch (err: any) {
-      Alert.alert('Error', err.message);
+      Alert.alert(t('error'), err.message);
     } finally {
       setApplying(false);
     }

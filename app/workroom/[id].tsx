@@ -360,7 +360,7 @@ export default function WorkroomScreen() {
                         );
                         fetchWorkroomData();
                       } catch (e: any) {
-                        Alert.alert('Error', e.message);
+                        Alert.alert(t('error'), e.message);
                       } finally {
                         setRequestingAdvance(false);
                       }

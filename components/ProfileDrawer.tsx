@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { useLanguage } from '@/context/LanguageContext';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -35,6 +36,7 @@ export default function ProfileDrawer({
     photoUri,
     onChangePhoto,
 }: Props) {
+    const { t } = useLanguage();
     const slideAnim = useRef(new Animated.Value(400)).current;
 
     useEffect(() => {
@@ -87,8 +89,8 @@ export default function ProfileDrawer({
                             </Pressable>
                         </View>
                         <View style={{ flex: 1 }}>
-                            <Text style={styles.name}>{name || 'Your profile'}</Text>
-                            <Text style={styles.email}>{email || 'Add your email'}</Text>
+                            <Text style={styles.name}>{name || t('yourProfile')}</Text>
+                            <Text style={styles.email}>{email || t('addYourEmail')}</Text>
                             <Text style={styles.role}>{roleLabel}</Text>
                         </View>
                         <Pressable onPress={onClose} style={styles.close}>
@@ -114,7 +116,7 @@ export default function ProfileDrawer({
 
                     <Pressable style={styles.signOut} onPress={onSignOut}>
                         <Ionicons name="log-out-outline" size={18} color="#b91c1c" />
-                        <Text style={styles.signOutText}>Sign out</Text>
+                        <Text style={styles.signOutText}>{t('signOut')}</Text>
                     </Pressable>
                 </Animated.View>
             </View>

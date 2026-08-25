@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { createMessageNotification } from '@/lib/messageNotifications';
+import { useLanguage } from '@/context/LanguageContext';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import type { Database } from '@/database.types';
 
@@ -55,6 +56,7 @@ function mergeIncomingMessage(prev: ChatMessage[], row: MessageRow): ChatMessage
 }
 
 export function useProjectMessages(projectId: string | undefined) {
+  const { t } = useLanguage();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [participants, setParticipants] = useState<ProjectParticipants | null>(null);
   const [loading, setLoading] = useState(true);
@@ -185,7 +187,7 @@ export function useProjectMessages(projectId: string | undefined) {
 
       if (insertError) {
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        Alert.alert('Message failed', insertError.message || 'Could not send message. Please try again.');
+        Alert.alert(t('messageFailed'), insertError.message || t('couldNotSendMessage'));
         return { error: insertError.message };
       }
 
@@ -245,7 +247,7 @@ export function useProjectMessages(projectId: string | undefined) {
 
       if (insertError) {
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        Alert.alert('Voice message failed', insertError.message || 'Could not send voice note.');
+        Alert.alert(t('voiceMessageFailed'), insertError.message || t('couldNotSendVoice'));
         return { error: insertError.message };
       }
 

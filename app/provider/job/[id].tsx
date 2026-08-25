@@ -82,7 +82,7 @@ export default function JobDetailsScreen() {
 
   const submitApplication = async () => {
     if (!bidAmount || !coverLetter.trim()) {
-      Alert.alert('Missing Info', t('missingFields') || 'Enter your bid and a short cover letter.');
+      Alert.alert(t('missingInfo'), t('enterBidAndCoverShort'));
       return;
     }
     setApplying(true);
@@ -95,20 +95,20 @@ export default function JobDetailsScreen() {
         status: 'pending',
       });
       if (error) {
-        if (error.code === '23505') Alert.alert('Already Applied', 'You have already bid on this job.');
+        if (error.code === '23505') Alert.alert(t('alreadyApplied'), t('alreadyBidOnJob'));
         else throw error;
       } else {
         successFeedback();
         setHasApplied(true);
         setShowApply(false);
         Alert.alert(
-          t('success') || 'Successfully Applied',
+          t('success'),
           t('applicationSentBody') || 'Your proposal was sent. The client will review your bid shortly.',
         );
         router.replace('/provider/active');
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Could not send application.');
+      Alert.alert(t('error'), error.message || t('couldNotSendApplication'));
     } finally {
       setApplying(false);
     }

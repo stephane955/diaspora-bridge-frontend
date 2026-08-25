@@ -4,9 +4,11 @@ import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { useLanguage } from '@/context/LanguageContext';
 
 export default function ResetPasswordScreen() {
     const router = useRouter();
+    const { t } = useLanguage();
     const [newPassword, setNewPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [recoveryReady, setRecoveryReady] = useState(false);
@@ -22,11 +24,11 @@ export default function ResetPasswordScreen() {
             setRecoveryReady(true);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Could not restore session from reset link.';
-            Alert.alert('Link Error', message);
+            Alert.alert(t('linkError'), message);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [t]);
 
     useEffect(() => {
         Linking.getInitialURL().then(initial => handleDeepLink(initial));
@@ -36,7 +38,7 @@ export default function ResetPasswordScreen() {
 
     const handleReset = async () => {
         if (!newPassword || newPassword.length < 6) {
-            Alert.alert('Password too short', 'Please choose at least 6 characters.');
+            Alert.alert(t('passwordTooShort'), t('chooseAtLeast6Chars'));
             return;
         }
         setLoading(true);
@@ -44,12 +46,12 @@ export default function ResetPasswordScreen() {
         setLoading(false);
 
         if (error) {
-            Alert.alert('Reset failed', error.message);
+            Alert.alert(t('resetFailed'), error.message);
             return;
         }
 
-        Alert.alert('Success', 'Password updated. Please log in again.', [
-            { text: 'OK', onPress: async () => { await supabase.auth.signOut(); router.replace('/login'); } }
+        Alert.alert(t('success'), t('passwordUpdatedLogin'), [
+            { text: t('ok'), onPress: async () => { await supabase.auth.signOut(); router.replace('/login'); } }
         ]);
     };
 

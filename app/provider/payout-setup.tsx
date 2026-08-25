@@ -44,7 +44,7 @@ export default function PayoutSetupScreen() {
         });
 
         if (!validation.success) {
-            Alert.alert("Invalid Input", validation.error.errors[0].message);
+            Alert.alert(t('invalidInput'), validation.error.errors[0].message);
             return;
         }
 
@@ -56,13 +56,13 @@ export default function PayoutSetupScreen() {
             // MTN typically starts with 65, 67, 68.
             // Orange starts with 69.
             if (prefix === '69') {
-                Alert.alert("Carrier Mismatch", "You selected MTN, but entered an Orange number (starts with 69).");
+                Alert.alert(t('carrierMismatch'), t('carrierMismatchMtn'));
                 return;
             }
         } else if (method === 'orange') {
             // If they start with 67 or 68, it is definitely NOT Orange.
             if (prefix === '67' || prefix === '68') {
-                Alert.alert("Carrier Mismatch", "You selected Orange, but entered an MTN number.");
+                Alert.alert(t('carrierMismatch'), t('carrierMismatchOrange'));
                 return;
             }
         }
@@ -110,13 +110,13 @@ export default function PayoutSetupScreen() {
             if (deductError) throw deductError;
 
             successFeedback();
-            Alert.alert("Request Sent", "Your funds will be transferred within 24 hours.", [
-                { text: "OK", onPress: () => router.replace('/provider/earnings') } // Updated route
+            Alert.alert(t('requestSent'), t('fundsTransfer24h'), [
+                { text: t('ok'), onPress: () => router.replace('/provider/earnings') } // Updated route
             ]);
 
         } catch (e: any) {
             console.error("Withdrawal Error:", e);
-            Alert.alert("Error", e.message);
+            Alert.alert(t('error'), e.message);
         } finally {
             setLoading(false);
         }
@@ -132,7 +132,7 @@ export default function PayoutSetupScreen() {
                 menuItems={providerMenuItems(router, t)}
             />
             <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40, paddingHorizontal: 20 }]}>
-                <Text style={styles.subTitle}>Select Method</Text>
+                <Text style={styles.subTitle}>{t('selectMethod')}</Text>
 
                 <View style={styles.methodRow}>
                     <TouchableOpacity
@@ -156,42 +156,42 @@ export default function PayoutSetupScreen() {
 
                 <View style={styles.form}>
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Amount (CFA)</Text>
+                        <Text style={styles.label}>{t('amountLabel')}</Text>
                         <TextInput
                             style={styles.input}
                             keyboardType="numeric"
                             placeholder="e.g. 50000"
                             value={formData.amount}
-                            onChangeText={t => setFormData({...formData, amount: t})}
+                            onChangeText={val => setFormData({...formData, amount: val})}
                         />
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Mobile Money Number</Text>
+                        <Text style={styles.label}>{t('momoNumberLabel')}</Text>
                         <TextInput
                             style={styles.input}
                             keyboardType="phone-pad"
                             placeholder="6XXXXXXXX"
                             value={formData.phoneNumber}
-                            onChangeText={t => setFormData({...formData, phoneNumber: t})}
+                            onChangeText={val => setFormData({...formData, phoneNumber: val})}
                             maxLength={9}
                         />
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Account Name (For Verification)</Text>
+                        <Text style={styles.label}>{t('accountNameLabel')}</Text>
                         <TextInput
                             style={styles.input}
                             placeholder="Full Name on Account"
                             value={formData.fullName}
-                            onChangeText={t => setFormData({...formData, fullName: t})}
+                            onChangeText={val => setFormData({...formData, fullName: val})}
                         />
                     </View>
 
                     <View style={styles.infoBox}>
                         <Ionicons name="information-circle" size={20} color="#64748B" />
                         <Text style={styles.infoText}>
-                            Withdrawals are processed manually. Funds usually arrive in 2-24 hours.
+                            {t('withdrawInfo')}
                         </Text>
                     </View>
                 </View>
@@ -203,7 +203,7 @@ export default function PayoutSetupScreen() {
                     onPress={handleWithdraw}
                     disabled={loading}
                 >
-                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Confirm Withdrawal</Text>}
+                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{t('confirmWithdraw')}</Text>}
                 </TouchableOpacity>
             </View>
         </KeyboardAvoidingView>

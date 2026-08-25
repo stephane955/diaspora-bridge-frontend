@@ -7,10 +7,12 @@ import * as Clipboard from 'expo-clipboard'; // Make sure to install: npx expo i
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { useLanguage } from '@/context/LanguageContext';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
 
 export default function AdminPayoutsScreen() {
     const router = useRouter();
+    const { t } = useLanguage();
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<number | null>(null);
@@ -26,7 +28,7 @@ export default function AdminPayoutsScreen() {
 
         if (error) {
             console.error("Fetch Error:", error);
-            Alert.alert("Error", "Could not load payouts. Are you logged in as Admin?");
+            Alert.alert(t('error'), t('couldNotLoadPayouts'));
         }
         setRequests(data || []);
         setLoading(false);
@@ -37,7 +39,7 @@ export default function AdminPayoutsScreen() {
     const copyToClipboard = async (text: string) => {
         await Clipboard.setStringAsync(text);
         mediumFeedback();
-        Alert.alert("Copied", `${text} ready to paste.`);
+        Alert.alert(t('copied'), t('readyToPaste', { text }));
     };
 
     const markAsPaid = async (item: any) => {
@@ -60,11 +62,11 @@ export default function AdminPayoutsScreen() {
             });
 
             successFeedback();
-            Alert.alert("Success", "Request moved to 'Processed'.");
+            Alert.alert(t('success'), t('requestMovedProcessed'));
             fetchRequests(); // Refresh list
 
         } catch (e: any) {
-            Alert.alert("Error", e.message);
+            Alert.alert(t('error'), e.message);
         } finally {
             setProcessingId(null);
         }

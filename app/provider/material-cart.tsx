@@ -73,12 +73,12 @@ export default function BuildCartScreen() {
             if (error) throw error;
             setSuppliers(data ?? []);
         } catch (e: any) {
-            Alert.alert('Supplier load failed', e.message ?? 'Could not fetch suppliers.');
+            Alert.alert(t('supplierLoadFailed'), e.message ?? t('couldNotFetchSuppliers'));
             setSuppliers([]);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [t]);
 
     useEffect(() => {
         fetchSuppliers();
@@ -115,15 +115,15 @@ export default function BuildCartScreen() {
     const handleSubmit = async () => {
         const validItems = items.filter(i => i.name.trim() && i.quantity > 0 && i.price >= 0);
         if (validItems.length === 0) {
-            Alert.alert('Empty cart', 'Add at least one item with name, quantity, and price.');
+            Alert.alert(t('emptyCart'), t('addAtLeastOneItem'));
             return;
         }
         if (!supplierId) {
-            Alert.alert('Select store', 'Choose a Verified Store.');
+            Alert.alert(t('selectStore'), t('chooseVerifiedStore'));
             return;
         }
         if (!pid || !user?.id) {
-            Alert.alert('Error', 'Missing project or user.');
+            Alert.alert(t('error'), t('missingProjectOrUser'));
             return;
         }
 
@@ -150,7 +150,7 @@ export default function BuildCartScreen() {
             setSubmittedCartId(data.id);
             setSubmittedSupplierId(supplierId);
         } catch (e: any) {
-            Alert.alert('Error', e.message || 'Failed to submit cart.');
+            Alert.alert(t('error'), e.message || t('failedToSubmitCart'));
         } finally {
             setSaving(false);
         }
@@ -319,7 +319,7 @@ export default function BuildCartScreen() {
                                 <TouchableOpacity style={styles.supplierRow} onPress={() => selectSupplier(s)}>
                                     <Image source={{ uri: s.avatar_url || 'https://i.pravatar.cc/80' }} style={styles.supplierAvatar} />
                                     <View style={{ flex: 1 }}>
-                                        <Text style={styles.supplierRowName}>{s.full_name || 'Supplier'}</Text>
+                                        <Text style={styles.supplierRowName}>{s.full_name || t('supplierFallback')}</Text>
                                         {s.city && <Text style={styles.supplierRowCity}>{s.city}</Text>}
                                     </View>
                                     {supplierId === s.id && <Ionicons name="checkmark-circle" size={24} color={theme.colors.emerald} />}

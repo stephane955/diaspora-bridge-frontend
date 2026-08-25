@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 import { claimObserverInvite } from '@/utils/observers';
 import { theme } from '@/constants/theme';
 
@@ -9,6 +10,7 @@ export default function ObserverJoinScreen() {
     const { token } = useLocalSearchParams<{ token: string }>();
     const router = useRouter();
     const { user } = useAuth();
+    const { t } = useLanguage();
     const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'login'>('loading');
 
     useEffect(() => {
@@ -35,13 +37,13 @@ export default function ObserverJoinScreen() {
         const returnUrl = `/observer/join?token=${token}`;
         return (
             <View style={styles.container}>
-                <Text style={styles.title}>View-only access</Text>
-                <Text style={styles.sub}>Sign in to accept this invite and view the project.</Text>
+                <Text style={styles.title}>{t('viewOnlyAccess')}</Text>
+                <Text style={styles.sub}>{t('signInToAcceptInvite')}</Text>
                 <TouchableOpacity
                     style={styles.btn}
                     onPress={() => router.replace({ pathname: '/login', params: { redirect: returnUrl } })}
                 >
-                    <Text style={styles.btnText}>Sign in</Text>
+                    <Text style={styles.btnText}>{t('signIn')}</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -50,9 +52,9 @@ export default function ObserverJoinScreen() {
     if (status === 'error') {
         return (
             <View style={styles.container}>
-                <Text style={styles.title}>Invalid or expired link</Text>
+                <Text style={styles.title}>{t('invalidOrExpiredLink')}</Text>
                 <TouchableOpacity style={styles.btn} onPress={() => router.replace('/')}>
-                    <Text style={styles.btnText}>Go home</Text>
+                    <Text style={styles.btnText}>{t('goHome')}</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -61,7 +63,7 @@ export default function ObserverJoinScreen() {
     return (
         <View style={styles.container}>
             <ActivityIndicator size="large" color={theme.colors.active} />
-            <Text style={styles.sub}>Joining project...</Text>
+            <Text style={styles.sub}>{t('joiningProject')}</Text>
         </View>
     );
 }
@@ -79,8 +81,8 @@ const styles = StyleSheet.create({
     btn: {
         backgroundColor: theme.colors.active,
         paddingHorizontal: 24,
-        paddingVertical: 14,
-        borderRadius: theme.radii.sm,
+        paddingVertical: 12,
+        borderRadius: theme.radii.pill,
     },
-    btnText: { color: theme.colors.surface, fontWeight: '700', fontSize: 16 },
+    btnText: { color: '#fff', fontWeight: '700' },
 });

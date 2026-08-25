@@ -30,10 +30,10 @@ export default function RequestPayout() {
         });
 
         if (!error) {
-            Alert.alert("Success", "Request sent to client!");
+            Alert.alert(t('success'), t('requestSentToClient'));
             router.back();
         } else {
-            Alert.alert("Error", "Failed to send request.");
+            Alert.alert(t('error'), t('failedToSendRequest'));
         }
     };
 
@@ -48,9 +48,9 @@ export default function RequestPayout() {
             />
             <View style={[styles.form, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40 }]}>
             <Text style={styles.title}>Request Payment</Text>
-            <Text style={styles.label}>Amount (CFA)</Text>
+            <Text style={styles.label}>{t('amountLabel')}</Text>
             <TextInput style={styles.input} keyboardType="numeric" value={amount} onChangeText={setAmount} placeholder="e.g. 500000" />
-            <Text style={styles.label}>Description</Text>
+            <Text style={styles.label}>{t('descriptionLabel')}</Text>
             <TextInput style={styles.input} value={desc} onChangeText={setDesc} placeholder="e.g. Foundation completion" />
             <TouchableOpacity style={styles.btn} onPress={handleSubmit}><Text style={styles.btnText}>Send Request</Text></TouchableOpacity>
             </View>

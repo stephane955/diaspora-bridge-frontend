@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { useLanguage } from '@/context/LanguageContext';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function AdminVerifyScreen() {
+    const { t } = useLanguage();
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -34,7 +36,7 @@ export default function AdminVerifyScreen() {
             .eq('id', userId);
 
         if (!error) {
-            Alert.alert("Success", `User ${action}`);
+            Alert.alert(t('success'), t('userActionSuccess', { action }));
             setRequests(prev => prev.filter(r => r.id !== userId));
         }
     };

@@ -66,7 +66,7 @@ export default function ProviderSettingsScreen() {
       await supabase.from('profiles').update({ is_online: value }).eq('id', user?.id);
     } catch {
       setIsOnline(!value);
-      Alert.alert('Error', 'Connection failed.');
+      Alert.alert(t('error'), t('connectionFailed'));
     }
   };
 

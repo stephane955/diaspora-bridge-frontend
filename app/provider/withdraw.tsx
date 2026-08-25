@@ -28,10 +28,10 @@ export default function WithdrawScreen() {
     const [loading, setLoading] = useState(false);
 
     const handleConfirm = async () => {
-        if (!amount || !phone) return Alert.alert("Missing Info", "Enter amount and phone number.");
-        if (isNaN(Number(amount)) || Number(amount) < 500) return Alert.alert("Invalid Amount", "Minimum withdrawal is 500 CFA.");
+        if (!amount || !phone) return Alert.alert(t('missingInfo'), t('enterAmountAndPhone'));
+        if (isNaN(Number(amount)) || Number(amount) < 500) return Alert.alert(t('invalidAmount'), t('minWithdraw500'));
         const carrierCheck = validateCarrierNumber(method, phone);
-        if (!carrierCheck.valid) return Alert.alert("Invalid Number", carrierCheck.error);
+        if (!carrierCheck.valid) return Alert.alert(t('invalidNumber'), carrierCheck.error);
 
         setLoading(true);
 
@@ -46,9 +46,9 @@ export default function WithdrawScreen() {
         setLoading(false);
 
         if (error) {
-            Alert.alert("Error", error.message);
+            Alert.alert(t('error'), error.message);
         } else {
-            Alert.alert("Request Sent", "Your withdrawal is being processed.", [
+            Alert.alert(t('requestSent'), t('withdrawalProcessing'), [
                 { text: "Back to Wallet", onPress: () => router.back() }
             ]);
         }
@@ -65,7 +65,7 @@ export default function WithdrawScreen() {
             />
             <VaultGate promptMessage="Unlock to withdraw funds." lockOnBlur>
             <View style={[styles.content, { paddingTop: insets.top + 88, paddingHorizontal: 20, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40 }]}>
-                <Text style={styles.label}>Select Method</Text>
+                <Text style={styles.label}>{t('selectMethod')}</Text>
                 <View style={styles.methodRow}>
                     <TouchableOpacity
                         style={[styles.methodCard, method === 'MOMO' && styles.activeCard]}
@@ -93,7 +93,7 @@ export default function WithdrawScreen() {
                     onChangeText={setPhone}
                 />
 
-                <Text style={styles.label}>Amount (CFA)</Text>
+                <Text style={styles.label}>{t('amountLabel')}</Text>
                 <TextInput
                     style={[styles.input, styles.amountInput]}
                     placeholder="0"
@@ -114,7 +114,7 @@ export default function WithdrawScreen() {
                     {loading ? (
                         <ActivityIndicator color="#fff" />
                     ) : (
-                        <Text style={styles.btnText}>Confirm Withdrawal</Text>
+                        <Text style={styles.btnText}>{t('confirmWithdraw')}</Text>
                     )}
                 </TouchableOpacity>
             </View>

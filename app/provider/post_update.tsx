@@ -45,7 +45,7 @@ export default function PostUpdateScreen() {
     const pickImage = async () => {
         const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (permissionResult.granted === false) {
-            Alert.alert("Permission Required", "Please allow access to your photos.");
+            Alert.alert(t('permissionRequired'), t('permissionPhotos'));
             return;
         }
 
@@ -70,8 +70,8 @@ export default function PostUpdateScreen() {
 
     // 2. Submit Update
     const handleSubmit = async () => {
-        if (!title.trim()) return Alert.alert("Missing Title", "Please give this update a title.");
-        if (!description.trim()) return Alert.alert("Missing Description", "Please describe the work done.");
+        if (!title.trim()) return Alert.alert(t('missingTitle'), t('pleaseGiveUpdateTitle'));
+        if (!description.trim()) return Alert.alert(t('missingDescription'), t('pleaseDescribeWork'));
         if (!user || !projectId) return;
 
         const geofence = await checkProjectGeofence(
@@ -80,8 +80,8 @@ export default function PostUpdateScreen() {
             500
         );
         if (!geofence.allowed) {
-            Alert.alert("Location check", geofence.message ?? "You must be at the project site to post updates.", [
-                { text: "OK" },
+            Alert.alert(t('locationCheck'), geofence.message ?? t('mustBeAtSite'), [
+                { text: t('ok') },
                 { text: "Post anyway", onPress: () => submitUpdate() },
             ]);
             return;
@@ -111,7 +111,7 @@ export default function PostUpdateScreen() {
 
             if (error) throw error;
 
-            Alert.alert("Success", "Update posted successfully!");
+            Alert.alert(t('success'), t('updatePostedSuccess'));
             router.back();
 
         } catch (e: any) {
@@ -127,10 +127,10 @@ export default function PostUpdateScreen() {
                         image_url: image ?? null,
                     },
                 });
-                Alert.alert("Saved offline", "Update will sync when you're back online.");
+                Alert.alert(t('savedOffline'), t('updateWillSync'));
                 router.back();
             } else {
-                Alert.alert("Error", e?.message ?? "Something went wrong.");
+                Alert.alert(t('error'), e?.message ?? t('somethingWentWrong'));
             }
         } finally {
             setUploading(false);
@@ -178,7 +178,7 @@ export default function PostUpdateScreen() {
                     onChangeText={setTitle}
                 />
 
-                <Text style={styles.label}>Description</Text>
+                <Text style={styles.label}>{t('descriptionLabel')}</Text>
                 <TextInput
                     style={styles.inputMulti}
                     placeholder="Describe what was completed..."
@@ -191,7 +191,7 @@ export default function PostUpdateScreen() {
 
             <View style={styles.footer}>
                 <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={uploading}>
-                    {uploading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Post Update</Text>}
+                    {uploading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>{t('postUpdateTitle')}</Text>}
                 </TouchableOpacity>
             </View>
         </KeyboardAvoidingView>

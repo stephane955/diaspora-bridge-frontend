@@ -32,7 +32,7 @@ export default function AddReceiptScreen() {
     const pickImage = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-            Alert.alert('Permission', 'Camera roll access is needed to upload receipts.');
+            Alert.alert(t('permissionRequired'), t('permissionCameraRoll'));
             return;
         }
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -56,7 +56,7 @@ export default function AddReceiptScreen() {
     const submit = async () => {
         const amt = parseInt(amount, 10);
         if (!receiptUri || !projectId || !user?.id || isNaN(amt) || amt <= 0) {
-            Alert.alert('Missing info', 'Please add a receipt photo and enter the amount (CFA).');
+            Alert.alert(t('missingInfo'), t('receiptPhotoAndAmount'));
             return;
         }
         setUploading(true);
@@ -78,10 +78,10 @@ export default function AddReceiptScreen() {
                 status: 'pending',
             });
             if (error) throw error;
-            Alert.alert('Done', 'Receipt submitted. Client can approve it in the project Expenses tab.');
+            Alert.alert(t('done'), t('receiptSubmitted'));
             router.back();
         } catch (e: any) {
-            Alert.alert('Error', e.message || 'Upload failed.');
+            Alert.alert(t('error'), e.message || t('uploadFailedMsg'));
         } finally {
             setUploading(false);
         }
@@ -109,7 +109,7 @@ export default function AddReceiptScreen() {
                     )}
                 </TouchableOpacity>
                 {receiptUri && ocrLoading && <ActivityIndicator size="small" color={theme.colors.active} style={{ marginVertical: 8 }} />}
-                <Text style={styles.label}>Amount (CFA)</Text>
+                <Text style={styles.label}>{t('amountLabel')}</Text>
                 <TextInput
                     style={styles.input}
                     keyboardType="numeric"

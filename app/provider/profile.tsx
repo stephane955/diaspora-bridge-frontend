@@ -128,7 +128,7 @@ export default function ProviderProfileScreen() {
             setSkillsModalVisible(false);
             successFeedback();
             Alert.alert(t('success'), t('profileSaved'));
-        } catch (err: any) { Alert.alert("Error", err.message); } finally { setSaving(false); }
+        } catch (err: any) { Alert.alert(t('error'), err.message); } finally { setSaving(false); }
     };
 
     const saveProfileDetails = async () => {
@@ -140,7 +140,7 @@ export default function ProviderProfileScreen() {
             setEditModalVisible(false);
             successFeedback();
             Alert.alert(t('success'), t('profileUpdated'));
-        } catch (err: any) { Alert.alert("Error", err.message); } finally { setSaving(false); }
+        } catch (err: any) { Alert.alert(t('error'), err.message); } finally { setSaving(false); }
     };
 
     const toggleSkill = (skill: string) => {

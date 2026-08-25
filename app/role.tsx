@@ -2,9 +2,11 @@ import { View, Text, Button, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { useLanguage } from '@/context/LanguageContext';
 
 export default function RoleScreen() {
     const router = useRouter();
+    const { t } = useLanguage();
 
     const signOut = async () => {
         await AsyncStorage.removeItem('loggedIn');
@@ -15,20 +17,20 @@ export default function RoleScreen() {
         <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
             <Pressable onPress={signOut} style={styles.signOut}>
                 <Ionicons name="log-out-outline" size={16} color="#0f172a" />
-                <Text style={styles.signOutText}>Sign out</Text>
+                <Text style={styles.signOutText}>{t('signOut')}</Text>
             </Pressable>
 
-            <Text style={{ fontSize: 22, marginBottom: 12 }}>Choose your role</Text>
+            <Text style={{ fontSize: 22, marginBottom: 12 }}>{t('chooseYourRole')}</Text>
 
             <Button
-                title="I am in the diaspora"
+                title={t('iAmInDiaspora')}
                 onPress={() => router.push('/diaspora')}
             />
 
             <View style={{ height: 10 }} />
 
             <Button
-                title="I offer services in Cameroon"
+                title={t('iOfferServicesCameroon')}
                 onPress={() => router.push('/provider')}
             />
         </View>

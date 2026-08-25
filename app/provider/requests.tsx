@@ -92,7 +92,7 @@ export default function RequestsScreen() {
             router.push('/provider/active');
 
         } catch (err: any) {
-            Alert.alert("Error", err.message);
+            Alert.alert(t('error'), err.message);
         } finally {
             setProcessingId(null);
         }

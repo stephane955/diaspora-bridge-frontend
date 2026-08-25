@@ -46,10 +46,10 @@ function cartTotalCfa(cart: MaterialCartRow) {
     return Number(cart.total_amount_cfa ?? 0) + Number(cart.labor_amount_cfa ?? 0);
 }
 
-function statusLabel(status: string) {
-    if (status === 'pending_approval') return 'Pending Approval';
-    if (status === 'approved') return 'Funded / In Escrow';
-    if (status === 'collected') return 'Collected';
+function statusLabel(status: string, t: (key: string) => string) {
+    if (status === 'pending_approval') return t('pendingApprovalStatus');
+    if (status === 'approved') return t('fundedInEscrowStatus');
+    if (status === 'collected') return t('collectedStatus');
     return status.replace('_', ' ');
 }
 
@@ -120,7 +120,7 @@ export default function ClientWalletScreen() {
                         .select('id, full_name')
                         .in('id', supplierIds);
                     supplierMap = Object.fromEntries(
-                        (suppliers ?? []).map((s) => [s.id, s.full_name ?? 'Supplier'])
+                        (suppliers ?? []).map((s) => [s.id, s.full_name ?? t('supplierFallback')])
                     );
                 }
                 setMaterialCarts(
@@ -140,13 +140,13 @@ export default function ClientWalletScreen() {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [user]);
+    }, [user, t]);
 
     useFocusEffect(useCallback(() => { fetchData(); }, [fetchData]));
 
     const handleTopUp = () => {
         successFeedback();
-        Alert.alert('Add Funds', 'This would open the Stripe Payment Gateway.');
+        Alert.alert(t('addFunds'), t('addFundsStripeBody'));
     };
 
     const activeCarts = materialCarts.filter((c) =>
@@ -187,18 +187,18 @@ export default function ClientWalletScreen() {
                         <View style={styles.chip} />
                         <TouchableOpacity style={styles.topUpPill} onPress={handleTopUp} activeOpacity={0.85}>
                             <Plus size={14} color={PREMIUM_GOLD} strokeWidth={2.5} />
-                            <Text style={styles.topUpPillText}>Top Up</Text>
+                            <Text style={styles.topUpPillText}>{t('topUp')}</Text>
                         </TouchableOpacity>
                     </View>
 
-                    <Text style={styles.cardEyebrow}>Total Funds in Escrow</Text>
+                    <Text style={styles.cardEyebrow}>{t('totalFundsInEscrow')}</Text>
                     <Text style={styles.cardBalance}>{escrowed.toLocaleString()} CFA</Text>
 
                     <View style={styles.cardFooter}>
                         <XStack alignItems="center" gap={6}>
                             <Lock size={14} color="rgba(255,255,255,0.55)" />
                             <TamaguiText color="rgba(255,255,255,0.55)" fontSize={13} fontWeight="600">
-                                Available wallet balance
+                                {t('availableWalletBalance')}
                             </TamaguiText>
                         </XStack>
                         <Text style={styles.cardSubBalance}>{balance.toLocaleString()} CFA</Text>
@@ -209,13 +209,13 @@ export default function ClientWalletScreen() {
             {/* Active material carts */}
             <YStack marginTop={28} marginBottom={8}>
                 <TamaguiText color="#F8FAFC" fontSize={20} fontWeight="800" letterSpacing={-0.3} marginBottom={14}>
-                    Active Material Carts
+                    {t('activeMaterialCarts')}
                 </TamaguiText>
 
                 {activeCarts.length === 0 ? (
                     <View style={styles.emptyCartStrip}>
                         <TamaguiText color={PREMIUM_MUTED} fontSize={14}>
-                            No carts awaiting approval or in escrow.
+                            {t('noCartsAwaiting')}
                         </TamaguiText>
                     </View>
                 ) : (
@@ -233,10 +233,10 @@ export default function ClientWalletScreen() {
                                 style={styles.cartCard}
                             >
                                 <Text style={styles.cartProject} numberOfLines={1}>
-                                    {cart.projects?.title ?? 'Project'}
+                                    {cart.projects?.title ?? t('projectFallback')}
                                 </Text>
                                 <Text style={[styles.cartStatus, { color: statusColor(cart.status) }]}>
-                                    {statusLabel(cart.status)}
+                                    {statusLabel(cart.status, t)}
                                 </Text>
                                 <Text style={styles.cartAmount}>
                                     {cartTotalCfa(cart).toLocaleString()} CFA
@@ -256,13 +256,13 @@ export default function ClientWalletScreen() {
             {/* Completed handovers */}
             <YStack marginTop={24}>
                 <TamaguiText color="#F8FAFC" fontSize={20} fontWeight="800" letterSpacing={-0.3} marginBottom={14}>
-                    Completed Handovers
+                    {t('completedHandovers')}
                 </TamaguiText>
 
                 {collectedCarts.length === 0 ? (
                     <View style={styles.emptyHistory}>
                         <CheckCircle size={36} color="#94A3B8" />
-                        <Text style={styles.emptyHistoryTitle}>No completed collections yet</Text>
+                        <Text style={styles.emptyHistoryTitle}>{t('noCompletedHandovers')}</Text>
                         <Text style={styles.emptyHistorySub}>
                             When suppliers scan QR codes and collect materials, they appear here.
                         </Text>
@@ -281,7 +281,7 @@ export default function ClientWalletScreen() {
                                 </View>
                                 <View style={styles.statementBody}>
                                     <Text style={styles.statementTitle} numberOfLines={1}>
-                                        {cart.supplier?.full_name ?? cart.projects?.title ?? 'Supplier'}
+                                        {cart.supplier?.full_name ?? cart.projects?.title ?? t('supplierFallback')}
                                     </Text>
                                     <Text style={styles.statementSub}>
                                         {new Date(cart.created_at).toLocaleDateString(undefined, {
@@ -347,7 +347,7 @@ export default function ClientWalletScreen() {
                 subtitle="Funds & material carts"
                 menuItems={clientMenuItems(router, t)}
             />
-            <VaultGate promptMessage="Unlock Wallet to view balance and transactions." lockOnBlur>
+            <VaultGate promptMessage={t('unlockWalletPrompt')} lockOnBlur>
                 {walletContent}
             </VaultGate>
         </View>

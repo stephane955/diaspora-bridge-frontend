@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 import { theme } from '@/constants/theme';
 import { successFeedback } from '@/utils/haptics';
 import { safeGoBack } from '@/utils/navigation';
@@ -55,6 +56,7 @@ export default function CollectionScannerScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
+    const { t } = useLanguage();
     const [permission, requestPermission] = useCameraPermissions();
     const [scanning, setScanning] = useState(false);
     const [uploadingProof, setUploadingProof] = useState(false);
@@ -67,8 +69,8 @@ export default function CollectionScannerScreen() {
                 const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
                 if (!cameraPermission.granted) {
                     Alert.alert(
-                        'Photo skipped',
-                        'Camera permission was not granted. Collection completed without handover photo.'
+                        t('photoSkipped'),
+                        t('permissionCamera')
                     );
                     return;
                 }
@@ -80,7 +82,7 @@ export default function CollectionScannerScreen() {
                 });
 
                 if (result.canceled || !result.assets?.[0]?.uri) {
-                    Alert.alert('Photo skipped', 'No handover photo was captured.');
+                    Alert.alert(t('photoSkipped'), t('noHandoverPhoto'));
                     return;
                 }
 
@@ -110,14 +112,14 @@ export default function CollectionScannerScreen() {
                 if (updateErr) throw updateErr;
             } catch (e: any) {
                 Alert.alert(
-                    'Evidence upload failed',
-                    e?.message || 'Collection was verified, but we could not save the site photo update.'
+                    t('error'),
+                    e?.message || t('couldNotSavePhoto')
                 );
             } finally {
                 setUploadingProof(false);
             }
         },
-        []
+        [t]
     );
 
     const handleBarcodeScanned = useCallback(async ({ data }: { data: string }) => {
@@ -128,23 +130,23 @@ export default function CollectionScannerScreen() {
         try {
             const rawQr = data?.trim?.();
             if (!rawQr) {
-                Alert.alert('Rejected QR', 'Could not read QR code data.');
+                Alert.alert(t('rejectedQr'), t('couldNotReadQr'));
                 return;
             }
 
             const payload = parsePayload(rawQr);
             if (!payload) {
                 Alert.alert(
-                    'Rejected QR',
-                    'This QR format is invalid or unsigned. Ask the provider to regenerate a valid cart QR.'
+                    t('rejectedQr'),
+                    t('couldNotReadQr')
                 );
                 return;
             }
 
             if (!payload.signature) {
                 Alert.alert(
-                    'Rejected QR',
-                    'Missing signature in QR payload. This code cannot be verified.'
+                    t('rejectedQr'),
+                    t('couldNotReadQr')
                 );
                 return;
             }
@@ -152,8 +154,8 @@ export default function CollectionScannerScreen() {
             const expectedSignature = computeSignature(payload.cart_id, payload.supplier_id, payload.iat);
             if (payload.signature !== expectedSignature) {
                 Alert.alert(
-                    'Rejected QR',
-                    'Invalid QR signature. This code may have been tampered with.'
+                    t('rejectedQr'),
+                    t('couldNotReadQr')
                 );
                 return;
             }
@@ -161,24 +163,24 @@ export default function CollectionScannerScreen() {
             const ageMs = Date.now() - payload.iat;
             if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > QR_MAX_AGE_MS) {
                 Alert.alert(
-                    'Rejected QR',
-                    'QR code is expired or has an invalid timestamp. Ask the provider to open a fresh QR.'
+                    t('rejectedQr'),
+                    t('couldNotReadQr')
                 );
                 return;
             }
 
             if (payload.supplier_id !== user.id) {
                 Alert.alert(
-                    'Rejected QR',
-                    'This QR was issued for a different supplier account.'
+                    t('rejectedQr'),
+                    t('qrOtherSupplier')
                 );
                 return;
             }
 
             if (cartId && payload.cart_id !== cartId) {
                 Alert.alert(
-                    'Rejected QR',
-                    'Scanned cart does not match the order you opened. Return and scan the correct order QR.'
+                    t('rejectedQr'),
+                    t('couldNotReadQr')
                 );
                 return;
             }
@@ -190,25 +192,25 @@ export default function CollectionScannerScreen() {
                 .single();
 
             if (fetchErr || !cart) {
-                Alert.alert('Rejected QR', 'This QR references a cart that no longer exists.');
+                Alert.alert(t('rejectedQr'), t('qrCartGone'));
                 return;
             }
 
             if (cart.supplier_id !== user.id) {
-                Alert.alert('Rejected QR', 'This cart belongs to another supplier.');
+                Alert.alert(t('rejectedQr'), t('qrOtherSupplier'));
                 return;
             }
 
             if (cart.status === 'collected') {
                 Alert.alert(
-                    'Rejected QR',
-                    'This cart is already marked as collected. Duplicate collection is blocked.'
+                    t('rejectedQr'),
+                    t('qrNotApproved')
                 );
                 return;
             }
 
             if (cart.status !== 'approved') {
-                Alert.alert('Rejected QR', 'This cart is not in approved state and cannot be collected.');
+                Alert.alert(t('rejectedQr'), t('qrNotApproved'));
                 return;
             }
 
@@ -220,36 +222,36 @@ export default function CollectionScannerScreen() {
             if (updateErr) throw updateErr;
 
             Alert.alert(
-                'Collection verified',
-                'Now capture a handover photo for the client timeline.',
+                t('success'),
+                t('collectionVerified'),
                 [
                     {
-                        text: 'Skip photo',
+                        text: t('cancel'),
                         style: 'cancel',
                         onPress: () => {
                             successFeedback();
-                            Alert.alert('Success', 'Collection verified!', [{ text: 'OK', onPress: () => safeGoBack(router, '/supplier/dashboard') }]);
+                            Alert.alert(t('success'), t('collectionVerified'), [{ text: t('ok'), onPress: () => safeGoBack(router, '/supplier/dashboard') }]);
                         },
                     },
                     {
-                        text: 'Capture photo',
+                        text: t('ok'),
                         onPress: async () => {
                             await uploadCollectionPhoto(cart);
                             successFeedback();
-                            Alert.alert('Success', 'Collection verified and timeline updated.', [
-                                { text: 'OK', onPress: () => safeGoBack(router, '/supplier/dashboard') },
+                            Alert.alert(t('success'), t('collectionVerifiedTimeline'), [
+                                { text: t('ok'), onPress: () => safeGoBack(router, '/supplier/dashboard') },
                             ]);
                         },
                     },
                 ]
             );
         } catch (e: any) {
-            Alert.alert('Error', e.message || 'Could not verify collection.');
+            Alert.alert(t('error'), e.message || t('couldNotVerifyCollection'));
         } finally {
             setScanning(false);
             scannedRef.current = false;
         }
-    }, [user?.id, router, cartId, uploadCollectionPhoto]);
+    }, [user?.id, router, cartId, uploadCollectionPhoto, t]);
 
     if (!permission) {
         return (
@@ -262,12 +264,12 @@ export default function CollectionScannerScreen() {
     if (!permission.granted) {
         return (
             <View style={[styles.container, styles.center, { padding: 24 }]}>
-                <Text style={styles.permissionText}>Camera access is needed to scan the collection QR code.</Text>
+                <Text style={styles.permissionText}>{t('permissionCamera')}</Text>
                 <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
                     <Text style={styles.permissionBtnText}>Grant permission</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => safeGoBack(router, '/supplier/dashboard')}>
-                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                    <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
                 </TouchableOpacity>
             </View>
         );

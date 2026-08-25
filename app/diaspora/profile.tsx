@@ -84,9 +84,9 @@ export default function ClientProfileScreen() {
             // Update local state immediately
             setProfile({ ...profile, full_name: newName, city: newCity });
             setEditModalVisible(false);
-            Alert.alert("Success", "Profile updated successfully.");
+            Alert.alert(t('success'), t('profileUpdatedSuccess'));
         } catch (error: any) {
-            Alert.alert("Error", error.message);
+            Alert.alert(t('error'), error.message);
         } finally {
             setSaving(false);
         }
@@ -113,7 +113,7 @@ export default function ClientProfileScreen() {
 
         if (!result.canceled && result.assets[0].base64) {
             // Here you would upload the base64 to Supabase Storage
-            Alert.alert("Info", "Photo selection working. Storage upload needs to be connected.");
+            Alert.alert(t('info'), t('photoSelectionWorking'));
         }
     };
 
@@ -320,7 +320,7 @@ export default function ClientProfileScreen() {
                         </View>
 
                         {/* Add New Card Button */}
-                        <TouchableOpacity style={styles.addCardBtn} onPress={() => Alert.alert("Integration Needed", "Stripe setup required.")}>
+                        <TouchableOpacity style={styles.addCardBtn} onPress={() => Alert.alert(t('integrationNeeded'), t('stripeSetupRequired'))}>
                             <Ionicons name="add" size={20} color={theme.colors.active} />
                             <Text style={styles.addCardText}>Add New Card</Text>
                         </TouchableOpacity>

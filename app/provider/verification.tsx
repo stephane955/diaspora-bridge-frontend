@@ -82,7 +82,7 @@ export default function VerificationScreen() {
   const pickImage = async (type: 'front' | 'back' | 'selfie') => {
     const { status: perm } = await ImagePicker.requestCameraPermissionsAsync();
     if (perm !== 'granted') {
-      Alert.alert('Permission', t('cameraPermission') || 'Camera access required');
+      Alert.alert(t('error'), t('permissionCamera'));
       return;
     }
 
@@ -118,7 +118,7 @@ export default function VerificationScreen() {
 
   const handleSubmit = async () => {
     if (!frontImage || !backImage || !selfie) {
-      Alert.alert('Missing Documents', t('missingFields') || 'Please provide all 3 photos.');
+      Alert.alert(t('missingDocuments'), t('provideAll3Photos'));
       return;
     }
 
@@ -166,7 +166,7 @@ export default function VerificationScreen() {
       Alert.alert(t('success'), 'Documents submitted! Returning to profile.');
       setTimeout(() => router.push('/provider/profile'), 1200);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Upload failed.');
+      Alert.alert(t('error'), error.message || t('couldNotSavePhoto'));
     } finally {
       setUploading(false);
     }

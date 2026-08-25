@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 import { theme } from '@/constants/theme';
 import { mediumFeedback } from '@/utils/haptics';
 
@@ -33,6 +34,7 @@ export default function SupplierDashboard() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
+    const { t } = useLanguage();
     const [orders, setOrders] = useState<Cart[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -50,12 +52,12 @@ export default function SupplierDashboard() {
             if (error) throw error;
             setOrders(data || []);
         } catch (e: any) {
-            Alert.alert('Error', e.message || 'Could not load orders.');
+            Alert.alert(t('error'), e.message || t('couldNotLoadOrders'));
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [user?.id]);
+    }, [user?.id, t]);
 
     useEffect(() => { fetchOrders(); }, [fetchOrders]);
 

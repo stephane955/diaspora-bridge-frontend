@@ -18,6 +18,7 @@ import {
 import { successFeedback, mediumFeedback } from '@/utils/haptics';
 import { hireProvider } from '@/lib/hireProvider';
 import FavoriteProviderButton from '@/components/FavoriteProviderButton';
+import { useLanguage } from '@/context/LanguageContext';
 
 export type ApplicantCardData = {
   id: string;
@@ -48,6 +49,7 @@ export default function ApplicantCard({
   onHired,
   onPressView,
 }: Props) {
+  const { t } = useLanguage();
   const [hiring, setHiring] = useState(false);
   const profile = application.profiles ?? {};
   const name = profile.full_name || 'Service Provider';
@@ -63,7 +65,7 @@ export default function ApplicantCard({
       'Confirm Hire',
       `Are you sure you want to hire ${name} for ${bid.toLocaleString()} CFA? This will initialize the Escrow contract.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
           text: 'Hire & Start Escrow',
           style: 'default',
@@ -77,10 +79,10 @@ export default function ApplicantCard({
                 bidAmount: bid,
               });
               successFeedback();
-              Alert.alert('Success', `${name} hired. Escrow workroom is ready.`);
+              Alert.alert(t('success'), t('hiredEscrowReady', { name }));
               onHired?.();
             } catch (e: any) {
-              Alert.alert('Hire failed', e?.message || 'Could not hire provider.');
+              Alert.alert(t('hireFailed'), e?.message || t('couldNotHireProvider'));
             } finally {
               setHiring(false);
             }
