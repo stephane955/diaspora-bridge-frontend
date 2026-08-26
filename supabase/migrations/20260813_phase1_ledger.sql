@@ -1,12 +1,12 @@
 -- =============================================================================
 -- Diaspora Bridge — Phase 1 operational ledger schema
 -- Additive only. Does not alter legacy tables, RLS, RPCs, or functions.
--- Apply later via review; this file is not executed by this change.
 -- UUID defaults use gen_random_uuid() (PostgreSQL 13+ core; this project is 17.x).
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
 -- Enumerations (create if missing; PostgreSQL has no CREATE TYPE IF NOT EXISTS)
+-- After create-or-skip, assert labels match the frozen Phase 1 set.
 -- -----------------------------------------------------------------------------
 
 DO $$
@@ -20,6 +20,26 @@ BEGIN
   );
 EXCEPTION
   WHEN duplicate_object THEN NULL;
+END
+$$;
+
+DO $$
+DECLARE
+  v_actual text[];
+  v_expected text[] := ARRAY['user', 'project', 'platform', 'psp', 'supplier'];
+BEGIN
+  SELECT array_agg(e.enumlabel::text ORDER BY e.enumsortorder)
+    INTO v_actual
+  FROM pg_enum e
+  JOIN pg_type t ON t.oid = e.enumtypid
+  JOIN pg_namespace n ON n.oid = t.typnamespace
+  WHERE n.nspname = 'public' AND t.typname = 'ledger_owner_type';
+
+  IF v_actual IS DISTINCT FROM v_expected THEN
+    RAISE EXCEPTION
+      'ledger_owner_type labels mismatch: expected %, got %',
+      v_expected, v_actual;
+  END IF;
 END
 $$;
 
@@ -47,6 +67,45 @@ BEGIN
   );
 EXCEPTION
   WHEN duplicate_object THEN NULL;
+END
+$$;
+
+DO $$
+DECLARE
+  v_actual text[];
+  v_expected text[] := ARRAY[
+    'psp_stripe',
+    'psp_momo',
+    'psp_orange',
+    'platform_credit',
+    'user_available',
+    'user_payout_clearing',
+    'user_refund_clearing',
+    'project_escrow',
+    'project_retainage',
+    'project_materials_escrow',
+    'provider_payable',
+    'supplier_payable',
+    'platform_compliance_hold',
+    'platform_suspense',
+    'platform_fees',
+    'platform_insurance',
+    'platform_equity',
+    'platform_loss'
+  ];
+BEGIN
+  SELECT array_agg(e.enumlabel::text ORDER BY e.enumsortorder)
+    INTO v_actual
+  FROM pg_enum e
+  JOIN pg_type t ON t.oid = e.enumtypid
+  JOIN pg_namespace n ON n.oid = t.typnamespace
+  WHERE n.nspname = 'public' AND t.typname = 'ledger_account_purpose';
+
+  IF v_actual IS DISTINCT FROM v_expected THEN
+    RAISE EXCEPTION
+      'ledger_account_purpose labels mismatch: expected %, got %',
+      v_expected, v_actual;
+  END IF;
 END
 $$;
 
@@ -82,6 +141,49 @@ END
 $$;
 
 DO $$
+DECLARE
+  v_actual text[];
+  v_expected text[] := ARRAY[
+    'escrow_funding',
+    'compliance_hold',
+    'compliance_release',
+    'insurance_fee',
+    'platform_fee',
+    'milestone_release',
+    'retainage_release',
+    'wallet_credit',
+    'wallet_debit',
+    'payout_requested',
+    'payout_settled',
+    'payout_failed',
+    'refund',
+    'refund_settled',
+    'provider_advance_disbursement',
+    'provider_advance_repayment',
+    'material_funding',
+    'supplier_payment',
+    'milestone_release_reversal',
+    'chargeback',
+    'platform_capital_injection',
+    'payout_reversed'
+  ];
+BEGIN
+  SELECT array_agg(e.enumlabel::text ORDER BY e.enumsortorder)
+    INTO v_actual
+  FROM pg_enum e
+  JOIN pg_type t ON t.oid = e.enumtypid
+  JOIN pg_namespace n ON n.oid = t.typnamespace
+  WHERE n.nspname = 'public' AND t.typname = 'ledger_journal_type';
+
+  IF v_actual IS DISTINCT FROM v_expected THEN
+    RAISE EXCEPTION
+      'ledger_journal_type labels mismatch: expected %, got %',
+      v_expected, v_actual;
+  END IF;
+END
+$$;
+
+DO $$
 BEGIN
   CREATE TYPE public.ledger_journal_source AS ENUM (
     'rpc',
@@ -95,6 +197,26 @@ END
 $$;
 
 DO $$
+DECLARE
+  v_actual text[];
+  v_expected text[] := ARRAY['rpc', 'webhook', 'backfill', 'ops'];
+BEGIN
+  SELECT array_agg(e.enumlabel::text ORDER BY e.enumsortorder)
+    INTO v_actual
+  FROM pg_enum e
+  JOIN pg_type t ON t.oid = e.enumtypid
+  JOIN pg_namespace n ON n.oid = t.typnamespace
+  WHERE n.nspname = 'public' AND t.typname = 'ledger_journal_source';
+
+  IF v_actual IS DISTINCT FROM v_expected THEN
+    RAISE EXCEPTION
+      'ledger_journal_source labels mismatch: expected %, got %',
+      v_expected, v_actual;
+  END IF;
+END
+$$;
+
+DO $$
 BEGIN
   CREATE TYPE public.ledger_event_status AS ENUM (
     'received',
@@ -104,6 +226,26 @@ BEGIN
   );
 EXCEPTION
   WHEN duplicate_object THEN NULL;
+END
+$$;
+
+DO $$
+DECLARE
+  v_actual text[];
+  v_expected text[] := ARRAY['received', 'processed', 'ignored', 'failed'];
+BEGIN
+  SELECT array_agg(e.enumlabel::text ORDER BY e.enumsortorder)
+    INTO v_actual
+  FROM pg_enum e
+  JOIN pg_type t ON t.oid = e.enumtypid
+  JOIN pg_namespace n ON n.oid = t.typnamespace
+  WHERE n.nspname = 'public' AND t.typname = 'ledger_event_status';
+
+  IF v_actual IS DISTINCT FROM v_expected THEN
+    RAISE EXCEPTION
+      'ledger_event_status labels mismatch: expected %, got %',
+      v_expected, v_actual;
+  END IF;
 END
 $$;
 
@@ -359,9 +501,21 @@ CREATE CONSTRAINT TRIGGER ledger_lines_must_balance_trg
 
 -- -----------------------------------------------------------------------------
 -- Append-only: journals and lines (privileges + triggers)
+-- Spec names: ledger_reject_journal_mutation / ledger_reject_line_mutation
 -- -----------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.ledger_reject_mutation()
+CREATE OR REPLACE FUNCTION public.ledger_reject_journal_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  RAISE EXCEPTION '% is append-only; corrections require a compensating journal', TG_TABLE_NAME
+    USING ERRCODE = '55000';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.ledger_reject_line_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public
@@ -375,22 +529,22 @@ $$;
 CREATE TRIGGER ledger_journals_no_update_delete_trg
   BEFORE UPDATE OR DELETE ON public.ledger_journals
   FOR EACH ROW
-  EXECUTE FUNCTION public.ledger_reject_mutation();
+  EXECUTE FUNCTION public.ledger_reject_journal_mutation();
 
 CREATE TRIGGER ledger_lines_no_update_delete_trg
   BEFORE UPDATE OR DELETE ON public.ledger_lines
   FOR EACH ROW
-  EXECUTE FUNCTION public.ledger_reject_mutation();
+  EXECUTE FUNCTION public.ledger_reject_line_mutation();
 
 CREATE TRIGGER ledger_journals_no_truncate_trg
   BEFORE TRUNCATE ON public.ledger_journals
   FOR EACH STATEMENT
-  EXECUTE FUNCTION public.ledger_reject_mutation();
+  EXECUTE FUNCTION public.ledger_reject_journal_mutation();
 
 CREATE TRIGGER ledger_lines_no_truncate_trg
   BEFORE TRUNCATE ON public.ledger_lines
   FOR EACH STATEMENT
-  EXECUTE FUNCTION public.ledger_reject_mutation();
+  EXECUTE FUNCTION public.ledger_reject_line_mutation();
 
 -- -----------------------------------------------------------------------------
 -- Privileges: JWT roles get no ledger access. service_role may insert/select.
@@ -410,12 +564,14 @@ REVOKE ALL ON TABLE public.ledger_posted_events FROM anon, authenticated;
 REVOKE ALL ON FUNCTION public.ledger_assert_journal_balanced(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.ledger_journals_balance_trg() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.ledger_lines_balance_trg() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.ledger_reject_mutation() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ledger_reject_journal_mutation() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ledger_reject_line_mutation() FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.ledger_assert_journal_balanced(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.ledger_journals_balance_trg() TO service_role;
 GRANT EXECUTE ON FUNCTION public.ledger_lines_balance_trg() TO service_role;
-GRANT EXECUTE ON FUNCTION public.ledger_reject_mutation() TO service_role;
+GRANT EXECUTE ON FUNCTION public.ledger_reject_journal_mutation() TO service_role;
+GRANT EXECUTE ON FUNCTION public.ledger_reject_line_mutation() TO service_role;
 
 GRANT SELECT, INSERT, UPDATE ON TABLE public.ledger_accounts TO service_role;
 GRANT SELECT, INSERT ON TABLE public.ledger_journals TO service_role;
