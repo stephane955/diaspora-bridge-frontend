@@ -1,0 +1,143 @@
+# DiasporaBridge — machine-readable current state
+# last_verified: 2026-09-02 (C06 SCHEMA APPLIED staging; LIVE MONEY NO)
+# repo_head: be1af5a0333a0b75867fdc60c6f8bb7670558e54
+# working_tree_state: uncommitted P00/P01/C05/C06 foundation (preserved)
+# authority: docs/04_MASTER_RECONCILIATION_AND_EXECUTION_PLAN.md
+# production_touched: false
+
+environment:
+  staging_ref: tvorurbmzrpwvxwztpix
+  production_ref: xtyqcdktwxzuezarnqhz
+  app_supabase_target: staging_ref
+  production_touched: false
+
+migrations:
+  active_migration_count: 9
+  legacy_archived_count: 21
+  future_migration_count: 0
+  active_chain:
+    - "20260812000000:p01_minimal_bootstrap"
+    - "20260813:phase1_ledger"
+    - "20260826100000:phase3a_ledger_posting"
+    - "20260902100000:phase5_canonical_money"
+    - "20260902122609:p00_security_lockdown"
+    - "20260902140000:p01_core_app_schema"
+    - "20260902162321:p01_10_favorite_providers"
+    - "20260902183828:c05_phase3b0_request_scoped_multisig"
+    - "20260902191944:c06_phase3b_payment_intent_escrow_funding"
+  staging_applied: aligned_with_local
+  local_applied: aligned_with_staging
+  staging_table_count: 29
+  local_reset_table_count: 29
+  staging_policy_count: 49
+  local_reset_policy_count: 49
+  production_applied: unknown_read_only_not_queried
+
+ledger:
+  designed: true
+  migration_exists: true
+  applied: true
+  app_wired: partial
+  tested: true
+  operational: false
+  staging_accounts: 11
+  # 10 deterministic seeded platform/PSP accounts
+  # + 1 zero-balance on-demand user_available account
+  local_reset_accounts: 10
+  # deterministic seed only; NOT schema drift
+  staging_balance_xaf: 0
+  staging_journals: 0
+  staging_lines: 0
+  local_reset_journals: 0
+  local_reset_lines: 0
+  local_reset_balance_xaf: 0
+
+phase3b0:
+  designed: true
+  migration_exists: true
+  applied: true
+  app_wired: false
+  tested: true
+  operational: false
+  migration_version: "20260902183828"
+  staging_escrow_funding_requests: true
+  staging_escrow_funder_approvals: true
+
+phase3b:
+  designed: true
+  migration_exists: true
+  applied: true
+  app_wired: false
+  tested: true
+  operational: false
+  migration_version: "20260902191944"
+  staging_payments_table: true
+  fee_model: gross_funding_only_fees_deferred_c04
+  currency_model: xaf_only
+  psp_event_identity: provider_namespaced_canonical
+  psp_ref_identity: unique_per_provider_ref
+
+phase5:
+  designed: true
+  migration_exists: true
+  applied: true
+  app_wired: partial
+  tested: true
+  operational: false
+  status_label: canonical_money_scaffolding_complete
+
+p01_foundation:
+  status: DONE
+  typecheck: PASS
+  lint: PASS
+  expo_doctor: PASS
+  github_actions: NOT_EXECUTED
+  npm_ci_windows: NOT_VERIFIED_EPERM
+
+security_p0:
+  P0_1_transactions_rls: DONE
+  P0_2_admin_gate: DONE
+  P0_3_process_escrow_fail_closed: DONE
+  P0_4_webhook_auth: PARTIAL
+  P0_5_profiles_public: DONE
+  P0_6_observer_write_separation: DONE
+  P0_7_env_separation: DONE
+  P0_8_ledger_monitoring: PARTIAL
+
+edge_functions_staging:
+  deployed_count: 0
+  process_escrow: absent_fail_closed
+  escrow_webhook: absent_fail_closed
+
+expo:
+  bundle_identifier: BLOCKED_ON_PRODUCT_IDENTIFIER
+  android_package: BLOCKED_ON_PRODUCT_IDENTIFIER
+  expo_doctor: PASS
+
+c05_readiness:
+  c05_applied: true
+  c05_verified_staging: true
+  decision_31: FROZEN
+  verdict: C05_APPLIED_STAGING_VERIFIED
+
+c06_readiness:
+  c06_r_review: complete
+  c06_schema_apply_ready: true
+  c06_schema_applied: true
+  c06_staging_verified: true
+  c06_live_money_ready: false
+  fee_model: gross_funding_only_fees_deferred_c04
+  currency_model: xaf_only
+  app_wired: false
+  operational: false
+  live_blockers:
+    - C03
+    - C09
+    - C11
+    - C12
+    - C13
+    - decision_13_regulatory
+
+recommended_next_phase: C03_or_C11_or_C12_dependency_work_before_live_money
+  # Do NOT jump to C07 solely because C06 schema exists.
+  # DATABASE CAPABILITY ≠ TRUSTED PSP ≠ LEGAL ≠ LIVE MONEY

@@ -1,39 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
-  Switch,
   ScrollView,
   Alert,
   Linking,
+  StatusBar,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import PremiumHeader from '@/components/PremiumHeader';
-import { providerMenuItems } from '@/constants/premiumMenus';
 import ThemeToggleRow from '@/components/ThemeToggleRow';
-import {
-  FLOATING_TAB_BAR_HEIGHT,
-  PREMIUM_GOLD,
-  TEXT_PRIMARY,
-  TEXT_SECONDARY,
-} from '@/constants/layout';
+import SettingsSection from '@/components/settings/SettingsSection';
+import SettingsRow from '@/components/settings/SettingsRow';
+import { providerMenuItems } from '@/constants/premiumMenus';
 import { usePremiumColors } from '@/hooks/usePremiumColors';
-import { successFeedback, mediumFeedback } from '@/utils/haptics';
+import { successFeedback } from '@/utils/haptics';
+import { FLOATING_TAB_BAR_HEIGHT } from '@/constants/layout';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  ALPHA,
+  GOLD,
+  INFO,
+  NAVY,
+  SUCCESS,
+  WARNING,
+  radius,
+  space,
+  text,
+  weight,
+  withAlpha,
+} from '@/constants/design';
+
+const ONLINE_STORAGE_KEY = 'provider_is_online';
 
 const LANGUAGES = [
-  { code: 'en', label: 'English', flag: '🇺🇸' },
-  { code: 'fr', label: 'Français', flag: '🇫🇷' },
-  { code: 'es', label: 'Español', flag: '🇪🇸' },
-  { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
-  { code: 'it', label: 'Italiano', flag: '🇮🇹' },
+  { code: 'en' as const, label: 'English', flag: '🇺🇸' },
+  { code: 'fr' as const, label: 'Français', flag: '🇫🇷' },
+  { code: 'es' as const, label: 'Español', flag: '🇪🇸' },
+  { code: 'de' as const, label: 'Deutsch', flag: '🇩🇪' },
+  { code: 'it' as const, label: 'Italiano', flag: '🇮🇹' },
 ];
 
 export default function ProviderSettingsScreen() {
@@ -45,32 +57,56 @@ export default function ProviderSettingsScreen() {
 
   const [isOnline, setIsOnline] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [profile, setProfile] = useState<{
+    full_name?: string | null;
+    city?: string | null;
+    avatar_url?: string | null;
+  } | null>(null);
 
-  useEffect(() => {
-    if (user) {
-      supabase
-        .from('profiles')
-        .select('is_online')
-        .eq('id', user.id)
-        .single()
-        .then(({ data }) => {
-          if (data) setIsOnline(data.is_online);
-        });
+  const loadProfile = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('full_name, city, avatar_url')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (data) {
+      setProfile(data);
+    }
+    try {
+      const stored = await AsyncStorage.getItem(ONLINE_STORAGE_KEY);
+      if (stored === 'true' || stored === 'false') {
+        setIsOnline(stored === 'true');
+      }
+    } catch {
+      // keep default local UI state
     }
   }, [user]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  const displayName =
+    profile?.full_name ||
+    (user?.user_metadata?.full_name as string | undefined) ||
+    t('providerFallback');
+  const accountEmail = user?.email ?? '';
+
+  const currentLang = LANGUAGES.find((l) => l.code === language);
 
   const toggleOnline = async (value: boolean) => {
     setIsOnline(value);
     successFeedback();
     try {
-      await supabase.from('profiles').update({ is_online: value }).eq('id', user?.id);
+      await AsyncStorage.setItem(ONLINE_STORAGE_KEY, value ? 'true' : 'false');
     } catch {
       setIsOnline(!value);
       Alert.alert(t('error'), t('connectionFailed'));
     }
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     Alert.alert(t('signOut'), t('signOutConfirmBody'), [
       { text: t('cancel'), style: 'cancel' },
       {
@@ -100,10 +136,9 @@ export default function ProviderSettingsScreen() {
   };
 
   const cycleLanguage = () => {
-    mediumFeedback();
     const currentIndex = LANGUAGES.findIndex((l) => l.code === language);
     const nextIndex = (currentIndex + 1) % LANGUAGES.length;
-    setLanguage(LANGUAGES[nextIndex].code as any);
+    setLanguage(LANGUAGES[nextIndex].code);
     successFeedback();
   };
 
@@ -122,176 +157,269 @@ export default function ProviderSettingsScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: c.bg }]}>
+    <View style={[styles.screen, { backgroundColor: c.bg }]}>
+      <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       <PremiumHeader
         title={t('settingsTitle')}
-        subtitle={t('preferences')}
+        subtitle={displayName}
         showBack
         fallbackRoute="/provider/active"
         menuItems={providerMenuItems(router, t)}
       />
+
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          {
-            paddingTop: insets.top + 88,
-            paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40,
-            paddingHorizontal: 20,
-          },
-        ]}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingTop: insets.top + 88,
+          paddingBottom: FLOATING_TAB_BAR_HEIGHT + 48,
+          paddingHorizontal: space.lg,
+        }}
       >
-        <Text style={styles.sectionTitle}>{t('availability')}</Text>
-        <BlurView intensity={36} tint="dark" style={styles.card}>
-          <View style={styles.row}>
-            <View style={[styles.rowIconBg, { backgroundColor: 'rgba(52,211,153,0.15)' }]}>
-              <Ionicons name="power" size={20} color="#34D399" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{t('onlineStatus')}</Text>
-              <Text style={styles.rowSub}>{t('onlineDesc')}</Text>
-            </View>
-            <Switch
-              value={isOnline}
-              onValueChange={toggleOnline}
-              trackColor={{ false: '#334155', true: 'rgba(52,211,153,0.5)' }}
-              thumbColor={isOnline ? '#34D399' : '#94A3B8'}
-            />
-          </View>
-        </BlurView>
-
-        <Text style={styles.sectionTitle}>{t('preferences')}</Text>
-        <ThemeToggleRow />
-        <BlurView intensity={36} tint="dark" style={styles.card}>
-          <TouchableOpacity style={styles.row} onPress={cycleLanguage}>
-            <View style={[styles.rowIconBg, { backgroundColor: 'rgba(37,99,235,0.18)' }]}>
-              <Ionicons name="globe-outline" size={20} color="#60A5FA" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{t('languageName')}</Text>
-              <Text style={styles.rowSub}>
-                {LANGUAGES.find((l) => l.code === language)?.label}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={TEXT_SECONDARY} />
-          </TouchableOpacity>
-
-          <View style={styles.divider} />
-
-          <View style={styles.row}>
-            <View style={[styles.rowIconBg, { backgroundColor: 'rgba(212,175,55,0.15)' }]}>
-              <Ionicons name="notifications-outline" size={20} color={PREMIUM_GOLD} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{t('notifications')}</Text>
-              <Text style={styles.rowSub}>{t('pushNotifs')}</Text>
-            </View>
-            <Switch
-              value={notificationsEnabled}
-              onValueChange={(v) => {
-                setNotificationsEnabled(v);
-                successFeedback();
+        <LinearGradient
+          colors={
+            isOnline
+              ? [withAlpha(NAVY, 0.95), withAlpha('#14532D', 0.55)]
+              : [withAlpha('#475569', 0.95), withAlpha(NAVY, 0.85)]
+          }
+          style={styles.hero}
+        >
+          <View style={styles.identityRow}>
+            <Image
+              source={{
+                uri: profile?.avatar_url || `https://i.pravatar.cc/150?u=${user?.id ?? 'provider'}`,
               }}
-              trackColor={{ false: '#334155', true: 'rgba(212,175,55,0.45)' }}
-              thumbColor={notificationsEnabled ? PREMIUM_GOLD : '#94A3B8'}
+              style={styles.avatar}
             />
+            <View style={styles.identityCopy}>
+              <Text style={styles.heroName} numberOfLines={2}>{displayName}</Text>
+              {accountEmail ? (
+                <Text style={styles.heroEmail} numberOfLines={1}>{accountEmail}</Text>
+              ) : null}
+              {profile?.city ? (
+                <View style={styles.cityRow}>
+                  <Text style={styles.heroCity}>{profile.city}</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
-        </BlurView>
+          <Text style={styles.heroSub}>
+            {isOnline
+              ? 'You are visible to clients and can receive new job requests.'
+              : 'You are offline — clients will not see you as available.'}
+          </Text>
+          <View style={[styles.statusChip, { backgroundColor: withAlpha(isOnline ? SUCCESS : WARNING, ALPHA.medium) }]}>
+            <View style={[styles.statusDot, { backgroundColor: isOnline ? SUCCESS : WARNING }]} />
+            <Text style={[styles.statusText, { color: isOnline ? SUCCESS : WARNING }]}>
+              {isOnline ? t('onlineAvailable') : t('offlineStatus')}
+            </Text>
+          </View>
+        </LinearGradient>
 
-        <Text style={styles.sectionTitle}>{t('general')}</Text>
-        <BlurView intensity={36} tint="dark" style={styles.card}>
-          <TouchableOpacity style={styles.row} onPress={openSupport}>
-            <View style={[styles.rowIconBg, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-              <Ionicons name="help-buoy-outline" size={20} color={TEXT_SECONDARY} />
-            </View>
-            <Text style={[styles.rowTitle, { flex: 1 }]}>{t('support')}</Text>
-            <Ionicons name="mail-outline" size={20} color={PREMIUM_GOLD} />
-          </TouchableOpacity>
+        <SettingsSection title="Your account">
+          <SettingsRow
+            icon="person-outline"
+            iconColor={GOLD}
+            iconBg={withAlpha(GOLD, ALPHA.medium)}
+            title={t('nameLabel') || 'Full name'}
+            subtitle={displayName}
+          />
+          {accountEmail ? (
+            <SettingsRow
+              showDivider
+              icon="mail-outline"
+              iconColor={INFO}
+              iconBg={withAlpha(INFO, ALPHA.medium)}
+              title={t('emailPlaceholder') || 'Email'}
+              subtitle={accountEmail}
+            />
+          ) : null}
+          {profile?.city ? (
+            <SettingsRow
+              showDivider
+              icon="location-outline"
+              iconColor={SUCCESS}
+              iconBg={withAlpha(SUCCESS, ALPHA.medium)}
+              title={t('cityLabel') || 'City'}
+              subtitle={profile.city}
+            />
+          ) : null}
+          <SettingsRow
+            showDivider
+            icon="create-outline"
+            iconColor={c.textSecondary}
+            iconBg={withAlpha(c.textSecondary, ALPHA.faint)}
+            title={t('editProfile') || 'Edit profile'}
+            subtitle="Update name, city, and bio"
+            onPress={() => router.push('/provider/profile')}
+          />
+        </SettingsSection>
 
-          <View style={styles.divider} />
+        <SettingsSection title={t('availability')}>
+          <SettingsRow
+            icon="power"
+            iconColor={SUCCESS}
+            iconBg={withAlpha(SUCCESS, ALPHA.medium)}
+            title={t('onlineStatus')}
+            subtitle={t('onlineDesc')}
+            switchValue={isOnline}
+            onSwitchChange={toggleOnline}
+            switchTrackOn={withAlpha(SUCCESS, 0.45)}
+          />
+        </SettingsSection>
 
-          <TouchableOpacity style={styles.row} onPress={openLegal}>
-            <View style={[styles.rowIconBg, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-              <Ionicons name="document-text-outline" size={20} color={TEXT_SECONDARY} />
-            </View>
-            <Text style={[styles.rowTitle, { flex: 1 }]}>{t('legal')}</Text>
-            <Ionicons name="chevron-forward" size={20} color={TEXT_SECONDARY} />
-          </TouchableOpacity>
-        </BlurView>
+        <SettingsSection title={t('preferences')}>
+          <ThemeToggleRow embedded />
+          <SettingsRow
+            showDivider
+            icon="globe-outline"
+            iconColor={INFO}
+            iconBg={withAlpha(INFO, ALPHA.medium)}
+            title={t('languageName')}
+            subtitle={`${currentLang?.flag ?? ''} ${currentLang?.label ?? 'English'}`}
+            onPress={cycleLanguage}
+          />
+          <SettingsRow
+            showDivider
+            icon="notifications-outline"
+            iconColor={GOLD}
+            iconBg={withAlpha(GOLD, ALPHA.medium)}
+            title={t('notifications')}
+            subtitle={t('pushNotifs')}
+            switchValue={notificationsEnabled}
+            onSwitchChange={(v) => {
+              setNotificationsEnabled(v);
+              successFeedback();
+            }}
+          />
+        </SettingsSection>
 
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleSignOut}>
-          <Text style={styles.logoutText}>{t('signOut')}</Text>
-        </TouchableOpacity>
+        <SettingsSection title={t('general')}>
+          <SettingsRow
+            icon="person-circle-outline"
+            iconColor={GOLD}
+            iconBg={withAlpha(GOLD, ALPHA.medium)}
+            title={t('tabProfile')}
+            subtitle="Portfolio, reviews, and verification"
+            onPress={() => router.push('/provider/profile')}
+          />
+          <SettingsRow
+            showDivider
+            icon="card-outline"
+            iconColor={INFO}
+            iconBg={withAlpha(INFO, ALPHA.medium)}
+            title="Payout setup"
+            subtitle="Mobile money and withdrawal details"
+            onPress={() => router.push('/provider/payout-setup')}
+          />
+          <SettingsRow
+            showDivider
+            icon="help-buoy-outline"
+            iconColor={SUCCESS}
+            iconBg={withAlpha(SUCCESS, ALPHA.medium)}
+            title={t('support')}
+            subtitle="support@diasporabridge.app"
+            onPress={openSupport}
+          />
+          <SettingsRow
+            showDivider
+            icon="document-text-outline"
+            iconColor={c.textSecondary}
+            iconBg={withAlpha(c.textSecondary, ALPHA.faint)}
+            title={t('legal')}
+            subtitle="Terms · Privacy"
+            onPress={openLegal}
+          />
+        </SettingsSection>
 
-        <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-          <Text style={styles.deleteText}>{t('deleteAccountTitle')}</Text>
-        </TouchableOpacity>
+        <SettingsSection title="Account">
+          <SettingsRow
+            icon="log-out-outline"
+            iconColor="#F87171"
+            iconBg="rgba(248,113,113,0.18)"
+            title={t('signOut')}
+            subtitle="Sign out on this device"
+            destructive
+            onPress={handleSignOut}
+          />
+          <SettingsRow
+            showDivider
+            icon="trash-outline"
+            iconColor={c.textSecondary}
+            iconBg={withAlpha(c.textSecondary, ALPHA.faint)}
+            title={t('deleteAccountTitle')}
+            subtitle="Requires support verification"
+            onPress={handleDelete}
+          />
+        </SettingsSection>
 
-        <Text style={styles.versionText}>{t('version')}</Text>
+        <Text style={[styles.version, { color: c.muted }]}>{t('version')}</Text>
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scroll: { paddingTop: 8 },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: TEXT_SECONDARY,
-    marginBottom: 10,
-    marginTop: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  card: {
-    borderRadius: 18,
-    overflow: 'hidden',
+  screen: { flex: 1 },
+  hero: {
+    borderRadius: radius.xl,
+    padding: space.lg,
+    marginBottom: space.xl,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(17,24,39,0.7)',
-    marginBottom: 8,
+    borderColor: withAlpha(GOLD, ALPHA.medium),
+    gap: space.sm,
   },
-  row: {
+  identityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    gap: 12,
+    gap: space.md,
+    marginBottom: space.xs,
   },
-  rowIconBg: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 2,
+    borderColor: withAlpha(GOLD, 0.6),
+    backgroundColor: withAlpha(NAVY, 0.5),
+  },
+  identityCopy: { flex: 1, gap: 2 },
+  heroName: {
+    ...text.title,
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  heroEmail: {
+    ...text.caption,
+    color: withAlpha('#FFFFFF', 0.85),
+    fontWeight: weight.semibold,
+  },
+  cityRow: { marginTop: 2 },
+  heroCity: {
+    ...text.caption,
+    color: withAlpha('#FFFFFF', 0.72),
+    fontWeight: weight.heavy,
+  },
+  heroSub: {
+    ...text.caption,
+    color: withAlpha('#FFFFFF', 0.72),
+    lineHeight: 20,
+  },
+  statusChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.pill,
+    marginTop: space.xxs,
   },
-  rowTitle: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY },
-  rowSub: { fontSize: 13, color: TEXT_SECONDARY, marginTop: 2 },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    marginLeft: 64,
-  },
-  logoutBtn: {
-    marginTop: 28,
-    backgroundColor: 'rgba(239,68,68,0.15)',
-    padding: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.3)',
-  },
-  logoutText: { color: '#F87171', fontWeight: '800', fontSize: 16 },
-  deleteBtn: { marginTop: 12, alignItems: 'center', padding: 8 },
-  deleteText: {
-    color: TEXT_SECONDARY,
-    fontSize: 14,
-    textDecorationLine: 'underline',
-  },
-  versionText: {
+  statusDot: { width: 7, height: 7, borderRadius: radius.pill },
+  statusText: { ...text.micro, fontWeight: weight.heavy },
+  version: {
+    ...text.caption,
     textAlign: 'center',
-    color: TEXT_SECONDARY,
-    fontSize: 12,
-    marginTop: 20,
+    marginTop: space.xl,
+    fontWeight: weight.semibold,
   },
 });

@@ -91,7 +91,11 @@ export default function LoginScreen() {
       if (accountRole === 'provider') router.replace('/provider');
       else router.replace('/diaspora');
     } catch (err) {
-      const message = err instanceof Error ? err.message : t('loginFailed') || 'Login failed.';
+      let message = err instanceof Error ? err.message : t('loginFailed') || 'Login failed.';
+      if (/invalid login credentials/i.test(message)) {
+        message =
+          'No account found on the development server. Your old login was likely on production — please tap Create Account to sign up again (you can reuse the same email).';
+      }
       Alert.alert(t('loginFailed') || 'Login Failed', message);
     } finally {
       setLoading(false);

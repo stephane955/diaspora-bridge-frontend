@@ -20,7 +20,12 @@ import { SCROLL_BOTTOM_INSET, PREMIUM_BG, PREMIUM_GOLD, TEXT_PRIMARY, TEXT_SECON
 import PremiumEmptyState from '@/components/PremiumEmptyState';
 
 type CartItem = { id: string; name: string; quantity: number; price: number };
-type SupplierProfile = { id: string; full_name: string; avatar_url?: string; city?: string };
+type SupplierProfile = {
+    id: string;
+    full_name: string | null;
+    avatar_url?: string | null;
+    city?: string | null;
+};
 type SignedCartQrPayload = {
     cart_id: string;
     supplier_id: string;
@@ -314,7 +319,7 @@ export default function BuildCartScreen() {
                         <FlatList
                             data={filteredSuppliers}
                             keyExtractor={s => s.id}
-                            ListEmptyComponent={<Text style={styles.emptySuppliers}>No verified stores found. Set profiles.role = 'supplier' to add suppliers.</Text>}
+                            ListEmptyComponent={<Text style={styles.emptySuppliers}>No verified stores found. Set profiles.role = &apos;supplier&apos; to add suppliers.</Text>}
                             renderItem={({ item: s }) => (
                                 <TouchableOpacity style={styles.supplierRow} onPress={() => selectSupplier(s)}>
                                     <Image source={{ uri: s.avatar_url || 'https://i.pravatar.cc/80' }} style={styles.supplierAvatar} />

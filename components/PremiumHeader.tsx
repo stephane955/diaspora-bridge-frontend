@@ -9,19 +9,60 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
+import type { Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Menu, ChevronLeft, Bell, LogOut, Settings, User } from 'lucide-react-native';
+import {
+  Menu,
+  ChevronLeft,
+  Bell,
+  LogOut,
+  Settings,
+  User,
+  Wallet,
+  Briefcase,
+  PlusCircle,
+  Bookmark,
+  Store,
+  HardHat,
+  ScanLine,
+  FileText,
+} from 'lucide-react-native';
 import { useAuth } from '@/context/AuthContext';
 import { mediumFeedback, lightFeedback } from '@/utils/haptics';
 import { safeGoBack } from '@/utils/navigation';
-import { PREMIUM_GOLD } from '@/constants/layout';
+import {
+  ALPHA,
+  DANGER_SOFT,
+  GOLD,
+  ICON_BUTTON_SIZE,
+  icon as iconSize,
+  radius,
+  space,
+  text,
+  withAlpha,
+} from '@/constants/design';
 import { usePremiumColors } from '@/hooks/usePremiumColors';
 import { useLanguage } from '@/context/LanguageContext';
+import { roleMenuItems } from '@/constants/premiumMenus';
+
+export type PremiumMenuIcon =
+  | 'settings'
+  | 'profile'
+  | 'bell'
+  | 'home'
+  | 'wallet'
+  | 'projects'
+  | 'new'
+  | 'saved'
+  | 'market'
+  | 'cart'
+  | 'requests'
+  | 'scan';
 
 export type PremiumMenuItem = {
   label: string;
   onPress: () => void;
-  icon?: 'settings' | 'profile' | 'bell';
+  icon?: PremiumMenuIcon;
   destructive?: boolean;
 };
 
@@ -29,59 +70,79 @@ type PremiumHeaderProps = {
   title?: string;
   subtitle?: string;
   showBack?: boolean;
-  fallbackRoute?: string;
+  fallbackRoute?: Href;
   transparent?: boolean;
   accent?: string;
   menuItems?: PremiumMenuItem[];
   onNotificationsPress?: () => void;
   rightSlot?: React.ReactNode;
+  /**
+   * Hide the trailing avatar/menu button. Use on screens that are pure detail
+   * views so the header shows only a back affordance and a title.
+   */
+  hideMenu?: boolean;
 };
 
+/**
+ * The one header for every screen in the app.
+ *
+ * Renders as an absolute blur block of exactly `HEADER_BLOCK_HEIGHT` (62)
+ * below the safe-area inset. Screens clear it with `useScreenOffsets().top`.
+ * Never add a second header, title or back button underneath this one.
+ */
 export default function PremiumHeader({
   title,
   subtitle,
   showBack = false,
   fallbackRoute = '/',
   transparent = true,
-  accent = PREMIUM_GOLD,
+  accent = GOLD,
   menuItems = [],
   onNotificationsPress,
   rightSlot,
+  hideMenu = false,
 }: PremiumHeaderProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { signOut, user } = useAuth();
+  const { signOut, user, role } = useAuth();
   const c = usePremiumColors();
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const defaultItems: PremiumMenuItem[] = [
-    {
-      label: t('tabProfile'),
-      icon: 'profile',
-      onPress: () => {
-        setMenuOpen(false);
-        router.push('/diaspora/profile');
-      },
-    },
-    {
-      label: t('settingsTitle'),
-      icon: 'settings',
-      onPress: () => {
-        setMenuOpen(false);
-        router.push('/diaspora/settings');
-      },
-    },
-  ];
-
-  const items = menuItems.length > 0 ? menuItems : defaultItems;
+  const items = menuItems.length > 0 ? menuItems : roleMenuItems(role, router, t);
   const iconColor = c.textPrimary;
+  const iconBtnFill = withAlpha(c.isDark ? '#FFFFFF' : '#0F172A', ALPHA.faint);
 
-  const renderMenuIcon = (icon?: PremiumMenuItem['icon']) => {
-    const size = 20;
-    if (icon === 'settings') return <Settings size={size} color={c.textSecondary} />;
-    if (icon === 'bell') return <Bell size={size} color={c.textSecondary} />;
-    return <User size={size} color={c.textSecondary} />;
+  const renderMenuIcon = (icon?: PremiumMenuIcon) => {
+    if (!icon) return null;
+    const props = { size: iconSize.sm, color: c.textSecondary };
+    switch (icon) {
+      case 'settings':
+        return <Settings {...props} />;
+      case 'profile':
+        return <User {...props} />;
+      case 'bell':
+        return <Bell {...props} />;
+      case 'home':
+        return <HardHat {...props} />;
+      case 'wallet':
+        return <Wallet {...props} />;
+      case 'projects':
+        return <Briefcase {...props} />;
+      case 'new':
+        return <PlusCircle {...props} />;
+      case 'saved':
+        return <Bookmark {...props} />;
+      case 'market':
+        return <Store {...props} />;
+      case 'cart':
+      case 'scan':
+        return <ScanLine {...props} />;
+      case 'requests':
+        return <FileText {...props} />;
+      default:
+        return null;
+    }
   };
 
   const closeMenu = () => setMenuOpen(false);
@@ -109,9 +170,9 @@ export default function PremiumHeader({
                   safeGoBack(router, fallbackRoute);
                 }}
                 hitSlop={12}
-                style={[styles.iconBtn, { backgroundColor: c.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)' }]}
+                style={[styles.iconBtn, { backgroundColor: iconBtnFill }]}
               >
-                <ChevronLeft size={22} color={iconColor} strokeWidth={2.5} />
+                <ChevronLeft size={iconSize.md} color={iconColor} strokeWidth={2.5} />
               </Pressable>
             ) : (
               <Pressable
@@ -120,9 +181,9 @@ export default function PremiumHeader({
                   setMenuOpen(true);
                 }}
                 hitSlop={12}
-                style={[styles.iconBtn, { backgroundColor: c.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)' }]}
+                style={[styles.iconBtn, { backgroundColor: iconBtnFill }]}
               >
-                <Menu size={20} color={iconColor} strokeWidth={2.2} />
+                <Menu size={iconSize.md} color={iconColor} strokeWidth={2.2} />
               </Pressable>
             )}
 
@@ -147,30 +208,30 @@ export default function PremiumHeader({
                     onNotificationsPress();
                   }}
                   hitSlop={10}
-                  style={[styles.iconBtn, { backgroundColor: c.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)' }]}
+                  style={[styles.iconBtn, { backgroundColor: iconBtnFill }]}
                 >
-                  <Bell size={20} color={iconColor} />
+                  <Bell size={iconSize.md} color={iconColor} />
                 </Pressable>
               ) : null}
-              {rightSlot ?? (
-                <Pressable
-                  onPress={() => {
-                    lightFeedback();
-                    setMenuOpen(true);
-                  }}
-                  hitSlop={10}
-                  style={[
-                    styles.iconBtn,
-                    styles.avatarBtn,
-                    {
-                      borderColor: accent,
-                      backgroundColor: c.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
-                    },
-                  ]}
-                >
-                  <User size={18} color={accent} />
-                </Pressable>
-              )}
+              {rightSlot ??
+                (hideMenu ? (
+                  <View style={styles.iconBtnSpacer} />
+                ) : (
+                  <Pressable
+                    onPress={() => {
+                      lightFeedback();
+                      setMenuOpen(true);
+                    }}
+                    hitSlop={10}
+                    style={[
+                      styles.iconBtn,
+                      styles.avatarBtn,
+                      { borderColor: accent, backgroundColor: iconBtnFill },
+                    ]}
+                  >
+                    <User size={iconSize.sm} color={accent} />
+                  </Pressable>
+                ))}
             </View>
           </View>
           <View style={[styles.accentLine, { backgroundColor: accent }]} />
@@ -193,7 +254,7 @@ export default function PremiumHeader({
               style={[
                 styles.menuSheet,
                 {
-                  paddingBottom: insets.bottom + 24,
+                  paddingBottom: insets.bottom + space.xl - space.xxs,
                   backgroundColor: c.surface,
                   borderColor: c.border,
                 },
@@ -210,13 +271,14 @@ export default function PremiumHeader({
                   key={item.label}
                   onPress={() => {
                     lightFeedback();
+                    closeMenu();
                     item.onPress();
                   }}
                   style={styles.menuRow}
                   hitSlop={6}
                 >
                   <View style={styles.menuRowInner}>
-                    {renderMenuIcon(item.icon)}
+                    <View style={styles.menuIconWrap}>{renderMenuIcon(item.icon)}</View>
                     <Text
                       style={[
                         styles.menuItemText,
@@ -242,7 +304,9 @@ export default function PremiumHeader({
                 hitSlop={6}
               >
                 <View style={styles.menuRowInner}>
-                  <LogOut size={20} color="#F87171" />
+                  <View style={styles.menuIconWrap}>
+                    <LogOut size={iconSize.sm} color={DANGER_SOFT} />
+                  </View>
                   <Text style={[styles.menuItemText, styles.menuItemDestructive]}>
                     {t('signOut')}
                   </Text>
@@ -268,37 +332,39 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  // 4 + 44 + 12 + 2 (accent line) = HEADER_BLOCK_HEIGHT (62)
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    paddingTop: 4,
+    paddingHorizontal: space.md,
+    paddingTop: space.xxs,
+    paddingBottom: space.sm,
   },
   titleWrap: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: space.xs,
   },
-  title: {
-    fontSize: 17,
-    fontWeight: '800',
-  },
+  title: text.subtitle,
   subtitle: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...text.caption,
     marginTop: 2,
   },
   rightActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: space.xs,
   },
   iconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: ICON_BUTTON_SIZE,
+    height: ICON_BUTTON_SIZE,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  /** Keeps the title optically centred when the trailing button is hidden. */
+  iconBtnSpacer: {
+    width: ICON_BUTTON_SIZE,
+    height: ICON_BUTTON_SIZE,
   },
   avatarBtn: {
     borderWidth: 1.5,
@@ -310,54 +376,50 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: withAlpha('#000000', ALPHA.scrim),
   },
   menuSheet: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
+    paddingHorizontal: space.lg,
+    paddingTop: space.sm,
     borderTopWidth: 1,
   },
   menuHandle: {
     width: 40,
     height: 4,
-    borderRadius: 2,
+    borderRadius: radius.pill,
     alignSelf: 'center',
-    marginBottom: 16,
+    marginBottom: space.md,
   },
-  menuLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
+  menuLabel: text.label,
   menuUser: {
-    fontSize: 18,
-    fontWeight: '800',
-    marginTop: 4,
-    marginBottom: 8,
+    ...text.subtitle,
+    marginTop: space.xxs,
+    marginBottom: space.xs,
   },
   menuRow: {
-    paddingVertical: 14,
+    paddingVertical: space.sm + 2,
     minHeight: 48,
     justifyContent: 'center',
   },
   menuRowInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: space.sm,
   },
-  menuItemText: {
-    fontSize: 16,
-    fontWeight: '600',
+  menuIconWrap: {
+    width: iconSize.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  menuItemText: text.body,
   menuItemDestructive: {
-    color: '#F87171',
-    fontWeight: '700',
+    color: DANGER_SOFT,
+    fontWeight: '800',
   },
   menuDivider: {
     height: 1,
-    marginVertical: 12,
+    marginVertical: space.sm,
   },
 });

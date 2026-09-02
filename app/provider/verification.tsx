@@ -18,24 +18,34 @@ import { supabase } from '@/lib/supabase';
 import { uploadKycDocument } from '@/lib/storage';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PremiumHeader from '@/components/PremiumHeader';
 import { providerMenuItems } from '@/constants/premiumMenus';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
 import {
-  FLOATING_TAB_BAR_HEIGHT,
-  PREMIUM_BG,
-  PREMIUM_GOLD,
-  TEXT_PRIMARY,
-  TEXT_SECONDARY,
-} from '@/constants/layout';
+  ALPHA,
+  GOLD,
+  GOLD_BORDER,
+  GOLD_TINT,
+  SUCCESS,
+  glow,
+  icon as iconSize,
+  radius,
+  shadow,
+  space,
+  text,
+  weight,
+  withAlpha,
+} from '@/constants/design';
 import { successFeedback } from '@/utils/haptics';
 import { getAndClearVerificationScanResult } from '@/utils/verificationScanResult';
 
 export default function VerificationScreen() {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
   const { t } = useLanguage();
+  const c = usePremiumColors();
+  const offsets = useScreenOffsets();
 
   const [frontImage, setFrontImage] = useState<string | null>(null);
   const [backImage, setBackImage] = useState<string | null>(null);
@@ -180,7 +190,11 @@ export default function VerificationScreen() {
     scanType?: 'front' | 'back',
   ) => (
     <TouchableOpacity style={styles.uploadCard} onPress={onPress} activeOpacity={0.9}>
-      <BlurView intensity={36} tint="dark" style={styles.uploadBlur}>
+      <BlurView
+        intensity={36}
+        tint={c.blurTint}
+        style={[styles.uploadBlur, { backgroundColor: c.surface }]}
+      >
         {image ? (
           <Image source={{ uri: image }} style={styles.previewImage} />
         ) : (
@@ -188,12 +202,12 @@ export default function VerificationScreen() {
             <View style={styles.iconBg}>
               <Ionicons
                 name={scanType ? 'id-card-outline' : 'person'}
-                size={26}
-                color={PREMIUM_GOLD}
+                size={iconSize.lg}
+                color={GOLD}
               />
             </View>
-            <Text style={styles.cardLabel}>{label}</Text>
-            <Text style={styles.cardHint}>{hint}</Text>
+            <Text style={[styles.cardLabel, { color: c.textPrimary }]}>{label}</Text>
+            <Text style={[styles.cardHint, { color: c.textSecondary }]}>{hint}</Text>
             {scanType ? (
               <TouchableOpacity
                 style={styles.scanLink}
@@ -202,7 +216,7 @@ export default function VerificationScreen() {
                   router.push(`/provider/verification-scan?type=${scanType}`);
                 }}
               >
-                <Ionicons name="scan-outline" size={14} color={PREMIUM_GOLD} />
+                <Ionicons name="scan-outline" size={iconSize.xs} color={GOLD} />
                 <Text style={styles.scanLinkText}>
                   {t('scanWithCamera') || 'Scan with camera'}
                 </Text>
@@ -212,7 +226,7 @@ export default function VerificationScreen() {
         )}
         {image ? (
           <View style={styles.checkBadge}>
-            <Ionicons name="checkmark" size={14} color="#0A0F1A" />
+            <Ionicons name="checkmark" size={iconSize.xs} color="#0A0F1A" />
           </View>
         ) : null}
       </BlurView>
@@ -220,7 +234,7 @@ export default function VerificationScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: c.bg }]}>
       <PremiumHeader
         title={t('verifyTitle')}
         subtitle={t('verifySub')}
@@ -229,37 +243,37 @@ export default function VerificationScreen() {
         menuItems={providerMenuItems(router, t)}
       />
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          {
-            paddingTop: insets.top + 88,
-            paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40,
-            paddingHorizontal: 20,
-          },
-        ]}
-      >
+      <ScrollView contentContainerStyle={offsets.content}>
         {status === 'verified' ? (
           <View style={styles.stateBox}>
-            <View style={[styles.iconCircle, { backgroundColor: 'rgba(52,211,153,0.15)' }]}>
-              <Ionicons name="checkmark-circle" size={72} color="#34D399" />
+            <View
+              style={[
+                styles.iconCircle,
+                { backgroundColor: withAlpha(SUCCESS, ALPHA.medium) },
+              ]}
+            >
+              <Ionicons name="checkmark-circle" size={72} color={SUCCESS} />
             </View>
-            <Text style={styles.stateTitle}>{t('verified')}</Text>
-            <Text style={styles.stateText}>{t('identityConfirmed')}</Text>
+            <Text style={[styles.stateTitle, { color: c.textPrimary }]}>{t('verified')}</Text>
+            <Text style={[styles.stateText, { color: c.textSecondary }]}>
+              {t('identityConfirmed')}
+            </Text>
           </View>
         ) : status === 'pending' ? (
           <View style={styles.stateBox}>
-            <View style={[styles.iconCircle, { backgroundColor: 'rgba(212,175,55,0.15)' }]}>
-              <Ionicons name="hourglass" size={56} color={PREMIUM_GOLD} />
+            <View style={[styles.iconCircle, { backgroundColor: GOLD_TINT }]}>
+              <Ionicons name="hourglass" size={56} color={GOLD} />
             </View>
-            <Text style={styles.stateTitle}>{t('statusPending') || 'Pending'}</Text>
-            <Text style={styles.stateText}>
+            <Text style={[styles.stateTitle, { color: c.textPrimary }]}>
+              {t('statusPending') || 'Pending'}
+            </Text>
+            <Text style={[styles.stateText, { color: c.textSecondary }]}>
               {t('reviewingDocuments') || 'We are reviewing your documents.'}
             </Text>
           </View>
         ) : (
           <>
-            <Text style={styles.intro}>
+            <Text style={[styles.intro, { color: c.textSecondary }]}>
               {t('verifyIntro') ||
                 'Upload a clear ID and selfie. Documents stay encrypted and are only used for verification.'}
             </Text>
@@ -286,15 +300,15 @@ export default function VerificationScreen() {
             )}
 
             <View style={styles.infoBox}>
-              <Ionicons name="lock-closed" size={16} color={PREMIUM_GOLD} />
-              <Text style={styles.infoText}>
+              <Ionicons name="lock-closed" size={iconSize.xs} color={GOLD} />
+              <Text style={[styles.infoText, { color: c.textSecondary }]}>
                 {t('docsEncrypted') ||
                   'Documents are encrypted. Only used for verification.'}
               </Text>
             </View>
 
             {(!frontImage || !backImage || !selfie) && (
-              <Text style={styles.addAllHint}>
+              <Text style={[styles.addAllHint, { color: c.textSecondary }]}>
                 {t('addAllThreeToSubmit') ||
                   'Add all three photos above to submit for verification.'}
               </Text>
@@ -305,8 +319,12 @@ export default function VerificationScreen() {
       </ScrollView>
 
       {status === 'unverified' && frontImage && backImage && selfie ? (
-        <BlurView intensity={70} tint="dark" style={styles.footer}>
-          <Text style={styles.footerHint}>
+        <BlurView
+          intensity={70}
+          tint={c.blurTint}
+          style={[styles.footer, { backgroundColor: c.glass, borderTopColor: c.border }]}
+        >
+          <Text style={[styles.footerHint, { color: c.textSecondary }]}>
             {t('adminWillVerify') || 'An admin will verify your documents.'}
           </Text>
           <TouchableOpacity
@@ -329,105 +347,105 @@ export default function VerificationScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: PREMIUM_BG },
-  scroll: { paddingBottom: 24 },
+  container: { flex: 1 },
   intro: {
-    color: TEXT_SECONDARY,
-    fontSize: 14,
+    ...text.footnote,
     lineHeight: 21,
-    marginBottom: 16,
+    marginBottom: space.md,
   },
   uploadCard: {
     height: 168,
-    borderRadius: 22,
-    marginBottom: 14,
+    borderRadius: radius.xl,
+    marginBottom: space.md,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.2)',
+    borderColor: GOLD_BORDER,
   },
   uploadBlur: {
     flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.75)',
   },
-  placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.xs },
   iconBg: {
     width: 52,
     height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(212,175,55,0.12)',
+    borderRadius: radius.pill,
+    backgroundColor: GOLD_TINT,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: space.xxs,
     borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.28)',
+    borderColor: GOLD_BORDER,
   },
-  cardLabel: { fontSize: 15, fontWeight: '800', color: TEXT_PRIMARY },
-  cardHint: { fontSize: 12, color: TEXT_SECONDARY },
-  scanLink: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
-  scanLinkText: { fontSize: 12, color: PREMIUM_GOLD, fontWeight: '700' },
+  cardLabel: { ...text.footnote, fontWeight: weight.heavy },
+  cardHint: text.caption,
+  scanLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xxs,
+    marginTop: space.xs,
+  },
+  scanLinkText: { ...text.caption, fontWeight: weight.heavy, color: GOLD },
   previewImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   checkBadge: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    backgroundColor: PREMIUM_GOLD,
+    top: space.sm,
+    right: space.sm,
+    backgroundColor: GOLD,
     width: 24,
     height: 24,
-    borderRadius: 12,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   infoBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(212,175,55,0.1)',
-    padding: 16,
-    borderRadius: 16,
-    marginTop: 8,
+    gap: space.sm,
+    backgroundColor: GOLD_TINT,
+    padding: space.md,
+    borderRadius: radius.lg,
+    marginTop: space.xs,
     borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.22)',
+    borderColor: GOLD_BORDER,
   },
-  infoText: { flex: 1, fontSize: 12, color: TEXT_SECONDARY, fontWeight: '600' },
+  infoText: { flex: 1, ...text.caption },
   addAllHint: {
-    fontSize: 13,
-    color: TEXT_SECONDARY,
+    ...text.caption,
     textAlign: 'center',
-    marginTop: 16,
+    marginTop: space.md,
   },
   footer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 20,
-    paddingTop: 14,
+    padding: space.lg,
+    paddingTop: space.md,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(10,15,26,0.92)',
+    ...shadow.floating,
   },
   footerHint: {
-    fontSize: 13,
-    color: TEXT_SECONDARY,
+    ...text.caption,
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: space.sm,
   },
   submitBtn: {
-    backgroundColor: PREMIUM_GOLD,
-    paddingVertical: 16,
-    borderRadius: 16,
+    backgroundColor: GOLD,
+    paddingVertical: space.md,
+    borderRadius: radius.lg,
     alignItems: 'center',
+    ...glow(GOLD),
   },
   disabledBtn: { opacity: 0.6 },
-  submitText: { color: '#0A0F1A', fontWeight: '800', fontSize: 15 },
-  stateBox: { alignItems: 'center', marginTop: 60, gap: 14, paddingHorizontal: 24 },
+  submitText: { ...text.footnote, fontWeight: weight.heavy, color: '#0A0F1A' },
+  stateBox: { alignItems: 'center', marginTop: 60, gap: space.md, paddingHorizontal: space.xl },
   iconCircle: {
     width: 110,
     height: 110,
-    borderRadius: 55,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stateTitle: { fontSize: 22, fontWeight: '800', color: TEXT_PRIMARY },
-  stateText: { textAlign: 'center', color: TEXT_SECONDARY, fontSize: 15, lineHeight: 22 },
+  stateTitle: { ...text.title, fontWeight: weight.heavy },
+  stateText: { textAlign: 'center', ...text.footnote, lineHeight: 22 },
 });

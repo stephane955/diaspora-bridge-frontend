@@ -27,7 +27,6 @@ const queryClient = new QueryClient({
 const asyncStoragePersister = createAsyncStoragePersister({
   storage: AsyncStorage,
   key: 'DIASPORA_QUERY_CACHE',
-  throttle: 1000,
 });
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {

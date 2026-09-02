@@ -20,12 +20,21 @@ export default function ProjectStories() {
         // Fetch the 5 most recent updates that have images
         const { data } = await supabase
             .from('project_updates')
-            .select('id, title, image_url, created_at')
-            .not('image_url', 'is', null) // Only get updates with photos
+            .select('id, title, photo_url, created_at')
+            .not('photo_url', 'is', null)
             .order('created_at', { ascending: false })
             .limit(5);
 
-        if (data) setStories(data);
+        if (data) {
+            setStories(
+                data.map((row) => ({
+                    id: row.id,
+                    title: row.title ?? '',
+                    photo_url: row.photo_url,
+                    created_at: row.created_at,
+                })),
+            );
+        }
         setLoading(false);
     };
 
@@ -76,12 +85,12 @@ export default function ProjectStories() {
                                 style={[styles.ring, { padding: index === 0 ? 3 : 2 }]}
                             >
                                 <Image
-                                    source={{ uri: item.image_url }}
+                                    source={{ uri: item.photo_url ?? undefined }}
                                     style={styles.storyImage}
                                 />
                             </LinearGradient>
                             <Text numberOfLines={1} style={[styles.label, index === 0 && styles.boldLabel]}>
-                                {item.title.split(' ')[0]} {/* Show only first word for clean UI */}
+                                {(item.title || 'Update').split(' ')[0]}
                             </Text>
                         </TouchableOpacity>
                     ))

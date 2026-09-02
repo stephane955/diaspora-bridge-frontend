@@ -1,13 +1,27 @@
 /**
  * Tamagui configuration — Diaspora Bridge
- * Maps theme.ts tokens: Electric Blue (#0EA5E9), Emerald (#10B981), Midnight Slate (#0B0E14).
- * Glassmorphism blurs and radii for Reanimated headers.
+ *
+ * Mirrors `constants/design.ts`: gold accent (#D4AF37), emerald success
+ * (#34D399), midnight canvas (#0A0F1A). Keep these in sync with the design
+ * tokens — Tamagui surfaces sit next to StyleSheet surfaces on the same screen.
  */
 
 import { createTamagui, createTokens } from 'tamagui';
 import { createAnimations } from '@tamagui/animations-react-native';
 import { shorthands } from '@tamagui/shorthands';
 import { themes, tokens as defaultTokens } from '@tamagui/themes';
+import {
+  DANGER,
+  GOLD,
+  GOLD_DEEP,
+  NAVY,
+  NAVY_SOFT,
+  radius,
+  space,
+  SUCCESS,
+  SUCCESS_DEEP,
+  WARNING,
+} from './constants/design';
 
 const animations = createAnimations({
   bouncy: {
@@ -49,60 +63,60 @@ const animations = createAnimations({
 const customTokens = createTokens({
   color: {
     ...defaultTokens.color,
-    primary: '#0F172A',
-    primarySoft: '#1E293B',
-    active: '#0EA5E9',
-    activeSoft: '#38BDF8',
-    emerald: '#10B981',
-    emeraldSoft: '#34D399',
-    midnightSlate: '#0B0E14',
-    midnightSlateSoft: '#161B22',
+    primary: NAVY,
+    primarySoft: NAVY_SOFT,
+    active: GOLD,
+    activeSoft: GOLD_DEEP,
+    emerald: SUCCESS,
+    emeraldSoft: SUCCESS_DEEP,
+    midnightSlate: '#0A0F1A',
+    midnightSlateSoft: '#111827',
     background: '#F8FAFC',
-    backgroundDark: '#0B0E14',
+    backgroundDark: '#0A0F1A',
     surface: '#FFFFFF',
-    surfaceDark: '#161B22',
-    text: '#0F172A',
+    surfaceDark: '#111827',
+    text: NAVY,
     textMuted: '#64748B',
-    textDark: '#F1F5F9',
+    textDark: '#F8FAFC',
     border: '#E2E8F0',
-    borderDark: '#1E293B',
+    borderDark: 'rgba(255,255,255,0.1)',
     glass: 'rgba(255,255,255,0.65)',
     glassBright: 'rgba(255,255,255,0.85)',
     glassDark: 'rgba(15,23,42,0.7)',
-    glassDarkMode: 'rgba(22,27,34,0.8)',
-    glassDarkModeBright: 'rgba(22,27,34,0.9)',
-    success: '#10B981',
-    warning: '#F59E0B',
-    danger: '#EF4444',
+    glassDarkMode: 'rgba(10,15,26,0.85)',
+    glassDarkModeBright: 'rgba(17,24,39,0.92)',
+    success: SUCCESS,
+    warning: WARNING,
+    danger: DANGER,
   },
   space: {
     ...defaultTokens.space,
-    xs: 6,
-    sm: 10,
-    md: 16,
-    lg: 20,
-    xl: 28,
-    xxl: 36,
+    xs: space.xs,
+    sm: space.sm,
+    md: space.md,
+    lg: space.lg,
+    xl: space.xl,
+    xxl: space.xxl,
   },
   size: {
     ...defaultTokens.size,
-    xs: 6,
-    sm: 10,
-    md: 16,
-    lg: 20,
-    xl: 28,
-    xxl: 36,
+    xs: space.xs,
+    sm: space.sm,
+    md: space.md,
+    lg: space.lg,
+    xl: space.xl,
+    xxl: space.xxl,
   },
   radius: {
     ...defaultTokens.radius,
-    xs: 8,
-    sm: 12,
-    md: 16,
-    lg: 20,
-    xl: 32,
-    pill: 999,
-    glass: 20,
-    glassLg: 28,
+    xs: radius.sm,
+    sm: radius.md,
+    md: radius.lg,
+    lg: radius.xl,
+    xl: radius.xxl,
+    pill: radius.pill,
+    glass: radius.xl,
+    glassLg: radius.xxl,
   },
   zIndex: {
     ...defaultTokens.zIndex,
@@ -117,24 +131,24 @@ const glassmorphism = {
     header: 80,
   },
   radius: {
-    card: 20,
-    header: 28,
-    pill: 999,
+    card: radius.lg,
+    header: radius.xxl,
+    pill: radius.pill,
   },
 };
 
 const lightTheme = {
   ...themes.light,
-  primary: '#0F172A',
-  primarySoft: '#1E293B',
-  active: '#0EA5E9',
-  activeSoft: '#38BDF8',
-  emerald: '#10B981',
-  emeraldSoft: '#34D399',
+  primary: NAVY,
+  primarySoft: NAVY_SOFT,
+  active: GOLD,
+  activeSoft: GOLD_DEEP,
+  emerald: SUCCESS,
+  emeraldSoft: SUCCESS_DEEP,
   background: '#F8FAFC',
   surface: '#FFFFFF',
   surfaceAlt: '#F1F5F9',
-  text: '#0F172A',
+  text: NAVY,
   textMuted: '#64748B',
   border: '#E2E8F0',
   glass: 'rgba(255,255,255,0.65)',
@@ -142,23 +156,25 @@ const lightTheme = {
   glassDark: 'rgba(15,23,42,0.7)',
 };
 
+// Matches usePremiumColors() dark exactly, so Tamagui and StyleSheet surfaces
+// cannot render two different dark backgrounds on the same screen.
 const darkTheme = {
   ...themes.dark,
-  primary: '#0B0E14',
-  primarySoft: '#161B22',
-  active: '#0EA5E9',
-  activeSoft: '#38BDF8',
-  emerald: '#10B981',
-  emeraldSoft: '#34D399',
-  background: '#0B0E14',
-  surface: '#161B22',
+  primary: '#0A0F1A',
+  primarySoft: '#111827',
+  active: GOLD,
+  activeSoft: GOLD_DEEP,
+  emerald: SUCCESS,
+  emeraldSoft: SUCCESS_DEEP,
+  background: '#0A0F1A',
+  surface: '#111827',
   surfaceAlt: '#161B22',
-  text: '#F1F5F9',
+  text: '#F8FAFC',
   textMuted: '#94A3B8',
-  border: '#1E293B',
-  glass: 'rgba(22,27,34,0.8)',
-  glassBright: 'rgba(22,27,34,0.9)',
-  glassDark: 'rgba(11,14,20,0.85)',
+  border: 'rgba(255,255,255,0.1)',
+  glass: 'rgba(10,15,26,0.85)',
+  glassBright: 'rgba(17,24,39,0.92)',
+  glassDark: 'rgba(10,15,26,0.85)',
 };
 
 export const tamaguiConfig = createTamagui({

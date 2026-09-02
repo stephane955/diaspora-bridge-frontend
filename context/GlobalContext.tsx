@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { syncIfOnline } from '@/utils/offlineQueue';
 import { syncPendingEvidence } from '@/hooks/useOfflineWorkroom';
+import type { Database } from '@/database.types';
 
 // NetInfo: optional; sync queue when connection restored (install @react-native-community/netinfo)
 let NetInfo: { addEventListener: (callback: (state: { isConnected: boolean | null }) => void) => () => void } | null = null;
@@ -13,14 +14,7 @@ try {
     // NetInfo not installed; we still use AppState 'active' to sync
 }
 
-type ProjectUpdateRow = {
-    id: string | number;
-    project_id: string;
-    title: string;
-    created_at: string;
-    description: string;
-    image_url: string | null;
-};
+type ProjectUpdateRow = Database['public']['Tables']['project_updates']['Row'];
 
 // 1. Define the shape of a "Timeline Event" (aligned with project_updates)
 type TimelineEvent = {
@@ -60,13 +54,13 @@ export const GlobalProvider = ({ children }: { children: React.ReactNode }) => {
 
             if (error) throw error;
 
-            const formattedEvents: TimelineEvent[] = (data || []).map((item: ProjectUpdateRow, index: number) => ({
+            const formattedEvents: TimelineEvent[] = (data || []).map((item, index) => ({
                 id: String(item.id),
                 projectId: item.project_id,
-                title: item.title,
+                title: item.title ?? '',
                 date: new Date(item.created_at).toLocaleString(),
-                description: item.description,
-                image: item.image_url,
+                description: item.body ?? '',
+                image: item.photo_url,
                 isLatest: index === 0,
             }));
 
@@ -96,7 +90,7 @@ export const GlobalProvider = ({ children }: { children: React.ReactNode }) => {
             .subscribe();
 
         return () => {
-            supabase.removeChannel(channel);
+            void supabase.removeChannel(channel);
         };
     }, []);
 
@@ -124,12 +118,19 @@ export const GlobalProvider = ({ children }: { children: React.ReactNode }) => {
     // --- ADD DATA ---
     const addEvent = async (newEvent: { projectId: string; title: string; description: string; image: string | null }) => {
         try {
+            const { data: authData } = await supabase.auth.getUser();
+            const authorId = authData.user?.id;
+            if (!authorId) {
+                alert('You must be signed in to post an update.');
+                return;
+            }
             const { error } = await supabase.from('project_updates').insert([
                 {
                     project_id: newEvent.projectId,
+                    author_id: authorId,
                     title: newEvent.title,
-                    description: newEvent.description,
-                    image_url: newEvent.image,
+                    body: newEvent.description,
+                    photo_url: newEvent.image,
                 },
             ]);
 

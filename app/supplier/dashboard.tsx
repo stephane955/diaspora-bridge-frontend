@@ -1,18 +1,33 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, FlatList,
-    ActivityIndicator, Alert, RefreshControl
+    Alert, RefreshControl
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { theme } from '@/constants/theme';
 import { mediumFeedback } from '@/utils/haptics';
+import PremiumHeader from '@/components/PremiumHeader';
+import PremiumEmptyState from '@/components/PremiumEmptyState';
+import ScreenLoader from '@/components/ScreenLoader';
+import { supplierMenuItems } from '@/constants/premiumMenus';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
+import {
+    ALPHA,
+    GOLD,
+    icon as iconSize,
+    radius,
+    shadow,
+    space,
+    SUCCESS,
+    SUCCESS_DEEP,
+    text,
+    WARNING,
+    withAlpha,
+} from '@/constants/design';
 
 type CartItem = { name?: string; quantity?: number; price?: number };
 type Cart = {
@@ -21,20 +36,21 @@ type Cart = {
     total_amount_cfa: number;
     status: string;
     items: CartItem[] | null;
-    projects?: { title?: string } | null;
+    projects?: { title?: string | null } | null;
 };
 
 const STATUS_COLORS = {
-    pending_approval: theme.colors.warning,
-    approved: theme.colors.active,
-    collected: theme.colors.success,
+    pending_approval: WARNING,
+    approved: GOLD,
+    collected: SUCCESS,
 };
 
 export default function SupplierDashboard() {
-    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
     const { t } = useLanguage();
+    const c = usePremiumColors();
+    const offsets = useScreenOffsets();
     const [orders, setOrders] = useState<Cart[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -50,7 +66,36 @@ export default function SupplierDashboard() {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setOrders(data || []);
+            const mapped: Cart[] = (data || []).map((row) => {
+                const projectsRaw = row.projects;
+                const projects = Array.isArray(projectsRaw)
+                    ? projectsRaw[0] ?? null
+                    : projectsRaw;
+                const itemsRaw = row.items;
+                let items: CartItem[] | null = null;
+                if (Array.isArray(itemsRaw)) {
+                    items = itemsRaw.map((it) => {
+                        if (it && typeof it === 'object' && !Array.isArray(it)) {
+                            const obj = it as Record<string, unknown>;
+                            return {
+                                name: typeof obj.name === 'string' ? obj.name : undefined,
+                                quantity: typeof obj.quantity === 'number' ? obj.quantity : undefined,
+                                price: typeof obj.price === 'number' ? obj.price : undefined,
+                            };
+                        }
+                        return {};
+                    });
+                }
+                return {
+                    id: row.id,
+                    project_id: row.project_id,
+                    total_amount_cfa: row.total_amount_cfa,
+                    status: row.status,
+                    items,
+                    projects,
+                };
+            });
+            setOrders(mapped);
         } catch (e: any) {
             Alert.alert(t('error'), e.message || t('couldNotLoadOrders'));
         } finally {
@@ -66,63 +111,119 @@ export default function SupplierDashboard() {
         : orders;
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-            <LinearGradient colors={theme.gradient.hero as [string, string]} style={styles.header}>
-                <Text style={styles.headerTitle}>Supplier Dashboard</Text>
-                <Text style={styles.headerSub}>Orders ready for collection</Text>
-            </LinearGradient>
-
-            <View style={styles.filterRow}>
-                <TouchableOpacity
-                    style={[styles.filterChip, filterReady && styles.filterChipActive]}
-                    onPress={() => { setFilterReady(true); mediumFeedback(); }}
-                >
-                    <Ionicons name="checkmark-circle" size={18} color={filterReady ? '#fff' : theme.colors.textMuted} />
-                    <Text style={[styles.filterText, filterReady && styles.filterTextActive]}>Ready for Collection</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={[styles.filterChip, !filterReady && styles.filterChipActive]}
-                    onPress={() => { setFilterReady(false); mediumFeedback(); }}
-                >
-                    <Text style={[styles.filterText, !filterReady && styles.filterTextActive]}>All orders</Text>
-                </TouchableOpacity>
-            </View>
+        <View style={[styles.container, { backgroundColor: c.bg }]}>
+            <PremiumHeader
+                title="Supplier Dashboard"
+                subtitle="Orders ready for collection"
+                menuItems={supplierMenuItems(router, t)}
+                onNotificationsPress={() => router.push('/notifications')}
+            />
 
             {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.active} /></View>
+                <ScreenLoader />
             ) : (
                 <FlatList
                     data={filteredOrders}
                     keyExtractor={o => o.id}
-                    contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchOrders(); }} tintColor={theme.colors.active} />}
-                    ListEmptyComponent={
-                        <View style={styles.empty}>
-                            <Ionicons name="cart-outline" size={56} color={theme.colors.textMuted} />
-                            <Text style={styles.emptyTitle}>{filterReady ? 'No orders ready' : 'No orders yet'}</Text>
-                            <Text style={styles.emptySub}>{filterReady ? 'Approved orders will appear here.' : 'Orders will appear when providers add materials.'}</Text>
+                    contentContainerStyle={offsets.content}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={() => { setRefreshing(true); fetchOrders(); }}
+                            tintColor={c.gold}
+                        />
+                    }
+                    ListHeaderComponent={
+                        <View style={styles.filterRow}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.filterChip,
+                                    { backgroundColor: c.surfaceAlt },
+                                    filterReady && { backgroundColor: c.gold },
+                                ]}
+                                onPress={() => { setFilterReady(true); mediumFeedback(); }}
+                            >
+                                <Ionicons
+                                    name="checkmark-circle"
+                                    size={iconSize.sm}
+                                    color={filterReady ? '#0A0F1A' : c.textSecondary}
+                                />
+                                <Text
+                                    style={[
+                                        styles.filterText,
+                                        { color: filterReady ? '#0A0F1A' : c.textSecondary },
+                                    ]}
+                                >
+                                    Ready for Collection
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.filterChip,
+                                    { backgroundColor: c.surfaceAlt },
+                                    !filterReady && { backgroundColor: c.gold },
+                                ]}
+                                onPress={() => { setFilterReady(false); mediumFeedback(); }}
+                            >
+                                <Text
+                                    style={[
+                                        styles.filterText,
+                                        { color: !filterReady ? '#0A0F1A' : c.textSecondary },
+                                    ]}
+                                >
+                                    All orders
+                                </Text>
+                            </TouchableOpacity>
                         </View>
                     }
+                    ListEmptyComponent={
+                        <PremiumEmptyState
+                            icon="cart-outline"
+                            title={filterReady ? 'No orders ready' : 'No orders yet'}
+                            subtitle={
+                                filterReady
+                                    ? 'Approved orders will appear here.'
+                                    : 'Orders will appear when providers add materials.'
+                            }
+                        />
+                    }
                     renderItem={({ item }) => {
-                        const sc = STATUS_COLORS[item.status as keyof typeof STATUS_COLORS] || theme.colors.textMuted;
+                        const sc = STATUS_COLORS[item.status as keyof typeof STATUS_COLORS] || c.textSecondary;
                         return (
-                            <BlurView intensity={25} tint="light" style={[styles.card, { borderLeftColor: sc }]}>
+                            <View
+                                style={[
+                                    styles.card,
+                                    { backgroundColor: c.surface, borderColor: c.border, borderLeftColor: sc },
+                                ]}
+                            >
                                 <View style={styles.cardHeader}>
-                                    <Text style={styles.cardTitle}>{item.projects?.title || 'Project'} • {Number(item.total_amount_cfa || 0).toLocaleString()} CFA</Text>
-                                    <View style={[styles.statusBadge, { backgroundColor: sc + '25' }]}>
-                                        <Text style={[styles.statusText, { color: sc }]}>{item.status === 'approved' ? 'Ready' : item.status}</Text>
+                                    <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
+                                        {item.projects?.title || 'Project'} • {Number(item.total_amount_cfa || 0).toLocaleString()} CFA
+                                    </Text>
+                                    <View
+                                        style={[
+                                            styles.statusBadge,
+                                            { backgroundColor: withAlpha(sc, ALPHA.medium) },
+                                        ]}
+                                    >
+                                        <Text style={[styles.statusText, { color: sc }]}>
+                                            {item.status === 'approved' ? 'Ready' : item.status}
+                                        </Text>
                                     </View>
                                 </View>
                                 {item.status === 'approved' && (
                                     <TouchableOpacity
                                         style={styles.verifyBtn}
-                                        onPress={() => { mediumFeedback(); router.push({ pathname: '/supplier/scanner', params: { cartId: item.id } }); }}
+                                        onPress={() => {
+                                            mediumFeedback();
+                                            router.push({ pathname: '/supplier/scanner', params: { cartId: item.id } });
+                                        }}
                                     >
-                                        <Ionicons name="scan-outline" size={20} color="#fff" />
+                                        <Ionicons name="scan-outline" size={iconSize.sm} color="#FFFFFF" />
                                         <Text style={styles.verifyBtnText}>Verify Collection</Text>
                                     </TouchableOpacity>
                                 )}
-                            </BlurView>
+                            </View>
                         );
                     }}
                 />
@@ -132,25 +233,47 @@ export default function SupplierDashboard() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: { paddingHorizontal: theme.spacing.lg, paddingTop: 20, paddingBottom: 28, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
-    headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff' },
-    headerSub: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
-    filterRow: { flexDirection: 'row', padding: theme.spacing.md, gap: 8 },
-    filterChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: theme.radii.pill, backgroundColor: theme.colors.surfaceAlt },
-    filterChipActive: { backgroundColor: theme.colors.active },
-    filterText: { fontSize: 14, fontWeight: '600', color: theme.colors.textMuted },
-    filterTextActive: { color: '#fff' },
-    list: { padding: theme.spacing.lg },
-    card: { padding: theme.spacing.lg, borderRadius: theme.radii.lg, marginBottom: 12, borderLeftWidth: 4, borderLeftColor: theme.colors.border, backgroundColor: theme.colors.surface, ...theme.shadow.soft },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    cardTitle: { fontSize: 16, fontWeight: '700', color: theme.colors.text, flex: 1 },
-    statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: theme.radii.pill },
-    statusText: { fontSize: 12, fontWeight: '700' },
-    verifyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.colors.emerald, paddingVertical: 12, borderRadius: theme.radii.md, ...theme.shadow.glowEmerald },
-    verifyBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-    empty: { alignItems: 'center', paddingVertical: 60 },
-    emptyTitle: { fontSize: 18, fontWeight: '700', color: theme.colors.text, marginTop: 12 },
-    emptySub: { fontSize: 14, color: theme.colors.textMuted, marginTop: 8 },
+    container: { flex: 1 },
+    filterRow: { flexDirection: 'row', gap: space.xs, marginBottom: space.md },
+    filterChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: space.xxs,
+        paddingHorizontal: space.md,
+        paddingVertical: space.sm,
+        borderRadius: radius.pill,
+    },
+    filterText: text.footnote,
+    card: {
+        padding: space.lg,
+        borderRadius: radius.lg,
+        marginBottom: space.sm,
+        borderWidth: 1,
+        borderLeftWidth: 4,
+        ...shadow.card,
+    },
+    cardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: space.sm,
+        gap: space.xs,
+    },
+    cardTitle: { ...text.body, flex: 1 },
+    statusBadge: {
+        paddingHorizontal: space.xs,
+        paddingVertical: space.xxs,
+        borderRadius: radius.pill,
+    },
+    statusText: { ...text.caption, fontWeight: '800' },
+    verifyBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: space.xs,
+        backgroundColor: SUCCESS_DEEP,
+        paddingVertical: space.sm,
+        borderRadius: radius.lg,
+    },
+    verifyBtnText: { color: '#FFFFFF', ...text.footnote, fontWeight: '800' },
 });

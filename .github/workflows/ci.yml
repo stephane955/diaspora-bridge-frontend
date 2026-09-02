@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Verify active migration layout
+        run: |
+          test ! -f supabase/migrations/20260826110000_phase3b0_multisig_approvals.sql
+          test ! -f supabase/migrations/20260826120000_phase3b_escrow_funding.sql
+          test -f supabase/migrations/20260902122609_p00_security_lockdown.sql
+          test -f supabase/migrations/20260902140000_p01_core_app_schema.sql
+          test -f supabase/migrations/20260902162321_p01_10_favorite_providers.sql
+          test -f supabase/migrations/20260902183828_c05_phase3b0_request_scoped_multisig.sql
+          test -f supabase/migrations/20260902191944_c06_phase3b_payment_intent_escrow_funding.sql
+          test ! -f supabase/future_migrations/c05_phase3b0_multisig_approvals.sql
+          test ! -f supabase/future_migrations/c06_phase3b_escrow_funding.sql
+
+      - uses: supabase/setup-cli@v1
+
+      - name: Supabase db reset + SQL tests
+        run: |
+          supabase db reset --local
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/tests/p01_schema_contract.sql
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/tests/p00_security_negative.sql
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/tests/c05_schema_contract.sql
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/tests/c05_phase3b0_multisig.sql
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/tests/c06_schema_contract.sql
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/tests/c06_phase3b_funding.sql

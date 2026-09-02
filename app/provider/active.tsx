@@ -1,35 +1,60 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
     View, Text, TouchableOpacity, FlatList, StyleSheet,
-    RefreshControl, ScrollView, ImageBackground, StatusBar, Pressable,
+    RefreshControl, ImageBackground, StatusBar, Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import PremiumHeader from '@/components/PremiumHeader';
 import PremiumEmptyState from '@/components/PremiumEmptyState';
-import PulseLoader from '@/components/PulseLoader';
+import ScreenLoader from '@/components/ScreenLoader';
 import { providerMenuItems } from '@/constants/premiumMenus';
-import { theme } from '@/constants/theme';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
-import { SCROLL_BOTTOM_INSET, PREMIUM_BG, PREMIUM_GOLD, PREMIUM_MUTED } from '@/constants/layout';
+import { fetchUserAvailableBalanceMinor } from '@/lib/ledgerBalance';
+import { resolveProjectBudgetMinor, formatBudgetDisplay } from '@/lib/money';
+import { P00_BALANCE_UNAVAILABLE } from '@/constants/p00Security';
+import {
+    ALPHA,
+    GOLD,
+    GOLD_DEEP,
+    GOLD_TINT,
+    INFO,
+    SUCCESS,
+    SUCCESS_DEEP,
+    WARNING,
+    font,
+    icon as iconSize,
+    radius,
+    space,
+    text,
+    tint,
+    weight,
+    withAlpha,
+} from '@/constants/design';
 
 export default function ActiveSites() {
-    const insets = useSafeAreaInsets();
+    const offsets = useScreenOffsets();
+    const c = usePremiumColors();
     const router = useRouter();
     const { user } = useAuth();
     const { t } = useLanguage();
 
-    const [activeTab, setActiveTab] = useState<'active' | 'applied'>('active');
+    const [activeTab, setActiveTab] = useState<'active' | 'completed' | 'applied'>('active');
     const [projects, setProjects] = useState<any[]>([]);
+    const [completedProjects, setCompletedProjects] = useState<any[]>([]);
     const [applications, setApplications] = useState<any[]>([]);
     const [profile, setProfile] = useState<any>(null);
-    const [stats, setStats] = useState({ pendingRequests: 0, balance: 0 });
+    const [stats, setStats] = useState<{ pendingRequests: number; balance: number | null }>({
+        pendingRequests: 0,
+        balance: null,
+    });
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
@@ -47,6 +72,14 @@ export default function ActiveSites() {
                 .in('status', ['in_progress', 'In Progress'])
                 .order('updated_at', { ascending: false });
 
+            const { data: completedData } = await supabase
+                .from('projects')
+                .select('*, reviews(rating, comment, created_at)')
+                .eq('assigned_provider_id', user.id)
+                .eq('status', 'completed')
+                .order('updated_at', { ascending: false })
+                .limit(20);
+
             const { data: appliedData } = await supabase
                 .from('project_applications')
                 .select('*, projects(title, city, budget, status)')
@@ -59,12 +92,15 @@ export default function ActiveSites() {
                 .eq('provider_id', user.id)
                 .eq('status', 'pending');
 
-            const { data: tx } = await supabase.from('transactions').select('amount').eq('user_id', user.id);
-            const balance = tx?.reduce((acc, curr) => acc + Number(curr.amount), 0) || 0;
+            const balanceMinor = await fetchUserAvailableBalanceMinor();
 
             if (activeData) setProjects(activeData);
+            if (completedData) setCompletedProjects(completedData);
             if (appliedData) setApplications(appliedData);
-            setStats({ pendingRequests: requestsCount || 0, balance });
+            setStats({
+                pendingRequests: requestsCount || 0,
+                balance: balanceMinor === null ? null : Number(balanceMinor),
+            });
         } catch (error) {
             console.error('Error fetching jobs:', error);
         } finally {
@@ -81,45 +117,49 @@ export default function ActiveSites() {
 
     const renderActive = ({ item }: { item: any }) => (
         <Pressable
-            style={({ pressed }) => [styles.activeCard, pressed && { opacity: 0.92 }]}
+            style={({ pressed }) => [
+                styles.activeCard,
+                { backgroundColor: c.surface, borderColor: c.border },
+                pressed && { opacity: 0.92 },
+            ]}
             onPress={() => router.push(`/provider/project/${item.id}`)}
         >
-            <View style={styles.activeHeader}>
+            <View style={[styles.activeHeader, { borderBottomColor: c.border }]}>
                 <View style={styles.liveBadge}>
                     <View style={styles.pulsingDot} />
                     <Text style={styles.liveText}>{t('liveSite')}</Text>
                 </View>
-                <Text style={styles.dateText}>
+                <Text style={[styles.dateText, { color: c.muted }]}>
                     {t('started')} {new Date(item.created_at).toLocaleDateString()}
                 </Text>
             </View>
 
             <View style={styles.activeContent}>
-                <Text style={styles.activeTitle} numberOfLines={2}>{item.title}</Text>
+                <Text style={[styles.activeTitle, { color: c.textPrimary }]} numberOfLines={2}>{item.title}</Text>
                 <View style={styles.locationRow}>
-                    <Ionicons name="location-sharp" size={16} color={PREMIUM_MUTED} />
-                    <Text style={styles.locationText}>{item.city}</Text>
+                    <Ionicons name="location-sharp" size={iconSize.sm} color={c.muted} />
+                    <Text style={[styles.locationText, { color: c.muted }]}>{item.city}</Text>
                 </View>
             </View>
 
-            <View style={styles.actionBar}>
+            <View style={[styles.actionBar, { backgroundColor: c.surfaceAlt, borderTopColor: c.border }]}>
                 <View style={styles.actionLeft}>
-                    <Text style={styles.nextTaskLabel}>{t('nextTask')}</Text>
-                    <Text style={styles.nextTaskValue}>{t('uploadProof')}</Text>
+                    <Text style={[styles.nextTaskLabel, { color: c.muted }]}>{t('nextTask')}</Text>
+                    <Text style={[styles.nextTaskValue, { color: c.textSecondary }]}>{t('uploadProof')}</Text>
                 </View>
                 <View style={styles.actionBarBtns}>
                     <TouchableOpacity
                         style={styles.toolBtn}
                         onPress={() => { mediumFeedback(); router.push(`/provider/add-receipt?projectId=${item.id}`); }}
                     >
-                        <Ionicons name="receipt-outline" size={16} color="#fff" />
+                        <Ionicons name="receipt-outline" size={iconSize.xs} color="#FFFFFF" />
                         <Text style={styles.toolBtnText}>{t('receipt')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={styles.toolBtn}
                         onPress={() => { mediumFeedback(); router.push(`/provider/material-cart?projectId=${item.id}`); }}
                     >
-                        <Ionicons name="cart-outline" size={16} color="#fff" />
+                        <Ionicons name="cart-outline" size={iconSize.xs} color="#FFFFFF" />
                         <Text style={styles.toolBtnText}>{t('cart')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -127,34 +167,89 @@ export default function ActiveSites() {
                         onPress={() => { successFeedback(); router.push(`/provider/project/${item.id}`); }}
                     >
                         <Text style={styles.enterText}>{t('open')}</Text>
-                        <Ionicons name="arrow-forward" size={16} color="#fff" />
+                        <Ionicons name="arrow-forward" size={iconSize.xs} color="#0A0F1A" />
                     </TouchableOpacity>
                 </View>
             </View>
         </Pressable>
     );
 
+    const renderCompleted = ({ item }: { item: any }) => {
+        const review = Array.isArray(item.reviews) ? item.reviews[0] : item.reviews;
+        return (
+            <Pressable
+                style={({ pressed }) => [
+                    styles.activeCard,
+                    { backgroundColor: c.surface, borderColor: c.border },
+                    pressed && { opacity: 0.92 },
+                ]}
+                onPress={() => router.push(`/provider/project/${item.id}`)}
+            >
+                <View style={[styles.activeHeader, { borderBottomColor: c.border }]}>
+                    <View style={[styles.liveBadge, { backgroundColor: withAlpha(GOLD, ALPHA.medium) }]}>
+                        <Ionicons name="checkmark-circle" size={iconSize.xs} color={GOLD} />
+                        <Text style={[styles.liveText, { color: GOLD }]}>{t('completedTitle')}</Text>
+                    </View>
+                    <Text style={[styles.dateText, { color: c.muted }]}>
+                        {new Date(item.updated_at || item.created_at).toLocaleDateString()}
+                    </Text>
+                </View>
+
+                <View style={styles.activeContent}>
+                    <Text style={[styles.activeTitle, { color: c.textPrimary }]} numberOfLines={2}>{item.title}</Text>
+                    <View style={styles.locationRow}>
+                        <Ionicons name="location-sharp" size={iconSize.sm} color={c.muted} />
+                        <Text style={[styles.locationText, { color: c.muted }]}>{item.city}</Text>
+                    </View>
+                    {review ? (
+                        <View style={styles.reviewSnippet}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                    <Ionicons
+                                        key={star}
+                                        name={star <= review.rating ? 'star' : 'star-outline'}
+                                        size={iconSize.xs}
+                                        color={GOLD}
+                                    />
+                                ))}
+                            </View>
+                            {review.comment ? (
+                                <Text style={[styles.reviewSnippetText, { color: c.textSecondary }]} numberOfLines={2}>
+                                    {`“${review.comment}”`}
+                                </Text>
+                            ) : null}
+                        </View>
+                    ) : (
+                        <Text style={[styles.reviewSnippetText, { color: c.muted }]}>
+                            {t('completedStep')}
+                        </Text>
+                    )}
+                </View>
+            </Pressable>
+        );
+    };
+
     const renderApplied = ({ item }: { item: any }) => (
-        <View style={styles.ticketCard}>
-            <View style={[styles.statusStrip, { backgroundColor: '#F59E0B' }]} />
+        <View style={[styles.ticketCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <View style={[styles.statusStrip, { backgroundColor: WARNING }]} />
             <View style={styles.ticketContent}>
                 <View style={styles.ticketHeader}>
-                    <Text style={styles.ticketTitle}>{item.projects?.title || t('unknownLocation')}</Text>
+                    <Text style={[styles.ticketTitle, { color: c.textPrimary }]}>{item.projects?.title || t('unknownLocation')}</Text>
                     <View style={styles.pendingTag}>
                         <Text style={styles.pendingTagText}>{t('pending')}</Text>
                     </View>
                 </View>
                 <View style={styles.ticketInfo}>
                     <View>
-                        <Text style={styles.ticketLabel}>{t('clientBudget')}</Text>
-                        <Text style={styles.ticketValue}>
-                            {item.projects?.budget ? item.projects.budget.toLocaleString() : 'N/A'} CFA
+                        <Text style={[styles.ticketLabel, { color: c.muted }]}>{t('clientBudget')}</Text>
+                        <Text style={[styles.ticketValue, { color: c.muted }]}>
+                            {item.projects ? formatBudgetDisplay(resolveProjectBudgetMinor(item.projects)) : 'N/A'}
                         </Text>
                     </View>
-                    <View style={styles.verticalLine} />
+                    <View style={[styles.verticalLine, { backgroundColor: c.border }]} />
                     <View>
-                        <Text style={styles.ticketLabel}>{t('yourBid')}</Text>
-                        <Text style={[styles.ticketValue, { color: '#F8FAFC' }]}>
+                        <Text style={[styles.ticketLabel, { color: c.muted }]}>{t('yourBid')}</Text>
+                        <Text style={[styles.ticketValue, { color: c.textPrimary }]}>
                             {item.bid_amount?.toLocaleString()} CFA
                         </Text>
                     </View>
@@ -177,9 +272,13 @@ export default function ActiveSites() {
                 >
                     <View style={styles.balanceSection}>
                         <Text style={styles.balanceLabel}>{t('availableBalance').toUpperCase()}</Text>
-                        <Text style={styles.balanceAmount}>{stats.balance.toLocaleString()} CFA</Text>
+                        <Text style={styles.balanceAmount}>
+                            {stats.balance === null
+                                ? P00_BALANCE_UNAVAILABLE
+                                : `${stats.balance.toLocaleString()} CFA`}
+                        </Text>
                         <TouchableOpacity style={styles.secureBadge} onPress={() => router.push('/provider/earnings')}>
-                            <Ionicons name="wallet" size={12} color="#16A34A" />
+                            <Ionicons name="wallet" size={iconSize.xs} color={SUCCESS} />
                             <Text style={styles.secureText}>{t('openWallet')}</Text>
                         </TouchableOpacity>
                     </View>
@@ -187,60 +286,68 @@ export default function ActiveSites() {
             </ImageBackground>
 
             <View style={styles.floatingCardWrap}>
-                <BlurView intensity={60} tint="dark" style={styles.floatingStatsCard}>
+                <BlurView intensity={60} tint={c.blurTint} style={[styles.floatingStatsCard, { borderColor: c.border }]}>
                     <View style={styles.statItem}>
-                        <Text style={styles.statValue}>{projects.length}</Text>
-                        <Text style={styles.statLabel}>{t('activeSitesLabel')}</Text>
+                        <Text style={[styles.statValue, { color: c.textPrimary }]}>{projects.length}</Text>
+                        <Text style={[styles.statLabel, { color: c.muted }]}>{t('activeSitesLabel')}</Text>
                     </View>
-                    <View style={styles.statDivider} />
+                    <View style={[styles.statDivider, { backgroundColor: c.border }]} />
                     <View style={styles.statItem}>
-                        <Text style={styles.statValue}>{stats.pendingRequests}</Text>
-                        <Text style={styles.statLabel}>{t('pendingRequestsLabel')}</Text>
+                        <Text style={[styles.statValue, { color: c.textPrimary }]}>{stats.pendingRequests}</Text>
+                        <Text style={[styles.statLabel, { color: c.muted }]}>{t('pendingRequestsLabel')}</Text>
                     </View>
                 </BlurView>
             </View>
 
             <View style={styles.quickActions}>
                 <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/provider/market'); }}>
-                    <LinearGradient colors={['#2563EB', '#1D4ED8']} style={styles.quickActionIcon}>
-                        <Ionicons name="search" size={22} color="#fff" />
+                    <LinearGradient colors={[INFO, INFO]} style={styles.quickActionIcon}>
+                        <Ionicons name="search" size={iconSize.md} color="#FFFFFF" />
                     </LinearGradient>
-                    <Text style={styles.quickActionLabel}>{t('marketTitle')}</Text>
+                    <Text style={[styles.quickActionLabel, { color: c.muted }]}>{t('marketTitle')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/provider/cart-hub'); }}>
-                    <LinearGradient colors={['#10B981', '#059669']} style={styles.quickActionIcon}>
-                        <Ionicons name="scan" size={22} color="#fff" />
+                    <LinearGradient colors={[SUCCESS, SUCCESS_DEEP]} style={styles.quickActionIcon}>
+                        <Ionicons name="scan" size={iconSize.md} color="#FFFFFF" />
                     </LinearGradient>
-                    <Text style={styles.quickActionLabel}>{t('cartHubTitle')}</Text>
+                    <Text style={[styles.quickActionLabel, { color: c.muted }]}>{t('cartHubTitle')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/provider/requests'); }}>
-                    <LinearGradient colors={['#D4AF37', '#B8860B']} style={styles.quickActionIcon}>
-                        <Ionicons name="mail-unread" size={22} color="#fff" />
+                    <LinearGradient colors={[GOLD, GOLD_DEEP]} style={styles.quickActionIcon}>
+                        <Ionicons name="mail-unread" size={iconSize.md} color="#FFFFFF" />
                     </LinearGradient>
-                    <Text style={styles.quickActionLabel}>{t('requestsTab')}</Text>
+                    <Text style={[styles.quickActionLabel, { color: c.muted }]}>{t('requestsTab')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.quickActionBtn} onPress={() => { mediumFeedback(); router.push('/provider/earnings'); }}>
-                    <LinearGradient colors={['#6366F1', '#818CF8']} style={styles.quickActionIcon}>
-                        <Ionicons name="cash" size={22} color="#fff" />
+                    <LinearGradient colors={[GOLD, GOLD_DEEP]} style={styles.quickActionIcon}>
+                        <Ionicons name="cash" size={iconSize.md} color="#FFFFFF" />
                     </LinearGradient>
-                    <Text style={styles.quickActionLabel}>{t('walletTitle')}</Text>
+                    <Text style={[styles.quickActionLabel, { color: c.muted }]}>{t('walletTitle')}</Text>
                 </TouchableOpacity>
             </View>
 
-            <View style={styles.tabContainer}>
+            <View style={[styles.tabContainer, { backgroundColor: withAlpha(c.isDark ? '#FFFFFF' : '#0F172A', ALPHA.faint) }]}>
                 <TouchableOpacity
                     style={[styles.tab, activeTab === 'active' && styles.activeTab]}
                     onPress={() => setActiveTab('active')}
                 >
-                    <Text style={[styles.tabText, activeTab === 'active' && styles.activeTabText]}>
+                    <Text style={[styles.tabText, { color: c.muted }, activeTab === 'active' && { color: c.textPrimary }]}>
                         {t('clientDashboard.activeProjects')} ({projects.length})
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'completed' && styles.activeTab]}
+                    onPress={() => setActiveTab('completed')}
+                >
+                    <Text style={[styles.tabText, { color: c.muted }, activeTab === 'completed' && { color: c.textPrimary }]}>
+                        {t('completedTitle')} ({completedProjects.length})
                     </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                     style={[styles.tab, activeTab === 'applied' && styles.activeTab]}
                     onPress={() => setActiveTab('applied')}
                 >
-                    <Text style={[styles.tabText, activeTab === 'applied' && styles.activeTabText]}>
+                    <Text style={[styles.tabText, { color: c.muted }, activeTab === 'applied' && { color: c.textPrimary }]}>
                         {t('tabApplied')} ({applications.length})
                     </Text>
                 </TouchableOpacity>
@@ -250,51 +357,55 @@ export default function ActiveSites() {
 
     if (loading && !refreshing) {
         return (
-            <View style={styles.screen}>
-                <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <View style={[styles.screen, { backgroundColor: c.bg }]}>
+                <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
                 <PremiumHeader
                     title={t('tabActive')}
                     subtitle={t('providerHomeSubtitle')}
                     menuItems={providerMenuItems(router, t)}
-                    onNotificationsPress={() => router.push('/provider/inbox')}
+                    onNotificationsPress={() => router.push('/notifications')}
                 />
-                <View style={styles.center}><PulseLoader color={theme.colors.emerald} /></View>
+                <ScreenLoader />
             </View>
         );
     }
 
     return (
-        <View style={styles.screen}>
-            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <View style={[styles.screen, { backgroundColor: c.bg }]}>
+            <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
             <PremiumHeader
                 title={profile?.full_name?.split(' ')[0] || t('tabActive')}
                 subtitle={isOnline ? t('onlineAvailable') : t('offlineStatus')}
                 menuItems={providerMenuItems(router, t)}
-                onNotificationsPress={() => router.push('/provider/inbox')}
+                onNotificationsPress={() => router.push('/notifications')}
             />
 
             <FlatList
-                data={activeTab === 'active' ? projects : applications}
+                data={activeTab === 'active' ? projects : activeTab === 'completed' ? completedProjects : applications}
                 keyExtractor={(item) => item.id.toString()}
-                renderItem={activeTab === 'active' ? renderActive : renderApplied}
+                renderItem={activeTab === 'active' ? renderActive : activeTab === 'completed' ? renderCompleted : renderApplied}
                 ListHeaderComponent={listHeader}
-                contentContainerStyle={{
-                    paddingTop: insets.top + 72,
-                    paddingBottom: SCROLL_BOTTOM_INSET,
-                    paddingHorizontal: theme.spacing.lg,
-                }}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PREMIUM_GOLD} />}
+                contentContainerStyle={offsets.content}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GOLD} />}
                 ListEmptyComponent={
                     <PremiumEmptyState
-                        icon={activeTab === 'active' ? 'hammer-outline' : 'document-text-outline'}
-                        title={activeTab === 'active' ? (t('noActiveJobs') ?? 'No active jobs') : (t('noApplications') ?? 'No applications')}
+                        icon={activeTab === 'active' ? 'hammer-outline' : activeTab === 'completed' ? 'checkmark-done-outline' : 'document-text-outline'}
+                        title={
+                            activeTab === 'active'
+                                ? (t('noActiveJobs') ?? 'No active jobs')
+                                : activeTab === 'completed'
+                                    ? (t('noCompletedHandovers') ?? 'No completed jobs yet')
+                                    : (t('noApplications') ?? 'No applications')
+                        }
                         subtitle={
                             activeTab === 'active'
                                 ? (t('clientDashboard.noProjects') ?? 'Browse the market and win a site to get started.')
-                                : (t('checkMarketHint') ?? 'Apply to open jobs in the market to fill this list.')
+                                : activeTab === 'completed'
+                                    ? (t('completedHandovers') ?? 'Finished projects and client reviews appear here.')
+                                    : (t('checkMarketHint') ?? 'Apply to open jobs in the market to fill this list.')
                         }
-                        actionLabel={t('marketTitle') ?? 'Browse Market'}
-                        onAction={() => {
+                        actionLabel={activeTab === 'completed' ? undefined : (t('marketTitle') ?? 'Browse Market')}
+                        onAction={activeTab === 'completed' ? undefined : () => {
                             successFeedback();
                             router.push('/provider/market');
                         }}
@@ -306,86 +417,99 @@ export default function ActiveSites() {
 }
 
 const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: PREMIUM_BG },
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    screen: { flex: 1 },
 
-    heroContainer: { width: '100%', height: 200, borderRadius: 24, overflow: 'hidden', marginBottom: 8 },
-    heroGradient: { flex: 1, padding: 20, justifyContent: 'flex-end' },
-    balanceSection: { gap: 4 },
-    balanceLabel: { color: PREMIUM_MUTED, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-    balanceAmount: { color: '#F8FAFC', fontSize: 36, fontWeight: '800', letterSpacing: -0.5 },
+    heroContainer: { width: '100%', height: 200, borderRadius: radius.xl, overflow: 'hidden', marginBottom: space.xs },
+    heroGradient: { flex: 1, padding: space.lg, justifyContent: 'flex-end' },
+    balanceSection: { gap: space.xxs },
+    balanceLabel: { color: '#94A3B8', fontSize: font.micro, fontWeight: weight.heavy, letterSpacing: 1 },
+    balanceAmount: { ...text.hero, color: '#FFFFFF' },
     secureBadge: {
-        flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, alignSelf: 'flex-start',
-        paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
-        backgroundColor: 'rgba(22,163,74,0.15)', borderWidth: 1, borderColor: 'rgba(22,163,74,0.25)',
+        flexDirection: 'row', alignItems: 'center', gap: space.xs, marginTop: space.xs, alignSelf: 'flex-start',
+        paddingHorizontal: space.sm, paddingVertical: space.xxs, borderRadius: radius.pill,
+        ...tint(SUCCESS),
     },
-    secureText: { color: '#16A34A', fontSize: 12, fontWeight: '700' },
+    secureText: { color: SUCCESS, fontSize: font.caption, fontWeight: weight.heavy },
 
-    floatingCardWrap: { marginTop: -28, marginBottom: 16 },
+    floatingCardWrap: { marginTop: -28, marginBottom: space.md },
     floatingStatsCard: {
-        flexDirection: 'row', alignItems: 'center', borderRadius: 20, padding: 18,
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', overflow: 'hidden',
+        flexDirection: 'row', alignItems: 'center', borderRadius: radius.xl, padding: space.lg,
+        borderWidth: 1, overflow: 'hidden',
     },
     statItem: { flex: 1, alignItems: 'center' },
-    statValue: { fontSize: 22, fontWeight: '800', color: '#F8FAFC' },
-    statLabel: { fontSize: 11, color: PREMIUM_MUTED, marginTop: 4, fontWeight: '700' },
-    statDivider: { width: 1, height: 32, backgroundColor: 'rgba(255,255,255,0.15)' },
+    statValue: { fontSize: font.title, fontWeight: weight.heavy },
+    statLabel: { fontSize: font.micro, marginTop: space.xxs, fontWeight: weight.heavy },
+    statDivider: { width: 1, height: 32 },
 
-    quickActions: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, gap: 8 },
-    quickActionBtn: { flex: 1, alignItems: 'center', gap: 8 },
-    quickActionIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-    quickActionLabel: { fontSize: 11, fontWeight: '700', color: PREMIUM_MUTED, textAlign: 'center' },
+    quickActions: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: space.lg, gap: space.xs },
+    quickActionBtn: { flex: 1, alignItems: 'center', gap: space.xs },
+    quickActionIcon: { width: 52, height: 52, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center' },
+    quickActionLabel: { fontSize: font.micro, fontWeight: weight.heavy, textAlign: 'center' },
 
     tabContainer: {
-        flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 16, padding: 4, marginBottom: 16,
+        flexDirection: 'row', borderRadius: radius.lg, padding: space.xxs, marginBottom: space.md,
     },
-    tab: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-    activeTab: { backgroundColor: 'rgba(37,99,235,0.35)' },
-    tabText: { color: PREMIUM_MUTED, fontWeight: '700', fontSize: 12 },
-    activeTabText: { color: '#F8FAFC' },
+    tab: { flex: 1, paddingVertical: space.sm, borderRadius: radius.md, alignItems: 'center' },
+    activeTab: { backgroundColor: GOLD_TINT },
+    tabText: { fontWeight: weight.heavy, fontSize: font.caption },
 
     activeCard: {
-        backgroundColor: 'rgba(17,24,39,0.85)', borderRadius: 20, marginBottom: 16,
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', overflow: 'hidden',
+        borderRadius: radius.xl, marginBottom: space.md,
+        borderWidth: 1, overflow: 'hidden',
     },
     activeHeader: {
-        flexDirection: 'row', justifyContent: 'space-between', padding: 16,
-        borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)', alignItems: 'center',
+        flexDirection: 'row', justifyContent: 'space-between', padding: space.md,
+        borderBottomWidth: 1, alignItems: 'center',
     },
-    liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(22,163,74,0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-    pulsingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#16A34A' },
-    liveText: { fontSize: 10, fontWeight: '800', color: '#16A34A' },
-    dateText: { color: PREMIUM_MUTED, fontSize: 12, fontWeight: '500' },
-    activeContent: { padding: 20 },
-    activeTitle: { fontSize: 20, fontWeight: '800', color: '#F8FAFC', marginBottom: 8 },
-    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    locationText: { color: PREMIUM_MUTED, fontWeight: '500' },
+    liveBadge: {
+        flexDirection: 'row', alignItems: 'center', gap: space.xs,
+        backgroundColor: withAlpha(SUCCESS, ALPHA.medium),
+        paddingHorizontal: space.xs, paddingVertical: space.xxs, borderRadius: radius.sm,
+    },
+    pulsingDot: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: SUCCESS },
+    liveText: { fontSize: font.micro, fontWeight: weight.heavy, color: SUCCESS },
+    dateText: { fontSize: font.caption, fontWeight: weight.semibold },
+    activeContent: { padding: space.lg },
+    activeTitle: { ...text.title, marginBottom: space.xs },
+    locationRow: { flexDirection: 'row', alignItems: 'center', gap: space.xxs },
+    locationText: { fontWeight: weight.semibold },
     actionBar: {
-        backgroundColor: 'rgba(0,0,0,0.25)', padding: 16, flexDirection: 'row',
-        justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)',
+        padding: space.md, flexDirection: 'row',
+        justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1,
     },
-    actionLeft: { gap: 2, flex: 1, marginRight: 8 },
-    nextTaskLabel: { fontSize: 10, fontWeight: '700', color: PREMIUM_MUTED },
-    nextTaskValue: { fontSize: 13, fontWeight: '600', color: '#CBD5E1' },
-    actionBarBtns: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' },
-    toolBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#10B981', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, gap: 4 },
-    toolBtnText: { color: '#fff', fontWeight: '700', fontSize: 11 },
-    enterBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: PREMIUM_GOLD, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, gap: 4 },
-    enterText: { color: '#0A0F1A', fontWeight: '800', fontSize: 12 },
+    actionLeft: { gap: 2, flex: 1, marginRight: space.xs },
+    nextTaskLabel: { fontSize: font.micro, fontWeight: weight.heavy },
+    nextTaskValue: { fontSize: font.caption, fontWeight: weight.semibold },
+    actionBarBtns: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexWrap: 'wrap', justifyContent: 'flex-end' },
+    toolBtn: {
+        flexDirection: 'row', alignItems: 'center', backgroundColor: SUCCESS,
+        paddingHorizontal: space.sm, paddingVertical: space.xs, borderRadius: radius.sm, gap: space.xxs,
+    },
+    toolBtnText: { color: '#FFFFFF', fontWeight: weight.heavy, fontSize: font.micro },
+    enterBtn: {
+        flexDirection: 'row', alignItems: 'center', backgroundColor: GOLD,
+        paddingHorizontal: space.sm, paddingVertical: space.xs, borderRadius: radius.sm, gap: space.xxs,
+    },
+    enterText: { color: '#0A0F1A', fontWeight: weight.heavy, fontSize: font.caption },
+
+    reviewSnippet: { marginTop: space.sm, gap: space.xxs },
+    reviewSnippetText: { fontSize: font.caption, fontWeight: weight.semibold, fontStyle: 'italic' },
 
     ticketCard: {
-        flexDirection: 'row', backgroundColor: 'rgba(17,24,39,0.85)', borderRadius: 16, marginBottom: 12,
-        overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+        flexDirection: 'row', borderRadius: radius.lg, marginBottom: space.sm,
+        overflow: 'hidden', borderWidth: 1,
     },
     statusStrip: { width: 6, height: '100%' },
-    ticketContent: { flex: 1, padding: 16 },
-    ticketHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
-    ticketTitle: { fontSize: 16, fontWeight: '700', color: '#F8FAFC', flex: 1, marginRight: 10 },
-    pendingTag: { backgroundColor: 'rgba(245,158,11,0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(245,158,11,0.3)' },
-    pendingTagText: { fontSize: 10, fontWeight: '800', color: '#F59E0B' },
-    ticketInfo: { flexDirection: 'row', alignItems: 'center', gap: 20 },
-    ticketLabel: { fontSize: 10, color: PREMIUM_MUTED, fontWeight: '700', marginBottom: 2 },
-    ticketValue: { fontSize: 14, fontWeight: '600', color: PREMIUM_MUTED },
-    verticalLine: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.12)' },
-
+    ticketContent: { flex: 1, padding: space.md },
+    ticketHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: space.md },
+    ticketTitle: { ...text.body, fontWeight: weight.heavy, flex: 1, marginRight: space.sm },
+    pendingTag: {
+        ...tint(WARNING),
+        paddingHorizontal: space.xs, paddingVertical: space.xxs, borderRadius: radius.xs,
+    },
+    pendingTagText: { fontSize: font.micro, fontWeight: weight.heavy, color: WARNING },
+    ticketInfo: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
+    ticketLabel: { fontSize: font.micro, fontWeight: weight.heavy, marginBottom: 2 },
+    ticketValue: { fontSize: font.footnote, fontWeight: weight.semibold },
+    verticalLine: { width: 1, height: 24 },
 });

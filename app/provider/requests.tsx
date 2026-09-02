@@ -16,6 +16,7 @@ import PulseLoader from '@/components/PulseLoader';
 import { providerMenuItems } from '@/constants/premiumMenus';
 import { Project } from '@/types/models';
 import { theme } from '@/constants/theme';
+import { resolveProjectBudgetMinor, formatBudgetDisplay } from '@/lib/money';
 import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_MUTED } from '@/constants/layout';
 
 export default function RequestsScreen() {
@@ -118,7 +119,7 @@ export default function RequestsScreen() {
                 </View>
 
                 <Text style={styles.budget}>
-                    {item.budget ? item.budget.toLocaleString() : '0'} <Text style={styles.currency}>CFA</Text>
+                    {formatBudgetDisplay(resolveProjectBudgetMinor(item))}
                 </Text>
                 <Text style={styles.projectTitle} numberOfLines={2}>{item.title}</Text>
 

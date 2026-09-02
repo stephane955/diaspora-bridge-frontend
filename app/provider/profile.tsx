@@ -17,37 +17,51 @@ import PremiumEmptyState from '@/components/PremiumEmptyState';
 import { providerMenuItems } from '@/constants/premiumMenus';
 import PulseLoader from '@/components/PulseLoader';
 import { theme } from '@/constants/theme';
-import { SCROLL_BOTTOM_INSET, PREMIUM_BG, PREMIUM_GOLD, TEXT_PRIMARY, TEXT_SECONDARY } from '@/constants/layout';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { HEADER_OFFSET, PREMIUM_BG, PREMIUM_GOLD, TEXT_PRIMARY, TEXT_SECONDARY, FLOATING_TAB_BAR_HEIGHT } from '@/constants/layout';
+import { fetchProviderRating } from '@/utils/providerRating';
+import type { Href } from 'expo-router';
+import type { Database } from '@/database.types';
+
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+type PortfolioItem = Pick<Database['public']['Tables']['project_updates']['Row'], 'id' | 'photo_url' | 'created_at'>;
+type ReviewItem = {
+    id: string;
+    rating: number;
+    comment: string | null;
+    created_at: string;
+    projects: { title: string | null } | null;
+};
 
 type HubItem = {
     key: string;
-    href: string;
+    href: Href;
     label: string;
     icon: keyof typeof Ionicons.glyphMap;
     color: string;
     bg: string;
 };
 
-const HUB_ITEMS: HubItem[] = [
-    { key: 'requests', href: '/provider/requests', label: 'Requests', icon: 'document-text-outline', color: theme.colors.active, bg: theme.colors.active + '18' },
-    { key: 'verification', href: '/provider/verification', label: 'Verification', icon: 'shield-checkmark-outline', color: theme.colors.emerald, bg: theme.colors.emerald + '18' },
-    { key: 'payout-setup', href: '/provider/payout-setup', label: 'Payouts', icon: 'card-outline', color: '#6366F1', bg: '#6366F118' },
-    { key: 'withdraw', href: '/provider/withdraw', label: 'Withdraw', icon: 'cash-outline', color: theme.colors.warning, bg: theme.colors.warning + '18' },
-    { key: 'settings', href: '/provider/settings', label: 'Settings', icon: 'settings-outline', color: theme.colors.textMuted, bg: theme.colors.surfaceAlt },
-];
-
 // --- CONSTANTS ---
-const LANGUAGES = [
-    { code: 'en', label: 'English', flag: '🇺🇸' },
-    { code: 'fr', label: 'Français', flag: '🇫🇷' },
-    { code: 'es', label: 'Español', flag: '🇪🇸' },
-    { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
-    { code: 'it', label: 'Italiano', flag: '🇮🇹' },
-];
-
 const SKILL_CATEGORIES = [
     "General Construction", "Plumbing", "Electrical", "Painting", "Carpentry",
     "Roofing", "HVAC", "Tiling", "Architecture", "Administrative", "Masonry", "Welding"
+];
+
+function parseSkillsFromBio(bio: string | null | undefined): string[] {
+    if (!bio?.trim()) return [];
+    return bio
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && SKILL_CATEGORIES.includes(s));
+}
+
+const HUB_ITEMS: HubItem[] = [
+    { key: 'requests', href: '/provider/requests' as const, label: 'Requests', icon: 'document-text-outline', color: theme.colors.active, bg: theme.colors.active + '18' },
+    { key: 'verification', href: '/provider/verification' as const, label: 'Verification', icon: 'shield-checkmark-outline', color: theme.colors.emerald, bg: theme.colors.emerald + '18' },
+    { key: 'payout-setup', href: '/provider/payout-setup' as const, label: 'Payouts', icon: 'card-outline', color: '#6366F1', bg: '#6366F118' },
+    { key: 'withdraw', href: '/provider/withdraw' as const, label: 'Withdraw', icon: 'cash-outline', color: theme.colors.warning, bg: theme.colors.warning + '18' },
+    { key: 'settings', href: '/provider/settings' as const, label: 'Settings', icon: 'settings-outline', color: theme.colors.textMuted, bg: theme.colors.surfaceAlt },
 ];
 
 const CITIES = ["Douala", "Yaoundé", "Bamenda", "Kribi", "Limbe", "Bafoussam"];
@@ -56,16 +70,19 @@ export default function ProviderProfileScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { user, signOut } = useAuth();
-    const { t, setLanguage, language, getFlag } = useLanguage();
+    const { t } = useLanguage();
+    const c = usePremiumColors();
 
     // --- STATE ---
-    const [profile, setProfile] = useState<any>(null);
-    const [portfolio, setPortfolio] = useState<any[]>([]);
+    const [profile, setProfile] = useState<ProfileRow | null>(null);
+    const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
+    const [reviews, setReviews] = useState<ReviewItem[]>([]);
+    const [completedCount, setCompletedCount] = useState(0);
+    const [ratingSummary, setRatingSummary] = useState<{ average: number | null; count: number }>({ average: null, count: 0 });
     const [loading, setLoading] = useState(true);
 
     // Modals
     const [skillsModalVisible, setSkillsModalVisible] = useState(false);
-    const [langModalVisible, setLangModalVisible] = useState(false);
     const [editModalVisible, setEditModalVisible] = useState(false);
     const [cityModalVisible, setCityModalVisible] = useState(false);
 
@@ -83,18 +100,49 @@ export default function ProviderProfileScreen() {
             const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
             if (data) {
                 setProfile(data);
-                setMySkills(data.skills || []);
-                setFormName(data.full_name || '');
-                setFormCity(data.city || '');
+                setMySkills(parseSkillsFromBio(data.bio));
+                setFormName(data.full_name || (user.user_metadata?.full_name as string) || '');
+                setFormCity(data.city || (user.user_metadata?.city as string) || '');
                 setFormBio(data.bio || '');
+            } else {
+                setFormName((user.user_metadata?.full_name as string) || '');
+                setFormCity((user.user_metadata?.city as string) || '');
             }
             const { data: portData } = await supabase
                 .from('project_updates')
-                .select('*')
-                .eq('provider_id', user.id)
-                .not('image_url', 'is', null)
+                .select('id, photo_url, created_at')
+                .eq('author_id', user.id)
+                .not('photo_url', 'is', null)
                 .limit(5);
             if (portData) setPortfolio(portData);
+
+            const { count: doneCount } = await supabase
+                .from('projects')
+                .select('*', { count: 'exact', head: true })
+                .eq('assigned_provider_id', user.id)
+                .eq('status', 'completed');
+            setCompletedCount(doneCount || 0);
+
+            const { data: reviewData } = await supabase
+                .from('reviews')
+                .select('id, rating, comment, created_at, projects:project_id(title)')
+                .eq('provider_id', user.id)
+                .order('created_at', { ascending: false })
+                .limit(20);
+            if (reviewData) {
+                setReviews(
+                    reviewData.map((r) => ({
+                        ...r,
+                        projects: Array.isArray(r.projects) ? r.projects[0] ?? null : r.projects,
+                    })),
+                );
+            }
+
+            const summary = await fetchProviderRating(supabase, user.id);
+            setRatingSummary(summary);
+            if (summary.average !== null) {
+                await supabase.from('profiles').update({ rating: summary.average }).eq('id', user.id);
+            }
         } catch (e) { console.error(e); } finally { setLoading(false); }
     }, [user]);
 
@@ -119,28 +167,46 @@ export default function ProviderProfileScreen() {
             },
         ]);
     };
-    const handleLanguageSelect = (code: any) => { setLanguage(code); setLangModalVisible(false); };
 
     const saveSkills = async () => {
+        if (!user?.id) return;
         setSaving(true);
         try {
-            await supabase.from('profiles').update({ skills: mySkills }).eq('id', user?.id);
+            const bio = mySkills.join(', ');
+            await supabase.from('profiles').update({ bio }).eq('id', user.id);
+            setFormBio(bio);
+            setProfile((prev) => (prev ? { ...prev, bio } : prev));
             setSkillsModalVisible(false);
             successFeedback();
             Alert.alert(t('success'), t('profileSaved'));
-        } catch (err: any) { Alert.alert(t('error'), err.message); } finally { setSaving(false); }
+        } catch (err: unknown) {
+            Alert.alert(t('error'), err instanceof Error ? err.message : t('somethingWentWrong'));
+        } finally {
+            setSaving(false);
+        }
     };
 
     const saveProfileDetails = async () => {
+        if (!user?.id) return;
         setSaving(true);
         try {
-            const updates = { full_name: formName, city: formCity, bio: formBio, updated_at: new Date() };
-            await supabase.from('profiles').update(updates).eq('id', user?.id);
-            setProfile({ ...profile, ...updates });
+            const updates = {
+                full_name: formName,
+                city: formCity,
+                bio: formBio,
+                updated_at: new Date().toISOString(),
+            };
+            await supabase.from('profiles').update(updates).eq('id', user.id);
+            setProfile((prev) => (prev ? { ...prev, ...updates } : prev));
+            setMySkills(parseSkillsFromBio(formBio));
             setEditModalVisible(false);
             successFeedback();
             Alert.alert(t('success'), t('profileUpdated'));
-        } catch (err: any) { Alert.alert(t('error'), err.message); } finally { setSaving(false); }
+        } catch (err: unknown) {
+            Alert.alert(t('error'), err instanceof Error ? err.message : t('somethingWentWrong'));
+        } finally {
+            setSaving(false);
+        }
     };
 
     const toggleSkill = (skill: string) => {
@@ -149,106 +215,143 @@ export default function ProviderProfileScreen() {
 
     if (loading) return (
         <View style={styles.screen}>
-            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
             <PremiumHeader
                 title={t('tabProfile')}
                 subtitle={t('accountSettings')}
                 menuItems={providerMenuItems(router, t)}
+                onNotificationsPress={() => router.push('/notifications')}
             />
             <View style={styles.center}><PulseLoader color={theme.colors.emerald} /></View>
         </View>
     );
     const isVerified = profile?.verification_status === 'verified';
+    const displayName =
+        profile?.full_name ||
+        (user?.user_metadata?.full_name as string | undefined) ||
+        t('providerFallback');
+    const ratingValue = ratingSummary.average ?? profile?.rating ?? null;
+
+    const renderStarRow = (value: number | null, size = 16) => (
+        <View style={styles.starRow}>
+            {[1, 2, 3, 4, 5].map((star) => (
+                <Ionicons
+                    key={star}
+                    name={value != null && star <= Math.round(value) ? 'star' : 'star-outline'}
+                    size={size}
+                    color="#F59E0B"
+                />
+            ))}
+        </View>
+    );
 
     return (
         <View style={styles.screen}>
-            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
             <PremiumHeader
-                title={profile?.full_name || t('tabProfile')}
-                subtitle={profile?.city || t('accountSettings')}
+                title={t('tabProfile')}
+                subtitle={displayName}
                 menuItems={providerMenuItems(router, t)}
+                onNotificationsPress={() => router.push('/notifications')}
             />
 
-            {/* ============================================================
-                1. FIXED HEADER SECTION (STATIC)
-                This section stays pinned to the top.
-               ============================================================ */}
-            <View style={[styles.staticHeader, { paddingTop: insets.top + 56 }]}>
-                <ImageBackground
-                    source={{ uri: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?q=80&w=2070&auto=format&fit=crop' }}
-                    style={styles.headerImage}
-                >
-                    <LinearGradient colors={['rgba(0,0,0,0.1)', 'rgba(15, 23, 42, 0.95)']} style={styles.gradient}>
+            <ScrollView
+                style={styles.scrollableContent}
+                contentContainerStyle={{
+                    paddingTop: insets.top + HEADER_OFFSET + 56,
+                    paddingBottom: FLOATING_TAB_BAR_HEIGHT + 32,
+                    paddingHorizontal: theme.spacing.lg,
+                }}
+                showsVerticalScrollIndicator={false}
+            >
+                {/* Profile hero — avatar, name, stars stacked vertically (no overlap) */}
+                <View style={styles.heroCard}>
+                    <ImageBackground
+                        source={{ uri: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?q=80&w=2070&auto=format&fit=crop' }}
+                        style={styles.heroBanner}
+                        imageStyle={styles.heroBannerImage}
+                    >
+                        <LinearGradient
+                            colors={['rgba(0,0,0,0.15)', 'rgba(15, 23, 42, 0.92)']}
+                            style={styles.heroBannerGradient}
+                        >
+                            <TouchableOpacity style={styles.glassEditBtn} onPress={() => setEditModalVisible(true)}>
+                                <Ionicons name="pencil" size={16} color="#fff" />
+                                <Text style={styles.editBtnText}>Edit</Text>
+                            </TouchableOpacity>
+                        </LinearGradient>
+                    </ImageBackground>
 
-                        {/* Edit Button */}
-                        <TouchableOpacity style={styles.glassEditBtn} onPress={() => setEditModalVisible(true)}>
-                            <Ionicons name="pencil" size={16} color="#fff" />
-                            <Text style={styles.editBtnText}>Edit</Text>
-                        </TouchableOpacity>
-
-                        {/* Profile Info */}
-                        <View style={styles.headerContent}>
-                            <View>
-                                <Image source={{ uri: profile?.avatar_url || 'https://i.pravatar.cc/150?u=pro' }} style={styles.avatar} />
-                                {isVerified && (
-                                    <View style={styles.verifiedTick}>
-                                        <Ionicons name="checkmark" size={12} color="#fff" />
-                                    </View>
-                                )}
-                            </View>
-
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.name}>{profile?.full_name || "Provider"}</Text>
-                                <Text style={styles.role} numberOfLines={1}>
-                                    {mySkills.length > 0 ? mySkills.slice(0, 2).join(' • ') : "General Provider"}
-                                </Text>
-                                <View style={styles.locationRow}>
-                                    <Ionicons name="location" size={12} color="#94A3B8"/>
-                                    <Text style={styles.locationText}>{profile?.city || "Cameroon"}</Text>
+                    <View style={styles.avatarBlock}>
+                        <View style={styles.avatarRing}>
+                            <Image
+                                source={{ uri: profile?.avatar_url || `https://i.pravatar.cc/150?u=${user?.id ?? 'pro'}` }}
+                                style={styles.avatar}
+                            />
+                            {isVerified ? (
+                                <View style={styles.verifiedTick}>
+                                    <Ionicons name="checkmark" size={12} color="#fff" />
                                 </View>
-                            </View>
+                            ) : null}
                         </View>
-                    </LinearGradient>
-                </ImageBackground>
 
-                {/* Floating Stats Card (Fixed inside Header View) */}
-                <View style={styles.floatingCard}>
+                        <Text style={styles.name} numberOfLines={2}>{displayName}</Text>
+                        <Text style={styles.role} numberOfLines={2}>
+                            {mySkills.length > 0 ? mySkills.slice(0, 2).join(' • ') : 'General Provider'}
+                        </Text>
+
+                        <View style={styles.ratingBlock}>
+                            {renderStarRow(typeof ratingValue === 'number' ? ratingValue : null, 18)}
+                            <Text style={styles.ratingCaption}>
+                                {typeof ratingValue === 'number'
+                                    ? `${ratingValue} · ${ratingSummary.count} review${ratingSummary.count === 1 ? '' : 's'}`
+                                    : 'No reviews yet'}
+                            </Text>
+                        </View>
+
+                        <View style={styles.locationRow}>
+                            <Ionicons name="location" size={14} color="#94A3B8" />
+                            <Text style={styles.locationText}>{profile?.city || 'Cameroon'}</Text>
+                        </View>
+                    </View>
+                </View>
+
+                {/* Stats — separate card below hero */}
+                <View style={styles.statsCard}>
                     <View style={styles.statItem}>
-                        <Text style={styles.statValue}>{portfolio.length}</Text>
+                        <Text style={styles.statValue}>{completedCount}</Text>
                         <Text style={styles.statLabel}>{t('projectsCount')}</Text>
                     </View>
                     <View style={styles.statDivider} />
                     <View style={styles.statItem}>
-                        <View style={{flexDirection:'row', alignItems:'center', gap: 4}}>
-                            <Text style={styles.statValue}>{profile?.rating || 'New'}</Text>
-                            <Ionicons name="star" size={14} color="#F59E0B" />
-                        </View>
+                        <Text style={styles.statValue}>
+                            {typeof ratingValue === 'number' ? ratingValue : '—'}
+                        </Text>
                         <Text style={styles.statLabel}>{t('trustScore')}</Text>
                     </View>
                     <View style={styles.statDivider} />
                     <View style={styles.statItem}>
-                        <Text style={[styles.statValue, {color: isVerified ? '#16A34A' : '#F59E0B'}]}>
+                        <Text style={[styles.statValue, { color: isVerified ? '#16A34A' : '#F59E0B' }]}>
                             {isVerified ? '100%' : '50%'}
                         </Text>
                         <Text style={styles.statLabel}>{t('verificationStatus')}</Text>
                     </View>
                 </View>
-            </View>
 
-            {/* ============================================================
-                2. SCROLLABLE CONTENT SECTION
-                Only this part scrolls underneath the header.
-               ============================================================ */}
-            <ScrollView
-                style={styles.scrollableContent}
-                contentContainerStyle={{ paddingBottom: SCROLL_BOTTOM_INSET, paddingTop: theme.spacing.md, paddingHorizontal: theme.spacing.lg }}
-                showsVerticalScrollIndicator={false}
-            >
-                {/* COMMAND CENTER (Icon Grid) */}
-                <View style={styles.hubSection}>
+                <TouchableOpacity
+                    style={styles.settingsLink}
+                    onPress={() => { mediumFeedback(); router.push('/provider/settings'); }}
+                    activeOpacity={0.85}
+                >
+                    <Ionicons name="settings-outline" size={20} color={PREMIUM_GOLD} />
+                    <Text style={styles.settingsLinkText}>{t('accountSettings')}</Text>
+                    <Ionicons name="chevron-forward" size={18} color={TEXT_SECONDARY} />
+                </TouchableOpacity>
+                {/* COMMAND CENTER (Icon Grid) — settings removed; use link above */}
+                <View style={[styles.hubSection, { marginTop: theme.spacing.lg }]}>
                     <Text style={styles.hubTitle}>Command Center</Text>
                     <View style={styles.hubGrid}>
-                        {HUB_ITEMS.map((item) => (
+                        {HUB_ITEMS.filter((item) => item.key !== 'settings').map((item) => (
                             <TouchableOpacity
                                 key={item.key}
                                 style={styles.hubCard}
@@ -272,7 +375,7 @@ export default function ProviderProfileScreen() {
                     </View>
                 ) : null}
 
-                {/* MENU */}
+                {/* Quick account actions */}
                 <View style={styles.menuContainer}>
                     <Text style={styles.menuTitle}>{t('accountSettings')}</Text>
 
@@ -298,13 +401,13 @@ export default function ProviderProfileScreen() {
                         <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.menuItem} onPress={() => { mediumFeedback(); setLangModalVisible(true); }} activeOpacity={0.7}>
-                        <View style={[styles.iconBox, {backgroundColor: theme.colors.surfaceAlt}]}>
-                            <Ionicons name="globe-outline" size={20} color={theme.colors.textMuted} />
+                    <TouchableOpacity style={styles.menuItem} onPress={() => { mediumFeedback(); router.push('/provider/settings'); }} activeOpacity={0.7}>
+                        <View style={[styles.iconBox, { backgroundColor: theme.colors.surfaceAlt }]}>
+                            <Ionicons name="settings-outline" size={20} color={theme.colors.textMuted} />
                         </View>
-                        <View style={{flex: 1}}>
-                            <Text style={styles.menuText}>Language</Text>
-                            <Text style={styles.menuSub}>{getFlag()} {LANGUAGES.find(l => l.code === language)?.label}</Text>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.menuText}>{t('menuSettings') || 'Settings'}</Text>
+                            <Text style={styles.menuSub}>{displayName}</Text>
                         </View>
                         <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
                     </TouchableOpacity>
@@ -315,6 +418,44 @@ export default function ProviderProfileScreen() {
                         </View>
                         <Text style={[styles.menuText, { color: theme.colors.danger }]}>{t('signOut')}</Text>
                     </TouchableOpacity>
+                </View>
+
+                {/* REVIEWS */}
+                <View style={styles.sectionContainer}>
+                    <Text style={styles.sectionHeader}>Reviews</Text>
+                    {reviews.length === 0 ? (
+                        <PremiumEmptyState
+                            icon="star-outline"
+                            title={t('noEarnings')}
+                            subtitle={t('completeJobs')}
+                        />
+                    ) : (
+                        reviews.map((review) => (
+                            <View key={review.id} style={styles.reviewCard}>
+                                <View style={styles.reviewCardHeader}>
+                                    <Text style={styles.reviewProjectTitle} numberOfLines={1}>
+                                        {review.projects?.title || t('unknownLocation')}
+                                    </Text>
+                                </View>
+                                <View style={styles.reviewStarsRow}>
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                        <Ionicons
+                                            key={star}
+                                            name={star <= review.rating ? 'star' : 'star-outline'}
+                                            size={14}
+                                            color="#F59E0B"
+                                        />
+                                    ))}
+                                </View>
+                                {review.comment ? (
+                                    <Text style={styles.reviewComment}>{`“${review.comment}”`}</Text>
+                                ) : null}
+                                <Text style={styles.reviewDate}>
+                                    {new Date(review.created_at).toLocaleDateString()}
+                                </Text>
+                            </View>
+                        ))
+                    )}
                 </View>
 
                 {/* PORTFOLIO */}
@@ -344,7 +485,9 @@ export default function ProviderProfileScreen() {
                                 <Text style={styles.addText}>{t('fromJobs')}</Text>
                             </TouchableOpacity>
                             {portfolio.map((item, index) => (
-                                <Image key={index} source={{ uri: item.image_url }} style={styles.portfolioImg} />
+                                item.photo_url ? (
+                                    <Image key={item.id ?? index} source={{ uri: item.photo_url }} style={styles.portfolioImg} />
+                                ) : null
                             ))}
                         </ScrollView>
                     )}
@@ -371,20 +514,6 @@ export default function ProviderProfileScreen() {
                         <TouchableOpacity style={styles.closeBtn} onPress={() => setSkillsModalVisible(false)}><Text style={{color:'#64748B'}}>Close</Text></TouchableOpacity>
                     </View>
                 </View>
-            </Modal>
-
-            {/* LANG MODAL */}
-            <Modal animationType="fade" transparent visible={langModalVisible} onRequestClose={() => setLangModalVisible(false)}>
-                <TouchableOpacity style={[styles.modalOverlay, {justifyContent:'center'}]} activeOpacity={1} onPress={() => setLangModalVisible(false)}>
-                    <View style={[styles.langModalContent, {marginHorizontal:40}]}>
-                        {LANGUAGES.map(l => (
-                            <TouchableOpacity key={l.code} style={styles.langRow} onPress={() => handleLanguageSelect(l.code)}>
-                                <Text style={{fontSize:24}}>{l.flag}</Text>
-                                <Text style={styles.langLabel}>{l.label}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </TouchableOpacity>
             </Modal>
 
             {/* CITY MODAL */}
@@ -445,33 +574,119 @@ export default function ProviderProfileScreen() {
 const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: PREMIUM_BG },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    scrollableContent: { flex: 1, backgroundColor: PREMIUM_BG },
 
-    // --- STATIC HEADER (FIXED) ---
-    staticHeader: { width: '100%', height: 380, backgroundColor: PREMIUM_BG, zIndex: 10 },
-    headerImage: { width: '100%', height: 330 }, // Image is slightly shorter than container
-    gradient: { flex: 1, justifyContent: 'flex-end', padding: 24, paddingBottom: 60 },
-
-    glassEditBtn: { position: 'absolute', top: 16, right: 24, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', gap: 6 },
+    heroCard: {
+        borderRadius: 24,
+        overflow: 'hidden',
+        backgroundColor: 'rgba(17,24,39,0.75)',
+        borderWidth: 1,
+        borderColor: 'rgba(212,175,55,0.22)',
+        marginBottom: 16,
+    },
+    heroBanner: { width: '100%', height: 120 },
+    heroBannerImage: { borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+    heroBannerGradient: { flex: 1, justifyContent: 'flex-start', alignItems: 'flex-end', padding: 16 },
+    glassEditBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+        gap: 6,
+    },
     editBtnText: { color: '#fff', fontWeight: '700', fontSize: 12 },
 
-    headerContent: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-    avatar: { width: 84, height: 84, borderRadius: 42, borderWidth: 3, borderColor: '#fff' },
-    verifiedTick: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#3B82F6', width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#0F172A' },
+    avatarBlock: {
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingBottom: 24,
+        marginTop: -44,
+    },
+    avatarRing: {
+        width: 96,
+        height: 96,
+        borderRadius: 48,
+        borderWidth: 3,
+        borderColor: PREMIUM_GOLD,
+        padding: 3,
+        backgroundColor: PREMIUM_BG,
+        marginBottom: 12,
+    },
+    avatar: { width: '100%', height: '100%', borderRadius: 45 },
+    verifiedTick: {
+        position: 'absolute',
+        bottom: 2,
+        right: 2,
+        backgroundColor: '#3B82F6',
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: PREMIUM_BG,
+    },
 
-    name: { fontSize: 24, ...theme.typography.title, color: '#fff', marginBottom: 2 },
-    role: { color: '#CBD5E1', fontSize: 14, fontWeight: '600', marginBottom: 6 },
-    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    locationText: { color: '#94A3B8', fontSize: 13, fontWeight: '500' },
+    name: {
+        fontSize: 24,
+        ...theme.typography.title,
+        color: TEXT_PRIMARY,
+        textAlign: 'center',
+        marginBottom: 4,
+    },
+    role: {
+        color: TEXT_SECONDARY,
+        fontSize: 14,
+        fontWeight: '600',
+        textAlign: 'center',
+        marginBottom: 10,
+    },
+    starRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    ratingBlock: { alignItems: 'center', gap: 6, marginBottom: 10 },
+    ratingCaption: { color: TEXT_SECONDARY, fontSize: 13, fontWeight: '600' },
+    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    locationText: { color: TEXT_SECONDARY, fontSize: 13, fontWeight: '500' },
 
-    // --- FLOATING CARD (Positioned Absolute inside Fixed Header) ---
-    floatingCard: { flexDirection: 'row', backgroundColor: 'rgba(17,24,39,0.92)', marginHorizontal: 24, position: 'absolute', bottom: 10, left: 0, right: 0, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: 'rgba(212,175,55,0.25)', justifyContent: 'space-around', alignItems: 'center' },
+    statsCard: {
+        flexDirection: 'row',
+        backgroundColor: 'rgba(17,24,39,0.92)',
+        borderRadius: 20,
+        paddingVertical: 18,
+        paddingHorizontal: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(212,175,55,0.25)',
+        justifyContent: 'space-around',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
     statItem: { alignItems: 'center', flex: 1 },
     statValue: { fontSize: 18, fontWeight: '800', color: TEXT_PRIMARY },
-    statLabel: { color: TEXT_SECONDARY, fontSize: 11, fontWeight: '600', marginTop: 4, textTransform: 'uppercase' },
-    statDivider: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.12)' },
+    statLabel: {
+        color: TEXT_SECONDARY,
+        fontSize: 11,
+        fontWeight: '600',
+        marginTop: 4,
+        textTransform: 'uppercase',
+        textAlign: 'center',
+    },
+    statDivider: { width: 1, height: 32, backgroundColor: 'rgba(255,255,255,0.12)' },
 
-    // --- SCROLLABLE AREA ---
-    scrollableContent: { flex: 1, backgroundColor: PREMIUM_BG },
+    settingsLink: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        backgroundColor: 'rgba(17,24,39,0.75)',
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(212,175,55,0.2)',
+    },
+    settingsLinkText: { flex: 1, fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY },
 
     hubSection: { marginTop: theme.spacing.xl },
     hubTitle: { fontSize: 13, ...theme.typography.label, color: TEXT_SECONDARY, marginBottom: theme.spacing.sm },
@@ -518,6 +733,20 @@ const styles = StyleSheet.create({
     addText: { color: PREMIUM_GOLD, fontWeight: '700', marginTop: 8, fontSize: 11 },
     portfolioImg: { width: 160, height: 120, borderRadius: 16, backgroundColor: '#1E293B' },
 
+    reviewCard: {
+        backgroundColor: 'rgba(17,24,39,0.75)',
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    reviewCardHeader: { marginBottom: 6 },
+    reviewProjectTitle: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
+    reviewStarsRow: { flexDirection: 'row', gap: 2, marginBottom: 8 },
+    reviewComment: { fontSize: 14, color: TEXT_SECONDARY, fontStyle: 'italic', lineHeight: 20 },
+    reviewDate: { fontSize: 12, color: TEXT_SECONDARY, marginTop: 8 },
+
     // MODALS
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
     modalCard: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24 },
@@ -551,11 +780,4 @@ const styles = StyleSheet.create({
     cityOptionActive: { backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 12, borderBottomWidth: 0 },
     cityText: { fontSize: 16, color: '#475569', fontWeight: '500' },
     cityTextActive: { color: '#0F172A', fontWeight: '700' },
-    langModalContent: { width: '85%', backgroundColor: '#fff', borderRadius: 24, padding: 24, alignSelf: 'center', marginTop: 'auto', marginBottom: 'auto' },
-    langRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-    langLabel: { fontSize: 16, fontWeight: '600', color: '#334155' },
-    langOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, gap: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-    langOptionActive: { backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 12, borderBottomWidth: 0 },
-    langText: { fontSize: 16, fontWeight: '600', color: '#475569', flex: 1 },
-    langTextActive: { color: '#0F172A', fontWeight: '800' }
 });

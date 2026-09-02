@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, Image, TouchableOpacity,
     ActivityIndicator, Dimensions, StatusBar, Alert, RefreshControl, TextInput, Modal, Animated, KeyboardAvoidingView, Platform, Linking, ScrollView
@@ -14,9 +14,36 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
 import PremiumHeader from '@/components/PremiumHeader';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_GOLD, TEXT_PRIMARY, TEXT_SECONDARY } from '@/constants/layout';
+import ScreenLoader from '@/components/ScreenLoader';
+import { clientMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
+import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, TEXT_PRIMARY, TEXT_SECONDARY } from '@/constants/layout';
+import {
+    ALPHA,
+    DANGER,
+    GOLD,
+    GOLD_BORDER,
+    GOLD_DEEP,
+    GOLD_TINT,
+    ICON_BUTTON_SIZE,
+    NAVY,
+    NAVY_SOFT,
+    SUCCESS,
+    WARNING,
+    font,
+    glow,
+    icon as iconSize,
+    radius,
+    shadow,
+    space,
+    text,
+    weight,
+    withAlpha,
+} from '@/constants/design';
+import { usePremiumColors, type PremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
 import { generateAndShareReceipt } from '@/utils/pdfReceipt';
+import { syncProviderRating } from '@/utils/providerRating';
 import { getProjectAccessRole, createObserverInvite } from '@/utils/observers';
 import { getContractHtml, uploadContractPdfFromUri } from '@/utils/contractPdf';
 import ClientApprovalCard from '@/components/ClientApprovalCard';
@@ -28,20 +55,21 @@ import PremiumEmptyState from '@/components/PremiumEmptyState';
 import RequestRevisionSheet from '@/components/RequestRevisionSheet';
 import OpenDisputeSheet from '@/components/OpenDisputeSheet';
 import FavoriteProviderButton from '@/components/FavoriteProviderButton';
+import { resolveAmountMinor, resolveProjectBudgetMinor, formatXafMinor, formatXafInput, xafDigitsFromInput, parseXafInput } from '@/lib/money';
 import DownloadReceiptButton from '@/components/DownloadReceiptButton';
 import { markProjectChatRead } from '@/lib/chatReadState';
-
-const NAVY = '#0F172A';
-const SLATE = '#1E293B';
-const GOLD = '#D4AF37';
+import { P00_RELEASE_UNAVAILABLE } from '@/constants/p00Security';
 
 const { width, height } = Dimensions.get('window');
 const HEADER_HEIGHT = 380;
 const PHOTO_CARD_WIDTH = width * 0.82;
 const PHOTO_CARD_GAP = 14;
+const SLATE = NAVY_SOFT;
 
 export default function ProjectDetailsScreen() {
     const insets = useSafeAreaInsets();
+    const c = usePremiumColors();
+    const offsets = useScreenOffsets();
     const { id, openApproval } = useLocalSearchParams<{ id: string; openApproval?: string }>();
     const router = useRouter();
     const { t } = useLanguage();
@@ -128,15 +156,50 @@ export default function ProjectDetailsScreen() {
                 .order('created_at', { ascending: false });
 
             // C. Applicants (Only if pending)
-            let appData = [];
+            type ApplicationRow = {
+                id: string;
+                project_id: string;
+                provider_id: string;
+                bid_amount: number | null;
+                message: string | null;
+                status: string;
+                created_at: string;
+                profiles?: {
+                    full_name: string | null;
+                    city: string | null;
+                    avatar_url: string | null;
+                    rating: number | null;
+                } | null;
+            };
+            let appData: ApplicationRow[] = [];
             if (projectData.status === 'pending') {
                 const { data } = await supabase
                     .from('project_applications')
-                    .select('*, profiles:provider_id(full_name, city, avatar_url, rating)')
+                    .select('*')
                     .eq('project_id', id)
                     .eq('status', 'pending')
                     .order('bid_amount', { ascending: true }); // Cheapest first
-                appData = data || [];
+                const rows = data || [];
+                const providerIds = [...new Set(rows.map((r) => r.provider_id))];
+                const profileById: Record<string, NonNullable<ApplicationRow['profiles']>> = {};
+                if (providerIds.length > 0) {
+                    const { data: profiles } = await supabase
+                        .from('profiles')
+                        .select('id, full_name, city, avatar_url, rating')
+                        .in('id', providerIds);
+                    for (const p of profiles ?? []) {
+                        profileById[p.id] = {
+                            full_name: p.full_name,
+                            city: p.city,
+                            avatar_url: p.avatar_url,
+                            rating: p.rating,
+                        };
+                    }
+                }
+                appData = rows.map((r) => ({
+                    ...r,
+                    profiles: profileById[r.provider_id] ?? null,
+                }));
             }
 
             // D. Updates (The Timeline)
@@ -244,7 +307,7 @@ export default function ProjectDetailsScreen() {
                 () => { fetchData(); }
             )
             .subscribe();
-        return () => supabase.removeChannel(channel);
+        return () => { void supabase.removeChannel(channel); };
     }, [id, fetchData]);
 
     useEffect(() => {
@@ -268,7 +331,7 @@ export default function ProjectDetailsScreen() {
             }, 400);
         } else if (nextReleasableMilestone) {
             openApprovalHandled.current = true;
-            setPaymentAmount(String(nextReleasableMilestone.amount ?? nextReleasableMilestone.amount_cfa ?? ''));
+            setPaymentAmount(resolveAmountMinor(nextReleasableMilestone).toString());
             setShowPaymentModal(true);
         }
     }, [openApproval, pendingReviewMilestone, nextReleasableMilestone]);
@@ -306,99 +369,7 @@ export default function ProjectDetailsScreen() {
     // --- HANDLERS ---
 
     const handleReleaseFunds = async () => {
-        if (!paymentAmount || !paymentDesc) {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            Alert.alert(t('missingInfo'), t('enterAmountAndDescription'));
-            return;
-        }
-
-        setProcessingPayment(true);
-        try {
-            // Using RPC for safe transaction
-            const { error } = await supabase.rpc('release_milestone', {
-                p_project_id: id,
-                p_provider_id: project.assigned_provider_id,
-                p_amount: parseFloat(paymentAmount),
-                p_desc: paymentDesc
-            });
-
-            if (error) throw error;
-
-            successFeedback();
-            try {
-                await generateAndShareReceipt({
-                    projectTitle: project?.title ?? 'Project',
-                    amount: `${parseFloat(paymentAmount).toLocaleString()} CFA`,
-                    currency: 'CFA',
-                    date: new Date().toLocaleDateString(),
-                    description: paymentDesc,
-                });
-            } catch (_) { /* share optional */ }
-            Alert.alert(t('success'), t('fundsReleasedToProvider'));
-            setShowPaymentModal(false);
-            setPaymentAmount('');
-            setPaymentDesc('');
-            fetchData();
-        } catch (err: any) {
-            Alert.alert(t('paymentFailed'), err.message);
-        } finally {
-            setProcessingPayment(false);
-        }
+        Alert.alert(t('paymentFailed'), P00_RELEASE_UNAVAILABLE);
     };
 
     const patchMilestone = useCallback((milestoneId: string, patch: Record<string, unknown>) => {
@@ -475,7 +446,7 @@ export default function ProjectDetailsScreen() {
         if (!disputeTarget || !user?.id || !id) return;
         setDisputeBusy(true);
         try {
-            const { error: dErr } = await supabase.from('disputes').insert({
+            const { error: dErr } = await supabase.from('project_disputes').insert({
                 project_id: id,
                 milestone_id: disputeTarget.id,
                 raised_by_id: user.id,
@@ -542,8 +513,12 @@ export default function ProjectDetailsScreen() {
                 const contractData = {
                     projectTitle: project?.title ?? '',
                     projectCity: project?.city ?? '',
-                    budget: project?.budget ?? 0,
-                    milestones: milestones.map((m: any) => ({ title: m.title, amount: m.amount ?? 0, step_order: m.step_order ?? 0 })),
+                    budget: Number(resolveProjectBudgetMinor(project ?? {})),
+                    milestones: milestones.map((m: any) => ({
+                        title: m.title,
+                        amount: Number(resolveAmountMinor(m)),
+                        step_order: m.step_order ?? 0,
+                    })),
                     clientSignedAt: updated.client_signed_at,
                     providerSignedAt: updated.provider_signed_at,
                 };
@@ -579,6 +554,10 @@ export default function ProjectDetailsScreen() {
 
             if (error) throw error;
 
+            if (project.assigned_provider_id) {
+                await syncProviderRating(supabase, project.assigned_provider_id);
+            }
+
             await supabase.from('projects').update({ status: 'completed' }).eq('id', id);
 
             successFeedback();
@@ -596,21 +575,21 @@ export default function ProjectDetailsScreen() {
         <View style={styles.starRow}>
             {[1, 2, 3, 4, 5].map(num => (
                 <TouchableOpacity key={num} disabled={!interactive} onPress={() => setRating(num)}>
-                    <Ionicons name={num <= current ? "star" : "star-outline"} size={24} color={theme.colors.warning} />
+                    <Ionicons name={num <= current ? "star" : "star-outline"} size={iconSize.md} color={WARNING} />
                 </TouchableOpacity>
             ))}
         </View>
     );
 
     if (loading) {
-        return <View style={styles.center}><ActivityIndicator size="large" color={PREMIUM_GOLD} /></View>;
+        return <ScreenLoader />;
     }
     if (!project) {
         return (
-            <View style={styles.center}>
+            <View style={[styles.center, { backgroundColor: c.bg }]}>
                 <Text style={styles.emptyText}>{loadError || 'Project data is unavailable right now.'}</Text>
                 <TouchableOpacity style={styles.inviteObserverBtn} onPress={fetchData}>
-                    <Ionicons name="refresh" size={18} color={theme.colors.active} />
+                    <Ionicons name="refresh" size={iconSize.sm} color={GOLD} />
                     <Text style={styles.inviteObserverText}>Retry loading project</Text>
                 </TouchableOpacity>
             </View>
@@ -626,6 +605,7 @@ export default function ProjectDetailsScreen() {
     const isCompleted = project.status === 'completed';
     const isInProgress = !isPending && !isCompleted;
     const isCommandCenter = project.status === 'in_progress' || project.status === 'In Progress' || project.status === 'completed';
+    const projectBudgetDisplay = Number(resolveProjectBudgetMinor(project));
     const isObserver = projectAccessRole === 'observer';
     const isOwner = projectAccessRole === 'owner';
     const isProvider = projectAccessRole === 'provider';
@@ -655,17 +635,14 @@ export default function ProjectDetailsScreen() {
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
             <PremiumHeader
                 title={project?.title ?? 'Project'}
                 subtitle={project?.city}
                 showBack
                 fallbackRoute="/diaspora"
                 onNotificationsPress={() => router.push('/notifications')}
-                menuItems={[
-                    { label: 'Settings', icon: 'settings', onPress: () => router.push('/diaspora/settings') },
-                    { label: 'Profile', icon: 'profile', onPress: () => router.push('/diaspora/profile') },
-                ]}
+                menuItems={clientMenuItems(router, t)}
             />
 
             {/* --- IMMERSIVE HERO --- */}
@@ -676,7 +653,7 @@ export default function ProjectDetailsScreen() {
                 />
                 <LinearGradient colors={['rgba(0,0,0,0.1)', 'rgba(15, 23, 42, 0.9)']} style={styles.gradient} />
                 <View style={styles.headerContent}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, marginBottom: space.xs }}>
                         {isCommandCenter && !isCompleted && (
                             <Animated.View style={[styles.liveBadge, { opacity: liveOpacity }]}>
                                 <View style={styles.liveDot} />
@@ -689,14 +666,14 @@ export default function ProjectDetailsScreen() {
                             </Text>
                         </View>
                         {isObserver && (
-                            <View style={[styles.statusBadge, { backgroundColor: 'rgba(148, 163, 184, 0.3)' }]}>
-                                <Text style={[styles.statusText, { color: '#94A3B8' }]}>VIEW ONLY</Text>
+                            <View style={[styles.statusBadge, { backgroundColor: withAlpha('#FFFFFF', ALPHA.soft) }]}>
+                                <Text style={[styles.statusText, { color: '#FFFFFF' }]}>VIEW ONLY</Text>
                             </View>
                         )}
                     </View>
                     <Text style={styles.headerTitle}>{project.title}</Text>
                     <View style={styles.locationRow}>
-                        <Ionicons name="location" size={16} color={theme.colors.textSubtle} />
+                        <Ionicons name="location" size={iconSize.sm} color="#FFFFFF" />
                         <Text style={styles.headerLoc}>{project.city}</Text>
                     </View>
                 </View>
@@ -705,11 +682,11 @@ export default function ProjectDetailsScreen() {
             {/* --- SCROLL CONTENT --- */}
             <Animated.ScrollView
                 ref={scrollViewRef as any}
-                contentContainerStyle={{ paddingTop: HEADER_HEIGHT - 48, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 120 }}
+                contentContainerStyle={{ paddingTop: HEADER_HEIGHT - 48, paddingBottom: offsets.bottom + 72 }}
                 onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
                 scrollEventThrottle={16}
                 showsVerticalScrollIndicator={false}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} tintColor="#D4AF37" />}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} tintColor={GOLD} />}
             >
                 <View style={styles.body}>
 
@@ -719,17 +696,17 @@ export default function ProjectDetailsScreen() {
                             {/* 1. Financial Dashboard Card */}
                             <View style={styles.metricsContainer}>
                                 <BlurView intensity={50} tint="dark" style={styles.financialCard}>
-                                    <LinearGradient colors={[NAVY, SLATE] as [string, string]} style={StyleSheet.absoluteFill} />
-                                    <YStack gap={16} padding={20}>
+                                    <LinearGradient colors={[NAVY, NAVY_SOFT] as [string, string]} style={StyleSheet.absoluteFill} />
+                                    <YStack gap={space.md} padding={space.lg}>
                                         <XStack justifyContent="space-between" alignItems="center">
                                             <Text style={styles.financialTitle}>{t('budgetOverview')}</Text>
-                                            <Text style={styles.financialPercent}>{Math.min(100, ((totalSpent / project.budget) * 100)).toFixed(0)}%</Text>
+                                            <Text style={styles.financialPercent}>{Math.min(100, projectBudgetDisplay > 0 ? ((totalSpent / projectBudgetDisplay) * 100) : 0).toFixed(0)}%</Text>
                                         </XStack>
-                                        <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.min(100, (totalSpent / project.budget) * 100)}%` }]} /></View>
-                                        <XStack gap={12}>
-                                            <View style={styles.gridCol}><Text style={styles.gridLabel}>Total Budget</Text><Text style={styles.gridValue}>{project.budget.toLocaleString()}</Text></View>
-                                            <View style={[styles.gridCol, styles.gridBorder]}><Text style={styles.gridLabel}>Total Spent</Text><Text style={[styles.gridValue, { color: '#94A3B8' }]}>{totalSpent.toLocaleString()}</Text></View>
-                                            <View style={styles.gridCol}><Text style={styles.gridLabel}>Remaining</Text><Text style={[styles.gridValue, { color: '#4ADE80' }]}>{(project.budget - totalSpent).toLocaleString()}</Text></View>
+                                        <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.min(100, projectBudgetDisplay > 0 ? (totalSpent / projectBudgetDisplay) * 100 : 0)}%` }]} /></View>
+                                        <XStack gap={space.sm}>
+                                            <View style={styles.gridCol}><Text style={styles.gridLabel}>Total Budget</Text><Text style={styles.gridValue}>{projectBudgetDisplay.toLocaleString()}</Text></View>
+                                            <View style={[styles.gridCol, styles.gridBorder]}><Text style={styles.gridLabel}>Total Spent</Text><Text style={[styles.gridValue, styles.gridValueMuted]}>{totalSpent.toLocaleString()}</Text></View>
+                                            <View style={styles.gridCol}><Text style={styles.gridLabel}>Remaining</Text><Text style={[styles.gridValue, { color: SUCCESS }]}>{Math.max(0, projectBudgetDisplay - totalSpent).toLocaleString()}</Text></View>
                                         </XStack>
                                     </YStack>
                                 </BlurView>
@@ -741,7 +718,7 @@ export default function ProjectDetailsScreen() {
                                     <Text style={styles.sectionTitle}>{t('ablaufTimeline')}</Text>
                                     <YStack gap={0}>
                                         {milestones.map((m: any, idx: number) => {
-                                            const amount = Number(m.amount ?? m.amount_cfa ?? 0);
+                                            const amount = resolveAmountMinor(m);
                                             const isPaid = m.status === 'paid' || m.status === 'released';
                                             const isApproved = m.status === 'approved';
                                             const isInReview = m.status === 'in_review';
@@ -766,9 +743,9 @@ export default function ProjectDetailsScreen() {
                                                         (isCurrent || isInReview) && styles.timelineDotCurrent,
                                                         isApproved && styles.timelineDotApproved,
                                                     ]}>
-                                                        {isDone && <Ionicons name="checkmark" size={14} color="#fff" />}
-                                                        {isApproved && !isPaid && <Ionicons name="checkmark-circle" size={14} color="#fff" />}
-                                                        {isInReview && <Ionicons name="eye" size={14} color="#fff" />}
+                                                        {isDone && <Ionicons name="checkmark" size={iconSize.xs} color="#FFFFFF" />}
+                                                        {isApproved && !isPaid && <Ionicons name="checkmark-circle" size={iconSize.xs} color="#FFFFFF" />}
+                                                        {isInReview && <Ionicons name="eye" size={iconSize.xs} color="#FFFFFF" />}
                                                     </View>
                                                     {idx < milestones.length - 1 && <View style={[styles.timelineConnector, isDone && styles.timelineConnectorDone]} />}
                                                     <View style={[
@@ -799,30 +776,30 @@ export default function ProjectDetailsScreen() {
                                                                     />
                                                                 ) : (
                                                                     <View style={[styles.evidenceImage, styles.evidenceMissing]}>
-                                                                        <Ionicons name="image-outline" size={28} color="#64748B" />
+                                                                        <Ionicons name="image-outline" size={iconSize.lg} color={c.muted} />
                                                                         <Text style={styles.evidenceMissingText}>Waiting for proof image…</Text>
                                                                     </View>
                                                                 )}
 
                                                                 {isOwner && !isObserver && (
-                                                                    <YStack gap={12} marginTop={14} width="100%">
+                                                                    <YStack gap={space.sm} marginTop={space.md} width="100%">
                                                                         <Button
                                                                             size="$4"
                                                                             height={52}
-                                                                            borderRadius={14}
+                                                                            borderRadius={radius.lg}
                                                                             disabled={!!approvingId || !!rejectingId}
                                                                             opacity={approvingId === m.id || rejectingId === m.id ? 0.7 : 1}
-                                                                            backgroundColor="#D4AF37"
-                                                                            pressStyle={{ backgroundColor: '#B8860B', scale: 0.98 }}
+                                                                            backgroundColor={GOLD}
+                                                                            pressStyle={{ backgroundColor: GOLD_DEEP, scale: 0.98 }}
                                                                             onPress={() => handleApproveMilestone(m.id)}
                                                                         >
-                                                                            <XStack alignItems="center" justifyContent="center" gap={8}>
+                                                                            <XStack alignItems="center" justifyContent="center" gap={space.xs}>
                                                                                 {approvingId === m.id ? (
                                                                                     <ActivityIndicator color="#0F172A" />
                                                                                 ) : (
-                                                                                    <Ionicons name="checkmark-circle" size={20} color="#0F172A" />
+                                                                                    <Ionicons name="checkmark-circle" size={iconSize.md} color={NAVY} />
                                                                                 )}
-                                                                                <TamaguiText color="#0F172A" fontWeight="800" fontSize={15}>
+                                                                                <TamaguiText color={NAVY} fontWeight={weight.heavy} fontSize={font.footnote}>
                                                                                     {t('approvePhase')}
                                                                                 </TamaguiText>
                                                                             </XStack>
@@ -831,25 +808,25 @@ export default function ProjectDetailsScreen() {
                                                                         <Button
                                                                             size="$4"
                                                                             height={52}
-                                                                            borderRadius={14}
+                                                                            borderRadius={radius.lg}
                                                                             disabled={!!approvingId || !!rejectingId}
                                                                             opacity={approvingId === m.id || rejectingId === m.id ? 0.7 : 1}
-                                                                            backgroundColor="rgba(212,175,55,0.16)"
+                                                                            backgroundColor={GOLD_TINT}
                                                                             borderWidth={1}
-                                                                            borderColor="rgba(212,175,55,0.45)"
-                                                                            pressStyle={{ backgroundColor: 'rgba(212,175,55,0.28)', scale: 0.98 }}
+                                                                            borderColor={GOLD_BORDER}
+                                                                            pressStyle={{ backgroundColor: GOLD_BORDER, scale: 0.98 }}
                                                                             onPress={() => {
                                                                                 mediumFeedback();
                                                                                 setRevisionTarget({ id: m.id, title: m.title || 'Milestone' });
                                                                             }}
                                                                         >
-                                                                            <XStack alignItems="center" justifyContent="center" gap={8}>
+                                                                            <XStack alignItems="center" justifyContent="center" gap={space.xs}>
                                                                                 {rejectingId === m.id ? (
-                                                                                    <ActivityIndicator color={PREMIUM_GOLD} />
+                                                                                    <ActivityIndicator color={GOLD} />
                                                                                 ) : (
-                                                                                    <Ionicons name="refresh-circle-outline" size={20} color={PREMIUM_GOLD} />
+                                                                                    <Ionicons name="refresh-circle-outline" size={iconSize.md} color={GOLD} />
                                                                                 )}
-                                                                                <TamaguiText color={PREMIUM_GOLD} fontWeight="700" fontSize={15}>
+                                                                                <TamaguiText color={GOLD} fontWeight={weight.heavy} fontSize={font.footnote}>
                                                                                     {t('requestRevision')}
                                                                                 </TamaguiText>
                                                                             </XStack>
@@ -860,10 +837,10 @@ export default function ProjectDetailsScreen() {
                                                                                 mediumFeedback();
                                                                                 setDisputeTarget({ id: m.id, title: m.title || 'Milestone' });
                                                                             }}
-                                                                            style={{ alignSelf: 'center', paddingVertical: 8 }}
+                                                                            style={{ alignSelf: 'center', paddingVertical: space.xs }}
                                                                             disabled={!!approvingId || !!rejectingId || !!disputeBusy}
                                                                         >
-                                                                            <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 13, textDecorationLine: 'underline' }}>
+                                                                            <Text style={styles.openDisputeLink}>
                                                                                 {t('openDispute')}
                                                                             </Text>
                                                                         </TouchableOpacity>
@@ -890,7 +867,7 @@ export default function ProjectDetailsScreen() {
 
                                                         {isApproved && !isPaid && (
                                                             <View style={styles.approvedInlineBadge}>
-                                                                <Ionicons name="shield-checkmark" size={16} color="#34D399" />
+                                                                <Ionicons name="shield-checkmark" size={iconSize.sm} color={SUCCESS} />
                                                                 <Text style={styles.approvedInlineText}>{t('phaseCompleted')}</Text>
                                                             </View>
                                                         )}
@@ -929,7 +906,7 @@ export default function ProjectDetailsScreen() {
                                             <Text style={[styles.cartProgressLabel, materialCart.status === 'collected' && styles.cartProgressLabelActive]}>Collected</Text>
                                         </View>
                                         {isOwner && materialCart.status === 'pending_approval' && (
-                                            <ClientApprovalCard cart={{ id: materialCart.id, items: materialCart.items ?? [], total_amount_cfa: Number(materialCart.total_amount_cfa ?? 0) + Number(materialCart.labor_amount_cfa ?? 0), status: materialCart.status, payment_status: materialCart.payment_status }} onApproved={fetchData} />
+                                            <ClientApprovalCard cart={{ id: materialCart.id, items: materialCart.items ?? [], total_amount_cfa: Number(materialCart.total_amount_cfa ?? 0), status: materialCart.status, payment_status: materialCart.payment_status }} onApproved={fetchData} />
                                         )}
                                     </LinearGradient>
                                 </View>
@@ -1090,7 +1067,7 @@ export default function ProjectDetailsScreen() {
                             <View style={[styles.glassRow, { padding: 16 }]}>
                                 <View>
                                     <Text style={styles.metricLabel}>Retainage (10%)</Text>
-                                    <Text style={styles.metricValue}>{Number(project.warranty_retainage_cfa || 0).toLocaleString()} CFA</Text>
+                                    <Text style={styles.metricValue}>{Number(project?.warranty_retainage_minor ?? 0).toLocaleString()} CFA</Text>
                                 </View>
                                 <View>
                                     <Text style={styles.metricLabel}>Status</Text>
@@ -1242,7 +1219,7 @@ export default function ProjectDetailsScreen() {
                                     <View key={update.id} style={styles.timelineItem}>
                                         <View style={styles.timelineLeft}>
                                             <View style={[
-                                                styles.timelineDot,
+                                                styles.timelineMarkerDot,
                                                 update.isMilestoneActivity && update.milestoneStatus === 'in_review' && styles.timelineDotReview,
                                                 update.isMilestoneActivity && update.milestoneStatus === 'approved' && styles.timelineDotApprovedSmall,
                                             ]} />
@@ -1290,7 +1267,7 @@ export default function ProjectDetailsScreen() {
                             <Text style={styles.reviewHeader}>Your Rating</Text>
                             <View style={styles.reviewContent}>
                                 {renderStars(review.rating)}
-                                <Text style={styles.reviewComment}>"{review.comment}"</Text>
+                                <Text style={styles.reviewComment}>{`“${review.comment}”`}</Text>
                             </View>
                         </View>
                     )}
@@ -1336,7 +1313,7 @@ export default function ProjectDetailsScreen() {
                         style={[styles.actionPayBtn, !hasReleasableStep && styles.actionPayBtnDisabled]}
                         onPress={() => {
                             if (nextReleasableMilestone) {
-                                setPaymentAmount(String(nextReleasableMilestone.amount ?? ''));
+                                setPaymentAmount(resolveAmountMinor(nextReleasableMilestone).toString());
                                 setShowPaymentModal(true);
                             }
                         }}
@@ -1395,7 +1372,14 @@ export default function ProjectDetailsScreen() {
 
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Amount (CFA)</Text>
-                            <TextInput style={styles.input} placeholder="0" keyboardType="numeric" value={paymentAmount} onChangeText={setPaymentAmount} />
+                            <TextInput
+                                style={styles.input}
+                                placeholder="62 000"
+                                placeholderTextColor="#94A3B8"
+                                keyboardType="number-pad"
+                                value={formatXafInput(paymentAmount)}
+                                onChangeText={(text) => setPaymentAmount(xafDigitsFromInput(text))}
+                            />
                         </View>
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Note</Text>
@@ -1664,6 +1648,8 @@ const styles = StyleSheet.create({
     gridBorder: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
     gridLabel: { fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 },
     gridValue: { fontSize: 14, fontWeight: '800', color: '#fff' },
+    gridValueMuted: { fontSize: 14, fontWeight: '800', color: 'rgba(255,255,255,0.75)' },
+    openDisputeLink: { color: '#F87171', fontWeight: '700', fontSize: 13 },
     timelineStep: { flexDirection: 'row', marginBottom: 4, position: 'relative' },
     timelineStepFaded: { opacity: 0.5 },
     timelineDot: { width: 28, height: 28, borderRadius: 14, backgroundColor: theme.colors.border, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
@@ -1739,7 +1725,7 @@ const styles = StyleSheet.create({
     // Timeline Styles
     timelineItem: { flexDirection: 'row' },
     timelineLeft: { width: 24, alignItems: 'center', marginRight: 12 },
-    timelineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#0F172A', borderWidth: 2, borderColor: '#fff', zIndex: 10 },
+    timelineMarkerDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#0F172A', borderWidth: 2, borderColor: '#fff', zIndex: 10 },
     timelineLine: { width: 2, flex: 1, backgroundColor: '#E2E8F0', position: 'absolute', top: 12, bottom: -12 },
     timelineContent: { flex: 1, backgroundColor: 'rgba(255,255,255,0.04)', padding: 16, borderRadius: 16, marginBottom: 20 },
     timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
@@ -1785,7 +1771,7 @@ const styles = StyleSheet.create({
 
     // Provider / Applicant
     emptyCard: { alignItems: 'center', padding: 30, borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed', borderRadius: 16 },
-    emptyText: { color: '#94A3B8', marginTop: 8, fontWeight: '600' },
+    emptyCardText: { color: '#94A3B8', marginTop: 8, fontWeight: '600' },
     applicantCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 5 },
     applicantInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E2E8F0' },

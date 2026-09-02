@@ -4,42 +4,44 @@ import {
     Image, ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PremiumHeader from '@/components/PremiumHeader';
 import { providerMenuItems } from '@/constants/premiumMenus';
 import { useLanguage } from '@/context/LanguageContext';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
+import {
+    ALPHA,
+    GOLD,
+    font,
+    glow,
+    icon as iconSize,
+    radius,
+    space,
+    text,
+    weight,
+    withAlpha,
+} from '@/constants/design';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { theme } from '@/constants/theme';
 import { enqueue } from '@/utils/offlineQueue';
-import { checkProjectGeofence } from '@/utils/geofence';
+import { requiredRouteParam } from '@/utils/routeParams';
 
 export default function PostUpdateScreen() {
     const router = useRouter();
-    const insets = useSafeAreaInsets();
-    const { projectId } = useLocalSearchParams();
+    const params = useLocalSearchParams<{ projectId?: string | string[] }>();
+    const projectId = requiredRouteParam(params.projectId);
     const { user } = useAuth();
     const { t } = useLanguage();
+    const c = usePremiumColors();
+    const offsets = useScreenOffsets();
 
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [image, setImage] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
-    const [project, setProject] = useState<{ latitude?: number; longitude?: number } | null>(null);
-
-    React.useEffect(() => {
-        if (!projectId) return;
-        supabase
-            .from('projects')
-            .select('latitude, longitude')
-            .eq('id', projectId)
-            .single()
-            .then(({ data }) => setProject(data ?? null));
-    }, [projectId]);
 
     // 1. Pick Image
     const pickImage = async () => {
@@ -54,7 +56,7 @@ export default function PostUpdateScreen() {
             allowsEditing: true,
             aspect: [4, 3],
             quality: 0.5,
-            base64: true, // Needed if you want to upload via base64 later
+            base64: true,
         });
 
         if (!result.canceled) {
@@ -73,20 +75,6 @@ export default function PostUpdateScreen() {
         if (!title.trim()) return Alert.alert(t('missingTitle'), t('pleaseGiveUpdateTitle'));
         if (!description.trim()) return Alert.alert(t('missingDescription'), t('pleaseDescribeWork'));
         if (!user || !projectId) return;
-
-        const geofence = await checkProjectGeofence(
-            project?.latitude ?? undefined,
-            project?.longitude ?? undefined,
-            500
-        );
-        if (!geofence.allowed) {
-            Alert.alert(t('locationCheck'), geofence.message ?? t('mustBeAtSite'), [
-                { text: t('ok') },
-                { text: "Post anyway", onPress: () => submitUpdate() },
-            ]);
-            return;
-        }
-
         await submitUpdate();
     };
 
@@ -94,19 +82,18 @@ export default function PostUpdateScreen() {
         if (!user || !projectId) return;
         setUploading(true);
         try {
-            let imageUrl: string | null = null;
+            let photoUrl: string | null = null;
             if (image) {
                 const { uploadProjectMedia } = await import('@/lib/storage');
-                imageUrl = await uploadProjectMedia(image, projectId, `update_${user.id}_${Date.now()}.jpg`);
+                photoUrl = await uploadProjectMedia(image, projectId, `update_${user.id}_${Date.now()}.jpg`);
             }
 
             const { error } = await supabase.from('project_updates').insert({
                 project_id: projectId,
-                provider_id: user.id,
+                author_id: user.id,
                 title: title,
-                description: description,
-                image_url: imageUrl,
-                update_type: 'general'
+                body: description,
+                photo_url: photoUrl,
             });
 
             if (error) throw error;
@@ -114,23 +101,24 @@ export default function PostUpdateScreen() {
             Alert.alert(t('success'), t('updatePostedSuccess'));
             router.back();
 
-        } catch (e: any) {
-            const isNetwork = /network|fetch|failed to fetch/i.test(e?.message ?? '');
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : t('somethingWentWrong');
+            const isNetwork = /network|fetch|failed to fetch/i.test(message);
             if (isNetwork && user && projectId) {
                 await enqueue({
                     type: 'project_update',
                     payload: {
-                        project_id: String(projectId),
-                        provider_id: user.id,
+                        project_id: projectId,
+                        author_id: user.id,
                         title: title.trim(),
-                        description: description.trim(),
-                        image_url: image ?? null,
+                        body: description.trim(),
+                        photo_url: image ?? null,
                     },
                 });
                 Alert.alert(t('savedOffline'), t('updateWillSync'));
                 router.back();
             } else {
-                Alert.alert(t('error'), e?.message ?? t('somethingWentWrong'));
+                Alert.alert(t('error'), message);
             }
         } finally {
             setUploading(false);
@@ -140,7 +128,7 @@ export default function PostUpdateScreen() {
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={[styles.container, { backgroundColor: PREMIUM_BG }]}
+            style={[styles.container, { backgroundColor: c.bg }]}
         >
             <PremiumHeader
                 title={t('postUpdateTitle')}
@@ -149,39 +137,52 @@ export default function PostUpdateScreen() {
                 fallbackRoute="/provider/active"
                 menuItems={providerMenuItems(router, t)}
             />
-            <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40, paddingHorizontal: 20 }]}>
+            <ScrollView contentContainerStyle={offsets.content}>
 
                 {/* Image Section */}
-                <Text style={styles.label}>Visual Proof</Text>
-                <TouchableOpacity style={styles.imageBox} onPress={pickImage}>
+                <Text style={[styles.label, { color: c.textPrimary }]}>Visual Proof</Text>
+                <TouchableOpacity
+                    style={[styles.imageBox, { backgroundColor: c.surface, borderColor: c.border }]}
+                    onPress={pickImage}
+                >
                     {image ? (
                         <>
                             <Image source={{ uri: image }} style={styles.previewImage} />
                             <View style={styles.editBadge}>
-                                <Ionicons name="pencil" size={16} color="#fff" />
+                                <Ionicons name="pencil" size={iconSize.xs} color="#fff" />
                             </View>
                         </>
                     ) : (
                         <View style={styles.placeholder}>
-                            <Ionicons name="camera" size={40} color="#94A3B8" />
-                            <Text style={styles.placeholderText}>Tap to upload photo</Text>
+                            <Ionicons name="camera" size={iconSize.lg} color={c.muted} />
+                            <Text style={[styles.placeholderText, { color: c.muted }]}>
+                                Tap to upload photo
+                            </Text>
                         </View>
                     )}
                 </TouchableOpacity>
 
                 {/* Form Fields */}
-                <Text style={styles.label}>Update Title</Text>
+                <Text style={[styles.label, { color: c.textPrimary }]}>Update Title</Text>
                 <TextInput
-                    style={styles.inputSingle}
+                    style={[
+                        styles.inputSingle,
+                        { backgroundColor: c.surface, borderColor: c.border, color: c.textPrimary },
+                    ]}
                     placeholder="e.g. Foundation Complete"
+                    placeholderTextColor={c.muted}
                     value={title}
                     onChangeText={setTitle}
                 />
 
-                <Text style={styles.label}>{t('descriptionLabel')}</Text>
+                <Text style={[styles.label, { color: c.textPrimary }]}>{t('descriptionLabel')}</Text>
                 <TextInput
-                    style={styles.inputMulti}
+                    style={[
+                        styles.inputMulti,
+                        { backgroundColor: c.surface, borderColor: c.border, color: c.textPrimary },
+                    ]}
                     placeholder="Describe what was completed..."
+                    placeholderTextColor={c.muted}
                     multiline
                     textAlignVertical="top"
                     value={description}
@@ -189,7 +190,17 @@ export default function PostUpdateScreen() {
                 />
             </ScrollView>
 
-            <View style={styles.footer}>
+            <View
+                style={[
+                    styles.footer,
+                    {
+                        backgroundColor: c.surface,
+                        borderTopColor: c.border,
+                        paddingHorizontal: offsets.horizontal,
+                        paddingBottom: offsets.bottom,
+                    },
+                ]}
+            >
                 <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={uploading}>
                     {uploading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>{t('postUpdateTitle')}</Text>}
                 </TouchableOpacity>
@@ -199,25 +210,61 @@ export default function PostUpdateScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#fff' },
+    container: { flex: 1 },
 
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-    closeBtn: { padding: 8, backgroundColor: '#F1F5F9', borderRadius: 20 },
-    headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
+    label: {
+        ...text.footnote,
+        fontWeight: weight.heavy,
+        marginBottom: space.xs,
+        marginTop: space.md,
+    },
 
-    content: { padding: 24 },
-    label: { fontSize: 14, fontWeight: '700', color: '#0F172A', marginBottom: 8, marginTop: 16 },
-
-    imageBox: { width: '100%', height: 200, borderRadius: 20, backgroundColor: '#F8FAFC', borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed', overflow: 'hidden' },
-    placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
-    placeholderText: { color: '#64748B', fontWeight: '600' },
+    imageBox: {
+        width: '100%',
+        height: 200,
+        borderRadius: radius.xl,
+        borderWidth: 2,
+        borderStyle: 'dashed',
+        overflow: 'hidden',
+    },
+    placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.sm },
+    placeholderText: text.footnote,
     previewImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-    editBadge: { position: 'absolute', bottom: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 20 },
+    editBadge: {
+        position: 'absolute',
+        bottom: space.sm,
+        right: space.sm,
+        backgroundColor: withAlpha('#000000', ALPHA.scrim),
+        padding: space.xs,
+        borderRadius: radius.pill,
+    },
 
-    inputSingle: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1, borderColor: '#E2E8F0' },
-    inputMulti: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 16, height: 120, fontSize: 16, borderWidth: 1, borderColor: '#E2E8F0' },
+    inputSingle: {
+        height: 56,
+        borderRadius: radius.lg,
+        paddingHorizontal: space.md,
+        fontSize: font.body,
+        fontWeight: weight.semibold,
+        borderWidth: 1,
+    },
+    inputMulti: {
+        height: 120,
+        borderRadius: radius.lg,
+        paddingHorizontal: space.md,
+        paddingTop: space.md,
+        fontSize: font.body,
+        fontWeight: weight.semibold,
+        borderWidth: 1,
+    },
 
-    footer: { padding: 24, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-    submitBtn: { backgroundColor: '#0F172A', height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
-    submitText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    footer: { paddingTop: space.lg, borderTopWidth: 1 },
+    submitBtn: {
+        backgroundColor: GOLD,
+        height: 56,
+        borderRadius: radius.lg,
+        alignItems: 'center',
+        justifyContent: 'center',
+        ...glow(GOLD),
+    },
+    submitText: { ...text.body, fontWeight: weight.heavy, color: '#0A0F1A' },
 });

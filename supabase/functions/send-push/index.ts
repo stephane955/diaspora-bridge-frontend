@@ -17,6 +17,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function unauthorized(): Response {
+  return new Response(
+    JSON.stringify({ success: false, error: "unauthorized" }),
+    { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
+
+/** P00: only service role (DB webhook) may invoke push delivery. */
+function requireServiceRole(req: Request): Response | null {
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const authHeader = req.headers.get("Authorization");
+  if (!serviceKey || authHeader !== `Bearer ${serviceKey}`) {
+    return unauthorized();
+  }
+  return null;
+}
+
 type WebhookRecord =
   | { user_id: string; title: string; message: string; link?: string }
   | { table_name: string; event_type: string; payload: Record<string, unknown> };
@@ -53,6 +70,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+
+  const authErr = requireServiceRole(req);
+  if (authErr) return authErr;
 
   try {
     const payload = (await req.json().catch(() => ({}))) as {

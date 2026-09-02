@@ -13,7 +13,7 @@ export default function ProviderLayout() {
             tabBar={(props) => <GlassTabBar {...props} role="provider" />}
             screenOptions={{
                 headerShown: false,
-                sceneContainerStyle: { backgroundColor: c.bg },
+                sceneStyle: { backgroundColor: c.bg },
                 tabBarStyle: { display: 'none' },
             }}
         >
@@ -36,6 +36,8 @@ export default function ProviderLayout() {
             <Tabs.Screen name="material-cart" options={{ href: null, title: t('materialCartTitle') ?? 'Material Cart' }} />
             <Tabs.Screen name="job/[id]" options={{ href: null, title: '' }} />
             <Tabs.Screen name="project/[id]" options={{ href: null, title: '' }} />
+            <Tabs.Screen name="verification-scan" options={{ href: null, title: t('scanDocument') ?? 'Scan' }} />
+            <Tabs.Screen name="add-receipt" options={{ href: null, title: t('receipt') ?? 'Receipt' }} />
         </Tabs>
     );
 }

@@ -4,9 +4,21 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeft } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { setVerificationScanResult } from '@/utils/verificationScanResult';
 import { PREMIUM_GOLD, TEXT_PRIMARY, TEXT_SECONDARY } from '@/constants/layout';
+import {
+  ALPHA,
+  GOLD,
+  HEADER_BLOCK_HEIGHT,
+  ICON_BUTTON_SIZE,
+  icon as iconSize,
+  radius,
+  space,
+  text,
+  withAlpha,
+} from '@/constants/design';
 import { successFeedback } from '@/utils/haptics';
 import { useLanguage } from '@/context/LanguageContext';
 
@@ -90,7 +102,12 @@ export default function VerificationScanScreen() {
       />
 
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <View style={[styles.overlay, { paddingTop: insets.top + 72, paddingBottom: insets.bottom + 120 }]}>
+        <View
+          style={[
+            styles.overlay,
+            { paddingTop: insets.top + HEADER_BLOCK_HEIGHT, paddingBottom: insets.bottom + 120 },
+          ]}
+        >
           <View style={styles.edgeBand} />
           <View style={styles.middleRow}>
             <View style={styles.edgeBand} />
@@ -107,16 +124,22 @@ export default function VerificationScanScreen() {
         </View>
       </View>
 
-      <BlurView intensity={50} tint="dark" style={[styles.topBanner, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={22} color={TEXT_PRIMARY} />
+      <BlurView
+        intensity={55}
+        tint="dark"
+        style={[styles.topBanner, { paddingTop: insets.top + space.xxs }]}
+      >
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} hitSlop={12}>
+          <ChevronLeft size={iconSize.md} color={TEXT_PRIMARY} strokeWidth={2.5} />
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, alignItems: 'center' }}>
           <Text style={styles.bannerTitle}>{t('scanDocument') || 'Scan document'}</Text>
           <Text style={styles.bannerSub}>
             {t('alignInFrame') || 'Align'} {docType} {t('withinFrame') || 'within the gold frame'}
           </Text>
         </View>
+        <View style={styles.backBtn} />
+        <View style={styles.accentLine} />
       </BlurView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 28 }]}>
@@ -145,29 +168,29 @@ const styles = StyleSheet.create({
   permIcon: {
     width: 72,
     height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(212,175,55,0.15)',
+    borderRadius: radius.pill,
+    backgroundColor: withAlpha(GOLD, ALPHA.medium),
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: space.md,
   },
   permissionText: {
-    fontSize: 16,
+    ...text.body,
     color: TEXT_PRIMARY,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: space.lg,
     lineHeight: 22,
   },
   permissionBtn: {
     backgroundColor: PREMIUM_GOLD,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 14,
-    marginBottom: 12,
+    paddingVertical: space.sm + 2,
+    paddingHorizontal: space.xxl,
+    borderRadius: radius.lg,
+    marginBottom: space.sm,
   },
-  permissionBtnText: { color: '#0A0F1A', fontWeight: '800', fontSize: 16 },
-  cancelBtn: { paddingVertical: 12 },
-  cancelBtnText: { color: TEXT_SECONDARY, fontSize: 16 },
+  permissionBtnText: { color: '#0A0F1A', ...text.body, fontWeight: '800' },
+  cancelBtn: { paddingVertical: space.sm },
+  cancelBtnText: { color: TEXT_SECONDARY, ...text.body },
 
   overlay: { flex: 1 },
   edgeBand: { flex: 1, backgroundColor: 'rgba(10,15,26,0.62)' },
@@ -224,23 +247,33 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingTop: space.xxs,
+    paddingBottom: space.sm,
     backgroundColor: 'rgba(10,15,26,0.72)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(212,175,55,0.2)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  accentLine: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    opacity: 0.35,
+    backgroundColor: GOLD,
   },
   backBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    width: ICON_BUTTON_SIZE,
+    height: ICON_BUTTON_SIZE,
+    borderRadius: radius.pill,
+    backgroundColor: withAlpha('#FFFFFF', ALPHA.faint),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bannerTitle: { color: TEXT_PRIMARY, fontSize: 16, fontWeight: '800' },
-  bannerSub: { color: TEXT_SECONDARY, fontSize: 12, marginTop: 2 },
+  bannerTitle: { color: TEXT_PRIMARY, ...text.subtitle },
+  bannerSub: { color: TEXT_SECONDARY, ...text.caption, marginTop: 2 },
 
   footer: {
     position: 'absolute',
@@ -251,20 +284,19 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   footerHint: {
-    color: 'rgba(248,250,252,0.9)',
-    fontSize: 13,
-    fontWeight: '600',
+    color: TEXT_PRIMARY,
+    ...text.caption,
     backgroundColor: 'rgba(10,15,26,0.55)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
+    paddingHorizontal: space.sm + 2,
+    paddingVertical: space.xs,
+    borderRadius: radius.pill,
     overflow: 'hidden',
   },
   captureBtn: {
     width: 78,
     height: 78,
-    borderRadius: 39,
-    backgroundColor: 'rgba(212,175,55,0.25)',
+    borderRadius: radius.pill,
+    backgroundColor: withAlpha(GOLD, ALPHA.medium),
     borderWidth: 3,
     borderColor: PREMIUM_GOLD,
     alignItems: 'center',
@@ -274,7 +306,7 @@ const styles = StyleSheet.create({
   captureBtnInner: {
     width: 58,
     height: 58,
-    borderRadius: 29,
+    borderRadius: radius.pill,
     backgroundColor: PREMIUM_GOLD,
   },
 });

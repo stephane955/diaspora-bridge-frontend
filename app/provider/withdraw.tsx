@@ -15,6 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import { theme } from '@/constants/theme';
 import { validateCarrierNumber } from '@/utils/carrierValidation';
 import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
+import { P00_PAYOUT_UNAVAILABLE } from '@/constants/p00Security';
 
 export default function WithdrawScreen() {
     const router = useRouter();
@@ -28,30 +29,7 @@ export default function WithdrawScreen() {
     const [loading, setLoading] = useState(false);
 
     const handleConfirm = async () => {
-        if (!amount || !phone) return Alert.alert(t('missingInfo'), t('enterAmountAndPhone'));
-        if (isNaN(Number(amount)) || Number(amount) < 500) return Alert.alert(t('invalidAmount'), t('minWithdraw500'));
-        const carrierCheck = validateCarrierNumber(method, phone);
-        if (!carrierCheck.valid) return Alert.alert(t('invalidNumber'), carrierCheck.error);
-
-        setLoading(true);
-
-        const { error } = await supabase.from('withdrawals').insert({
-            provider_id: user?.id,
-            amount: Number(amount),
-            method: method,
-            phone_number: phone,
-            status: 'pending'
-        });
-
-        setLoading(false);
-
-        if (error) {
-            Alert.alert(t('error'), error.message);
-        } else {
-            Alert.alert(t('requestSent'), t('withdrawalProcessing'), [
-                { text: "Back to Wallet", onPress: () => router.back() }
-            ]);
-        }
+        Alert.alert(t('error'), P00_PAYOUT_UNAVAILABLE);
     };
 
     return (

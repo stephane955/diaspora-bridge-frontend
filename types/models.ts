@@ -72,8 +72,10 @@ export type Notification = {
 export type ProjectUpdate = {
     id: string;
     title: string;
-    image_url: string | null;
+    photo_url: string | null;
     created_at: string;
+    /** @deprecated use photo_url — kept for transitional call sites */
+    image_url?: string | null;
 };
 
 export type PortfolioItem = {

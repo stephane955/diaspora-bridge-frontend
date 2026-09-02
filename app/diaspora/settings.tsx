@@ -1,181 +1,217 @@
 import React, { useState } from 'react';
 import {
-    View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Alert,
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  Linking,
+  StatusBar,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
-import { lightFeedback, successFeedback } from '@/utils/haptics';
+import { successFeedback } from '@/utils/haptics';
 import PremiumHeader from '@/components/PremiumHeader';
 import ThemeToggleRow from '@/components/ThemeToggleRow';
+import SettingsSection from '@/components/settings/SettingsSection';
+import SettingsRow from '@/components/settings/SettingsRow';
 import { clientMenuItems } from '@/constants/premiumMenus';
-import { theme } from '@/constants/theme';
-import { FLOATING_TAB_BAR_HEIGHT } from '@/constants/layout';
 import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { FLOATING_TAB_BAR_HEIGHT } from '@/constants/layout';
+import {
+  ALPHA,
+  GOLD,
+  INFO,
+  NAVY,
+  SUCCESS,
+  WARNING,
+  radius,
+  space,
+  text,
+  weight,
+  withAlpha,
+} from '@/constants/design';
 
 const LANGUAGES = [
-    { code: 'en', label: 'English', flag: '🇺🇸' },
-    { code: 'fr', label: 'Français', flag: '🇫🇷' },
-    { code: 'es', label: 'Español', flag: '🇪🇸' },
-    { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
-    { code: 'it', label: 'Italiano', flag: '🇮🇹' },
+  { code: 'en', label: 'English', flag: '🇺🇸' },
+  { code: 'fr', label: 'Français', flag: '🇫🇷' },
+  { code: 'es', label: 'Español', flag: '🇪🇸' },
+  { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
+  { code: 'it', label: 'Italiano', flag: '🇮🇹' },
 ];
 
 export default function ClientSettingsScreen() {
-    const insets = useSafeAreaInsets();
-    const router = useRouter();
-    const { t, setLanguage, language } = useLanguage();
-    const { signOut } = useAuth();
-    const c = usePremiumColors();
-    const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { t, setLanguage, language } = useLanguage();
+  const { signOut } = useAuth();
+  const c = usePremiumColors();
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-    const cycleLanguage = () => {
-        lightFeedback();
-        const currentIndex = LANGUAGES.findIndex((l) => l.code === language);
-        const nextIndex = (currentIndex + 1) % LANGUAGES.length;
-        setLanguage(LANGUAGES[nextIndex].code);
-    };
+  const currentLang = LANGUAGES.find((l) => l.code === language);
 
-    const handleSignOut = () => {
-        Alert.alert(t('signOut'), t('signOutConfirmBody'), [
-            { text: t('cancel'), style: 'cancel' },
-            {
-                text: t('signOut'),
-                style: 'destructive',
-                onPress: async () => {
-                    successFeedback();
-                    await signOut();
-                },
-            },
-        ]);
-    };
-    return (
-        <View style={[styles.container, { backgroundColor: c.bg }]}>
-            <PremiumHeader
-                title={t('menuSettings')}
-                subtitle={t('preferences')}
-                showBack
-                fallbackRoute="/diaspora"
-                menuItems={clientMenuItems(router, t)}
-            />
-            <ScrollView
-                style={styles.scroll}
-                contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40, paddingHorizontal: theme.spacing.lg }]}
-                showsVerticalScrollIndicator={false}
-            >
-                <Text style={styles.sectionTitle}>{t('preferences') ?? 'Preferences'}</Text>
-                <ThemeToggleRow />
-                <View style={styles.card}>
-                    <TouchableOpacity style={styles.row} onPress={cycleLanguage} activeOpacity={0.8}>
-                        <View style={styles.rowIconBg}>
-                            <Ionicons name="globe-outline" size={20} color={theme.colors.active} />
-                        </View>
-                        <View style={styles.rowText}>
-                            <Text style={styles.rowTitle}>{t('languageName') ?? 'Language'}</Text>
-                            <Text style={styles.rowSub}>
-                                {LANGUAGES.find((l) => l.code === language)?.label ?? 'English'}
-                            </Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={20} color={theme.colors.textSubtle} />
-                    </TouchableOpacity>
-                    <View style={styles.divider} />
-                    <View style={styles.row}>
-                        <View style={[styles.rowIconBg, { backgroundColor: 'rgba(249, 115, 22, 0.12)' }]}>
-                            <Ionicons name="notifications-outline" size={20} color={theme.colors.warning} />
-                        </View>
-                        <View style={styles.rowText}>
-                            <Text style={styles.rowTitle}>{t('notifications') ?? 'Notifications'}</Text>
-                            <Text style={styles.rowSub}>{t('pushNotifs') ?? 'Push notifications'}</Text>
-                        </View>
-                        <Switch
-                            value={notificationsEnabled}
-                            onValueChange={(v) => { lightFeedback(); setNotificationsEnabled(v); }}
-                            trackColor={{ false: theme.colors.border, true: theme.colors.active }}
-                            thumbColor={theme.colors.surface}
-                        />
-                    </View>
-                </View>
+  const cycleLanguage = () => {
+    const currentIndex = LANGUAGES.findIndex((l) => l.code === language);
+    const nextIndex = (currentIndex + 1) % LANGUAGES.length;
+    setLanguage(LANGUAGES[nextIndex].code as any);
+    successFeedback();
+  };
 
-                <Text style={styles.sectionTitle}>{t('general') ?? 'General'}</Text>
-                <View style={styles.card}>
-                    <TouchableOpacity style={styles.row} activeOpacity={0.8} onPress={() => lightFeedback()}>
-                        <View style={[styles.rowIconBg, { backgroundColor: theme.colors.background }]}>
-                            <Ionicons name="help-buoy-outline" size={20} color={theme.colors.textMuted} />
-                        </View>
-                        <Text style={[styles.rowTitle, { flex: 1 }]}>{t('support') ?? 'Support'}</Text>
-                        <Ionicons name="chevron-forward" size={20} color={theme.colors.textSubtle} />
-                    </TouchableOpacity>
-                    <View style={styles.divider} />
-                    <TouchableOpacity style={styles.row} activeOpacity={0.8} onPress={() => lightFeedback()}>
-                        <View style={[styles.rowIconBg, { backgroundColor: theme.colors.background }]}>
-                            <Ionicons name="document-text-outline" size={20} color={theme.colors.textMuted} />
-                        </View>
-                        <Text style={[styles.rowTitle, { flex: 1 }]}>{t('legal') ?? 'Legal'}</Text>
-                        <Ionicons name="chevron-forward" size={20} color={theme.colors.textSubtle} />
-                    </TouchableOpacity>
-                </View>
+  const handleSignOut = () => {
+    Alert.alert(t('signOut'), t('signOutConfirmBody'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('signOut'),
+        style: 'destructive',
+        onPress: async () => {
+          successFeedback();
+          await signOut();
+        },
+      },
+    ]);
+  };
 
-                <TouchableOpacity style={styles.logoutBtn} onPress={handleSignOut} activeOpacity={0.85}>
-                    <Ionicons name="log-out-outline" size={20} color="#F87171" />
-                    <Text style={styles.logoutText}>{t('signOut') ?? 'Log Out'}</Text>
-                </TouchableOpacity>
-            </ScrollView>
-        </View>
+  const openSupport = () => {
+    successFeedback();
+    Linking.openURL('mailto:support@diasporabridge.app?subject=Client%20Support');
+  };
+
+  const openLegal = () => {
+    successFeedback();
+    Alert.alert(
+      t('legal') || 'Legal',
+      t('legalBody') ||
+        'Terms of Service and Privacy Policy are available on our website. Contact support for a copy.',
     );
+  };
+
+  return (
+    <View style={[styles.screen, { backgroundColor: c.bg }]}>
+      <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
+      <PremiumHeader
+        title={t('menuSettings')}
+        subtitle={t('accountSettings')}
+        showBack
+        fallbackRoute="/diaspora"
+        menuItems={clientMenuItems(router, t)}
+      />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingTop: insets.top + 88,
+          paddingBottom: FLOATING_TAB_BAR_HEIGHT + 48,
+          paddingHorizontal: space.lg,
+        }}
+      >
+        <LinearGradient
+          colors={[withAlpha(NAVY, 0.92), withAlpha('#1E293B', 0.85)]}
+          style={styles.hero}
+        >
+          <Text style={styles.heroTitle}>{t('accountSettings')}</Text>
+          <Text style={styles.heroSub}>
+            Manage appearance, language, notifications, and account security.
+          </Text>
+        </LinearGradient>
+
+        <SettingsSection title={t('preferences') ?? 'Preferences'}>
+          <ThemeToggleRow embedded />
+          <SettingsRow
+            showDivider
+            icon="globe-outline"
+            iconColor={INFO}
+            iconBg={withAlpha(INFO, ALPHA.medium)}
+            title={t('languageName') ?? 'Language'}
+            subtitle={`${currentLang?.flag ?? ''} ${currentLang?.label ?? 'English'}`}
+            onPress={cycleLanguage}
+          />
+          <SettingsRow
+            showDivider
+            icon="notifications-outline"
+            iconColor={WARNING}
+            iconBg={withAlpha(WARNING, ALPHA.medium)}
+            title={t('notifications') ?? 'Notifications'}
+            subtitle={t('pushNotifs') ?? 'Push notifications'}
+            switchValue={notificationsEnabled}
+            onSwitchChange={setNotificationsEnabled}
+            switchTrackOn={withAlpha(WARNING, 0.45)}
+          />
+        </SettingsSection>
+
+        <SettingsSection title={t('general') ?? 'General'}>
+          <SettingsRow
+            icon="person-circle-outline"
+            iconColor={GOLD}
+            iconBg={withAlpha(GOLD, ALPHA.medium)}
+            title={t('tabProfile') ?? 'Profile'}
+            subtitle="Edit name, city, and account details"
+            onPress={() => router.push('/diaspora/profile')}
+          />
+          <SettingsRow
+            showDivider
+            icon="help-buoy-outline"
+            iconColor={SUCCESS}
+            iconBg={withAlpha(SUCCESS, ALPHA.medium)}
+            title={t('support') ?? 'Support'}
+            subtitle="support@diasporabridge.app"
+            onPress={openSupport}
+          />
+          <SettingsRow
+            showDivider
+            icon="document-text-outline"
+            iconColor={c.textSecondary}
+            iconBg={withAlpha(c.textSecondary, ALPHA.faint)}
+            title={t('legal') ?? 'Legal'}
+            subtitle="Terms · Privacy"
+            onPress={openLegal}
+          />
+        </SettingsSection>
+
+        <SettingsSection title="Account">
+          <SettingsRow
+            icon="log-out-outline"
+            iconColor="#F87171"
+            iconBg="rgba(248,113,113,0.18)"
+            title={t('signOut') ?? 'Log Out'}
+            subtitle="Sign out on this device"
+            destructive
+            onPress={handleSignOut}
+          />
+        </SettingsSection>
+
+        <Text style={[styles.version, { color: c.muted }]}>{t('version') ?? 'Version 1.0.0'}</Text>
+      </ScrollView>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-    scroll: { flex: 1 },
-    scrollContent: { padding: theme.spacing.lg, paddingBottom: 100 },
-    sectionTitle: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: theme.colors.textSubtle,
-        marginBottom: theme.spacing.sm,
-        marginTop: theme.spacing.xs,
-        letterSpacing: 0.5,
-    },
-    card: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: theme.radii.md,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        overflow: 'hidden',
-        ...theme.shadow.soft,
-    },
-    row: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 14,
-        paddingHorizontal: theme.spacing.md,
-    },
-    rowIconBg: {
-        width: 40,
-        height: 40,
-        borderRadius: theme.radii.sm,
-        backgroundColor: `${theme.colors.active}18`,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: theme.spacing.md,
-    },
-    rowText: { flex: 1 },
-    rowTitle: { fontSize: 16, fontWeight: '600', color: theme.colors.text },
-    rowSub: { fontSize: 13, color: theme.colors.textMuted, marginTop: 2 },
-    divider: { height: 1, backgroundColor: theme.colors.border, marginLeft: 70 },
-    logoutBtn: {
-        marginTop: 28,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        paddingVertical: 16,
-        borderRadius: 14,
-        borderWidth: 1.5,
-        borderColor: 'rgba(248,113,113,0.45)',
-        backgroundColor: 'rgba(248,113,113,0.1)',
-    },
-    logoutText: { color: '#F87171', fontWeight: '800', fontSize: 16 },
+  screen: { flex: 1 },
+  hero: {
+    borderRadius: radius.xl,
+    padding: space.lg,
+    marginBottom: space.xl,
+    borderWidth: 1,
+    borderColor: withAlpha(GOLD, ALPHA.medium),
+  },
+  heroTitle: {
+    ...text.title,
+    color: '#FFFFFF',
+    letterSpacing: -0.4,
+    marginBottom: space.xxs,
+  },
+  heroSub: {
+    ...text.caption,
+    color: withAlpha('#FFFFFF', 0.72),
+    lineHeight: 20,
+  },
+  version: {
+    ...text.caption,
+    textAlign: 'center',
+    marginTop: space.xl,
+    fontWeight: weight.semibold,
+  },
 });

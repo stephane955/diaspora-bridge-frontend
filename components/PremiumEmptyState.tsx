@@ -1,11 +1,16 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
 import {
-  PREMIUM_GOLD,
-  TEXT_PRIMARY,
-  TEXT_SECONDARY,
-} from '@/constants/layout';
+  ALPHA,
+  GOLD,
+  icon as iconSize,
+  radius,
+  space,
+  text,
+  withAlpha,
+} from '@/constants/design';
 import { successFeedback } from '@/utils/haptics';
 
 type Props = {
@@ -16,6 +21,11 @@ type Props = {
   onAction?: () => void;
 };
 
+/**
+ * The single empty state for the whole app. Every list, feed and gallery that
+ * can be empty should render this rather than a bare string or a bespoke
+ * icon + text block.
+ */
 export default function PremiumEmptyState({
   icon,
   title,
@@ -23,13 +33,23 @@ export default function PremiumEmptyState({
   actionLabel,
   onAction,
 }: Props) {
+  const c = usePremiumColors();
+
   return (
     <View style={styles.wrap}>
-      <View style={styles.iconDisk}>
-        <Ionicons name={icon} size={36} color={TEXT_SECONDARY} />
+      <View
+        style={[
+          styles.iconDisk,
+          {
+            backgroundColor: withAlpha(c.isDark ? '#FFFFFF' : '#0F172A', ALPHA.soft),
+            borderColor: c.border,
+          },
+        ]}
+      >
+        <Ionicons name={icon} size={iconSize.lg} color={c.textSecondary} />
       </View>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+      <Text style={[styles.title, { color: c.textPrimary }]}>{title}</Text>
+      <Text style={[styles.subtitle, { color: c.textSecondary }]}>{subtitle}</Text>
       {actionLabel && onAction ? (
         <TouchableOpacity
           style={styles.btn}
@@ -50,45 +70,40 @@ const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 36,
-    paddingVertical: 48,
-    gap: 10,
+    paddingHorizontal: space.xxl,
+    paddingVertical: space.xxl + space.sm,
+    gap: space.xs,
   },
   iconDisk: {
     width: 88,
     height: 88,
-    borderRadius: 44,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    marginBottom: 8,
+    marginBottom: space.xs,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
   },
   title: {
-    color: TEXT_PRIMARY,
-    fontSize: 20,
-    fontWeight: '800',
+    ...text.title,
     letterSpacing: -0.3,
     textAlign: 'center',
   },
   subtitle: {
-    color: TEXT_SECONDARY,
-    fontSize: 14,
+    ...text.footnote,
     lineHeight: 21,
     textAlign: 'center',
     maxWidth: 280,
   },
   btn: {
-    marginTop: 14,
-    backgroundColor: PREMIUM_GOLD,
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 14,
+    marginTop: space.sm,
+    backgroundColor: GOLD,
+    paddingHorizontal: space.xl - space.xxs,
+    paddingVertical: space.sm,
+    borderRadius: radius.lg,
   },
   btnText: {
     color: '#0A0F1A',
+    ...text.footnote,
     fontWeight: '800',
-    fontSize: 14,
   },
 });

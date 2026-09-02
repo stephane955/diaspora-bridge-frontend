@@ -4,17 +4,32 @@ import {
     Alert, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '@/context/LanguageContext';
 import PremiumHeader from '@/components/PremiumHeader';
 import { providerMenuItems } from '@/constants/premiumMenus';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
+import {
+    ALPHA,
+    CARRIER_MTN,
+    CARRIER_ORANGE,
+    GOLD,
+    font,
+    glow,
+    icon as iconSize,
+    radius,
+    shadow,
+    space,
+    text,
+    weight,
+    withAlpha,
+} from '@/constants/design';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { z } from 'zod';
-import { theme } from '@/constants/theme';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
+import { P00_PAYOUT_UNAVAILABLE } from '@/constants/p00Security';
 
 // --- VALIDATION SCHEMA ---
 const payoutSchema = z.object({
@@ -24,106 +39,22 @@ const payoutSchema = z.object({
 });
 
 export default function PayoutSetupScreen() {
-    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { t } = useLanguage();
     const { user } = useAuth();
+    const c = usePremiumColors();
+    const offsets = useScreenOffsets();
 
     const [method, setMethod] = useState<'mtn' | 'orange'>('mtn');
     const [formData, setFormData] = useState({ fullName: '', phoneNumber: '', amount: '' });
     const [loading, setLoading] = useState(false);
 
     const handleWithdraw = async () => {
-        mediumFeedback();
-
-        // 1. ZOD VALIDATION (Format Check)
-        const validation = payoutSchema.safeParse({
-            fullName: formData.fullName,
-            phoneNumber: formData.phoneNumber,
-            amount: Number(formData.amount)
-        });
-
-        if (!validation.success) {
-            Alert.alert(t('invalidInput'), validation.error.errors[0].message);
-            return;
-        }
-
-        // --- 2. CARRIER PREFIX CHECK (Logic Check) ---
-        // This prevents users from selecting MTN but typing an Orange number
-        const prefix = formData.phoneNumber.substring(0, 2); // Get first 2 digits (e.g., "67")
-
-        if (method === 'mtn') {
-            // MTN typically starts with 65, 67, 68.
-            // Orange starts with 69.
-            if (prefix === '69') {
-                Alert.alert(t('carrierMismatch'), t('carrierMismatchMtn'));
-                return;
-            }
-        } else if (method === 'orange') {
-            // If they start with 67 or 68, it is definitely NOT Orange.
-            if (prefix === '67' || prefix === '68') {
-                Alert.alert(t('carrierMismatch'), t('carrierMismatchOrange'));
-                return;
-            }
-        }
-        // ---------------------------------------------
-
-        setLoading(true);
-
-        try {
-            const withdrawalAmount = Number(formData.amount);
-
-            // 3. CHECK BALANCE
-            const { data: transactions, error: txError } = await supabase
-                .from('transactions')
-                .select('amount')
-                .eq('user_id', user?.id);
-
-            if (txError) throw txError;
-
-            const balance = transactions?.reduce((acc, curr) => acc + Number(curr.amount), 0) || 0;
-
-            if (balance < withdrawalAmount) {
-                throw new Error(`Insufficient funds. Your balance is ${balance.toLocaleString()} CFA.`);
-            }
-
-            // 4. CREATE WITHDRAWAL REQUEST
-            const { error } = await supabase.from('withdrawals').insert({
-                provider_id: user?.id,
-                amount: withdrawalAmount,
-                method: method === 'mtn' ? 'mtn_momo' : 'orange_money',
-                phone_number: formData.phoneNumber,
-                account_name: formData.fullName,
-                status: 'pending'
-            });
-
-            if (error) throw error;
-
-            // 5. DEDUCT FROM WALLET
-            const { error: deductError } = await supabase.from('transactions').insert({
-                user_id: user?.id,
-                amount: -withdrawalAmount,
-                description: `Withdrawal to ${method === 'mtn' ? 'MTN MoMo' : 'Orange Money'} (${formData.phoneNumber})`,
-                type: 'withdrawal'
-            });
-
-            if (deductError) throw deductError;
-
-            successFeedback();
-            Alert.alert(t('requestSent'), t('fundsTransfer24h'), [
-                { text: t('ok'), onPress: () => router.replace('/provider/earnings') } // Updated route
-            ]);
-
-        } catch (e: any) {
-            console.error("Withdrawal Error:", e);
-            Alert.alert(t('error'), e.message);
-        } finally {
-            setLoading(false);
-        }
+        Alert.alert(t('error'), P00_PAYOUT_UNAVAILABLE);
     };
 
     return (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: PREMIUM_BG }]}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: c.bg }]}>
             <PremiumHeader
                 title={t('payoutSetupTitle')}
                 subtitle={t('walletTitle')}
@@ -131,47 +62,91 @@ export default function PayoutSetupScreen() {
                 fallbackRoute="/provider/earnings"
                 menuItems={providerMenuItems(router, t)}
             />
-            <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40, paddingHorizontal: 20 }]}>
-                <Text style={styles.subTitle}>{t('selectMethod')}</Text>
+            <ScrollView contentContainerStyle={offsets.content}>
+                <Text style={[styles.subTitle, { color: c.textSecondary }]}>{t('selectMethod')}</Text>
 
                 <View style={styles.methodRow}>
                     <TouchableOpacity
-                        style={[styles.methodCard, method === 'mtn' && styles.mtnActive]}
+                        style={[
+                            styles.methodCard,
+                            { backgroundColor: c.surface, borderColor: c.border },
+                            method === 'mtn' && styles.mtnActive,
+                        ]}
                         onPress={() => setMethod('mtn')}
                     >
-                        <View style={[styles.radio, method === 'mtn' && styles.radioActive]} />
-                        <Text style={[styles.methodText, method === 'mtn' && styles.textBold]}>MTN MoMo</Text>
-                        <View style={[styles.colorStrip, { backgroundColor: '#FFCC00' }]} />
+                        <View
+                            style={[
+                                styles.radio,
+                                { borderColor: c.border },
+                                method === 'mtn' && styles.radioActive,
+                            ]}
+                        />
+                        <Text
+                            style={[
+                                styles.methodText,
+                                { color: c.textSecondary },
+                                method === 'mtn' && [styles.textBold, { color: c.textPrimary }],
+                            ]}
+                        >
+                            MTN MoMo
+                        </Text>
+                        <View style={[styles.colorStrip, { backgroundColor: CARRIER_MTN }]} />
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                        style={[styles.methodCard, method === 'orange' && styles.orangeActive]}
+                        style={[
+                            styles.methodCard,
+                            { backgroundColor: c.surface, borderColor: c.border },
+                            method === 'orange' && styles.orangeActive,
+                        ]}
                         onPress={() => setMethod('orange')}
                     >
-                        <View style={[styles.radio, method === 'orange' && styles.radioActive]} />
-                        <Text style={[styles.methodText, method === 'orange' && styles.textBold]}>Orange Money</Text>
-                        <View style={[styles.colorStrip, { backgroundColor: '#FF6600' }]} />
+                        <View
+                            style={[
+                                styles.radio,
+                                { borderColor: c.border },
+                                method === 'orange' && styles.radioActive,
+                            ]}
+                        />
+                        <Text
+                            style={[
+                                styles.methodText,
+                                { color: c.textSecondary },
+                                method === 'orange' && [styles.textBold, { color: c.textPrimary }],
+                            ]}
+                        >
+                            Orange Money
+                        </Text>
+                        <View style={[styles.colorStrip, { backgroundColor: CARRIER_ORANGE }]} />
                     </TouchableOpacity>
                 </View>
 
                 <View style={styles.form}>
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>{t('amountLabel')}</Text>
+                        <Text style={[styles.label, { color: c.textPrimary }]}>{t('amountLabel')}</Text>
                         <TextInput
-                            style={styles.input}
+                            style={[
+                                styles.input,
+                                { backgroundColor: c.surface, borderColor: c.border, color: c.textPrimary },
+                            ]}
                             keyboardType="numeric"
                             placeholder="e.g. 50000"
+                            placeholderTextColor={c.muted}
                             value={formData.amount}
                             onChangeText={val => setFormData({...formData, amount: val})}
                         />
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>{t('momoNumberLabel')}</Text>
+                        <Text style={[styles.label, { color: c.textPrimary }]}>{t('momoNumberLabel')}</Text>
                         <TextInput
-                            style={styles.input}
+                            style={[
+                                styles.input,
+                                { backgroundColor: c.surface, borderColor: c.border, color: c.textPrimary },
+                            ]}
                             keyboardType="phone-pad"
                             placeholder="6XXXXXXXX"
+                            placeholderTextColor={c.muted}
                             value={formData.phoneNumber}
                             onChangeText={val => setFormData({...formData, phoneNumber: val})}
                             maxLength={9}
@@ -179,25 +154,39 @@ export default function PayoutSetupScreen() {
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>{t('accountNameLabel')}</Text>
+                        <Text style={[styles.label, { color: c.textPrimary }]}>{t('accountNameLabel')}</Text>
                         <TextInput
-                            style={styles.input}
+                            style={[
+                                styles.input,
+                                { backgroundColor: c.surface, borderColor: c.border, color: c.textPrimary },
+                            ]}
                             placeholder="Full Name on Account"
+                            placeholderTextColor={c.muted}
                             value={formData.fullName}
                             onChangeText={val => setFormData({...formData, fullName: val})}
                         />
                     </View>
 
-                    <View style={styles.infoBox}>
-                        <Ionicons name="information-circle" size={20} color="#64748B" />
-                        <Text style={styles.infoText}>
+                    <View style={[styles.infoBox, { backgroundColor: c.surfaceAlt, borderColor: c.border }]}>
+                        <Ionicons name="information-circle" size={iconSize.md} color={c.textSecondary} />
+                        <Text style={[styles.infoText, { color: c.textSecondary }]}>
                             {t('withdrawInfo')}
                         </Text>
                     </View>
                 </View>
             </ScrollView>
 
-            <View style={styles.footer}>
+            <View
+                style={[
+                    styles.footer,
+                    {
+                        backgroundColor: c.surface,
+                        borderTopColor: c.border,
+                        paddingBottom: offsets.bottom,
+                        paddingHorizontal: offsets.horizontal,
+                    },
+                ]}
+            >
                 <TouchableOpacity
                     style={[styles.submitBtn, loading && { opacity: 0.7 }]}
                     onPress={handleWithdraw}
@@ -211,28 +200,69 @@ export default function PayoutSetupScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
-    header: { flexDirection: 'row', alignItems: 'center', paddingTop: 60, paddingHorizontal: 20, paddingBottom: 15, backgroundColor: '#fff' },
-    backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginRight: 15 },
-    headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
-    content: { padding: 20 },
-    subTitle: { fontSize: 16, fontWeight: '700', color: '#64748B', marginBottom: 15 },
-    methodRow: { flexDirection: 'row', gap: 15, marginBottom: 30 },
-    methodCard: { flex: 1, backgroundColor: '#fff', padding: 15, borderRadius: 16, borderWidth: 2, borderColor: '#F1F5F9', position: 'relative', overflow: 'hidden' },
-    mtnActive: { borderColor: '#FFCC00', backgroundColor: '#FFFBEB' },
-    orangeActive: { borderColor: '#FF6600', backgroundColor: '#FFF7ED' },
+    container: { flex: 1 },
+    subTitle: { ...text.body, marginBottom: space.md },
+    methodRow: { flexDirection: 'row', gap: space.md, marginBottom: space.xxl },
+    methodCard: {
+        flex: 1,
+        padding: space.md,
+        borderRadius: radius.lg,
+        borderWidth: 2,
+        position: 'relative',
+        overflow: 'hidden',
+        ...shadow.card,
+    },
+    mtnActive: {
+        borderColor: CARRIER_MTN,
+        backgroundColor: withAlpha(CARRIER_MTN, ALPHA.medium),
+    },
+    orangeActive: {
+        borderColor: CARRIER_ORANGE,
+        backgroundColor: withAlpha(CARRIER_ORANGE, ALPHA.medium),
+    },
     colorStrip: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 4 },
-    radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#CBD5E1', marginBottom: 10 },
-    radioActive: { borderColor: '#0F172A', backgroundColor: '#0F172A' },
-    methodText: { fontSize: 16, color: '#64748B' },
-    textBold: { fontWeight: '700', color: '#0F172A' },
-    form: { gap: 20 },
-    inputGroup: { gap: 8 },
-    label: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-    input: { backgroundColor: '#fff', height: 56, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 16, fontSize: 16, color: '#0F172A' },
-    infoBox: { flexDirection: 'row', backgroundColor: '#F1F5F9', padding: 15, borderRadius: 12, gap: 10, alignItems: 'center', marginTop: 10 },
-    infoText: { flex: 1, fontSize: 13, color: '#64748B', lineHeight: 20 },
-    footer: { padding: 20, paddingBottom: 40, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-    submitBtn: { backgroundColor: '#0F172A', height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-    btnText: { color: '#fff', fontSize: 16, fontWeight: '700' }
+    radio: {
+        width: 18,
+        height: 18,
+        borderRadius: radius.pill,
+        borderWidth: 2,
+        marginBottom: space.sm,
+    },
+    radioActive: { borderColor: GOLD, backgroundColor: GOLD },
+    methodText: text.body,
+    textBold: { fontWeight: weight.heavy },
+    form: { gap: space.lg },
+    inputGroup: { gap: space.xs },
+    label: { ...text.footnote, fontWeight: weight.heavy },
+    input: {
+        height: 56,
+        borderRadius: radius.lg,
+        borderWidth: 1,
+        paddingHorizontal: space.md,
+        fontSize: font.body,
+        fontWeight: weight.semibold,
+    },
+    infoBox: {
+        flexDirection: 'row',
+        padding: space.md,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        gap: space.sm,
+        alignItems: 'center',
+        marginTop: space.sm,
+    },
+    infoText: { flex: 1, ...text.caption, lineHeight: 20 },
+    footer: {
+        paddingTop: space.lg,
+        borderTopWidth: 1,
+    },
+    submitBtn: {
+        backgroundColor: GOLD,
+        height: 56,
+        borderRadius: radius.lg,
+        alignItems: 'center',
+        justifyContent: 'center',
+        ...glow(GOLD),
+    },
+    btnText: { ...text.body, fontWeight: weight.heavy, color: '#0A0F1A' }
 });

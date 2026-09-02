@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -9,7 +9,6 @@ import {
     StatusBar,
     Alert,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { CheckCircle, Lock, Plus } from 'lucide-react-native';
@@ -20,22 +19,42 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import PremiumHeader from '@/components/PremiumHeader';
 import { clientMenuItems } from '@/constants/premiumMenus';
-import PulseLoader from '@/components/PulseLoader';
+import ScreenLoader from '@/components/ScreenLoader';
+import PremiumEmptyState from '@/components/PremiumEmptyState';
 import VaultGate from '@/components/VaultGate';
 import { successFeedback } from '@/utils/haptics';
+import { fetchUserAvailableBalanceMinor } from '@/lib/ledgerBalance';
+import { resolveAmountMinor } from '@/lib/money';
+import { P00_BALANCE_UNAVAILABLE } from '@/constants/p00Security';
+import { usePremiumColors, type PremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
 import {
-    FLOATING_TAB_BAR_HEIGHT,
-    PREMIUM_BG,
-    PREMIUM_GOLD,
-    PREMIUM_MUTED,
-} from '@/constants/layout';
+    ALPHA,
+    GOLD,
+    GOLD_BORDER,
+    GOLD_TINT,
+    INFO_SOFT,
+    NAVY,
+    NAVY_SOFT,
+    SUCCESS,
+    font,
+    icon as iconSize,
+    radius,
+    space,
+    text,
+    weight,
+    withAlpha,
+} from '@/constants/design';
+
+/** Text that always sits on the dark escrow card, in both themes. */
+const ON_DARK_PRIMARY = '#FFFFFF';
+const ON_DARK_SECONDARY = withAlpha('#FFFFFF', 0.7);
 
 type MaterialCartRow = {
     id: string;
     project_id: string;
     status: string;
     total_amount_cfa: number;
-    labor_amount_cfa?: number | null;
     created_at: string;
     supplier_id?: string | null;
     projects?: { title?: string | null } | null;
@@ -43,7 +62,7 @@ type MaterialCartRow = {
 };
 
 function cartTotalCfa(cart: MaterialCartRow) {
-    return Number(cart.total_amount_cfa ?? 0) + Number(cart.labor_amount_cfa ?? 0);
+    return Number(cart.total_amount_cfa ?? 0);
 }
 
 function statusLabel(status: string, t: (key: string) => string) {
@@ -53,20 +72,22 @@ function statusLabel(status: string, t: (key: string) => string) {
     return status.replace('_', ' ');
 }
 
-function statusColor(status: string) {
-    if (status === 'pending_approval') return PREMIUM_GOLD;
-    if (status === 'approved') return '#60A5FA';
-    return PREMIUM_MUTED;
+function statusColor(status: string, c: PremiumColors) {
+    if (status === 'pending_approval') return GOLD;
+    if (status === 'approved') return INFO_SOFT;
+    return c.muted;
 }
 
 export default function ClientWalletScreen() {
-    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
     const { t } = useLanguage();
+    const c = usePremiumColors();
+    const offsets = useScreenOffsets();
+    const styles = useMemo(() => createStyles(c), [c]);
 
     const [transactions, setTransactions] = useState<any[]>([]);
-    const [balance, setBalance] = useState(0);
+    const [balance, setBalance] = useState<number | null>(null);
     const [escrowed, setEscrowed] = useState(0);
     const [materialCarts, setMaterialCarts] = useState<MaterialCartRow[]>([]);
     const [loading, setLoading] = useState(true);
@@ -75,19 +96,9 @@ export default function ClientWalletScreen() {
     const fetchData = useCallback(async () => {
         if (!user) return;
         try {
-            const { data, error } = await supabase
-                .from('transactions')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-
-            if (data) {
-                setTransactions(data);
-                const total = data.reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
-                setBalance(total);
-            }
+            const balanceMinor = await fetchUserAvailableBalanceMinor();
+            setBalance(balanceMinor === null ? null : Number(balanceMinor));
+            setTransactions([]);
 
             const { data: milestones } = await supabase
                 .from('milestones')
@@ -95,7 +106,10 @@ export default function ClientWalletScreen() {
                 .eq('projects.owner_id', user.id)
                 .eq('status', 'locked');
 
-            const lockedTotal = milestones?.reduce((acc: number, curr: any) => acc + Number(curr.amount), 0) || 0;
+            const lockedTotal = milestones?.reduce(
+                (acc: number, curr: any) => acc + Number(resolveAmountMinor(curr)),
+                0,
+            ) || 0;
             setEscrowed(lockedTotal);
 
             const { data: ownedProjects } = await supabase
@@ -107,7 +121,7 @@ export default function ClientWalletScreen() {
             if (projectIds.length > 0) {
                 const { data: carts } = await supabase
                     .from('project_material_carts')
-                    .select('id, project_id, status, total_amount_cfa, labor_amount_cfa, created_at, supplier_id, projects(title)')
+                    .select('id, project_id, status, total_amount_cfa, created_at, supplier_id, projects(title)')
                     .in('project_id', projectIds)
                     .order('created_at', { ascending: false });
 
@@ -155,21 +169,16 @@ export default function ClientWalletScreen() {
     const collectedCarts = materialCarts.filter((c) => c.status === 'collected');
 
     const walletContent = loading ? (
-        <View style={styles.loaderWrap}>
-            <PulseLoader />
-        </View>
+        <ScreenLoader />
     ) : (
         <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[
-                styles.scrollContent,
-                { paddingTop: insets.top + 88, paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40 },
-            ]}
+            contentContainerStyle={offsets.content}
             refreshControl={
                 <RefreshControl
                     refreshing={refreshing}
                     onRefresh={() => { setRefreshing(true); fetchData(); }}
-                    tintColor={PREMIUM_GOLD}
+                    tintColor={GOLD}
                 />
             }
         >
@@ -177,7 +186,7 @@ export default function ClientWalletScreen() {
             <View style={styles.cardGlowWrap}>
                 <BlurView intensity={45} tint="dark" style={styles.cardGlow} />
                 <LinearGradient
-                    colors={['#1E293B', '#0F172A', '#050810']}
+                    colors={[NAVY_SOFT, NAVY]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={styles.escrowCard}
@@ -186,7 +195,7 @@ export default function ClientWalletScreen() {
                     <View style={styles.cardChipRow}>
                         <View style={styles.chip} />
                         <TouchableOpacity style={styles.topUpPill} onPress={handleTopUp} activeOpacity={0.85}>
-                            <Plus size={14} color={PREMIUM_GOLD} strokeWidth={2.5} />
+                            <Plus size={iconSize.xs} color={GOLD} strokeWidth={2.5} />
                             <Text style={styles.topUpPillText}>{t('topUp')}</Text>
                         </TouchableOpacity>
                     </View>
@@ -195,26 +204,28 @@ export default function ClientWalletScreen() {
                     <Text style={styles.cardBalance}>{escrowed.toLocaleString()} CFA</Text>
 
                     <View style={styles.cardFooter}>
-                        <XStack alignItems="center" gap={6}>
-                            <Lock size={14} color="rgba(255,255,255,0.55)" />
-                            <TamaguiText color="rgba(255,255,255,0.55)" fontSize={13} fontWeight="600">
+                        <XStack alignItems="center" gap={space.xs}>
+                            <Lock size={iconSize.xs} color={ON_DARK_SECONDARY} />
+                            <TamaguiText color={ON_DARK_SECONDARY} fontSize={font.footnote} fontWeight={weight.semibold}>
                                 {t('availableWalletBalance')}
                             </TamaguiText>
                         </XStack>
-                        <Text style={styles.cardSubBalance}>{balance.toLocaleString()} CFA</Text>
+                        <Text style={styles.cardSubBalance}>
+                            {balance === null ? P00_BALANCE_UNAVAILABLE : `${balance.toLocaleString()} CFA`}
+                        </Text>
                     </View>
                 </LinearGradient>
             </View>
 
             {/* Active material carts */}
-            <YStack marginTop={28} marginBottom={8}>
-                <TamaguiText color="#F8FAFC" fontSize={20} fontWeight="800" letterSpacing={-0.3} marginBottom={14}>
+            <YStack marginTop={space.xl} marginBottom={space.xs}>
+                <TamaguiText color={c.textPrimary} fontSize={font.title} fontWeight={weight.heavy} letterSpacing={-0.3} marginBottom={space.sm}>
                     {t('activeMaterialCarts')}
                 </TamaguiText>
 
                 {activeCarts.length === 0 ? (
                     <View style={styles.emptyCartStrip}>
-                        <TamaguiText color={PREMIUM_MUTED} fontSize={14}>
+                        <TamaguiText color={c.textSecondary} fontSize={font.footnote}>
                             {t('noCartsAwaiting')}
                         </TamaguiText>
                     </View>
@@ -235,7 +246,7 @@ export default function ClientWalletScreen() {
                                 <Text style={styles.cartProject} numberOfLines={1}>
                                     {cart.projects?.title ?? t('projectFallback')}
                                 </Text>
-                                <Text style={[styles.cartStatus, { color: statusColor(cart.status) }]}>
+                                <Text style={[styles.cartStatus, { color: statusColor(cart.status, c) }]}>
                                     {statusLabel(cart.status, t)}
                                 </Text>
                                 <Text style={styles.cartAmount}>
@@ -254,19 +265,17 @@ export default function ClientWalletScreen() {
             </YStack>
 
             {/* Completed handovers */}
-            <YStack marginTop={24}>
-                <TamaguiText color="#F8FAFC" fontSize={20} fontWeight="800" letterSpacing={-0.3} marginBottom={14}>
+            <YStack marginTop={space.xl}>
+                <TamaguiText color={c.textPrimary} fontSize={font.title} fontWeight={weight.heavy} letterSpacing={-0.3} marginBottom={space.sm}>
                     {t('completedHandovers')}
                 </TamaguiText>
 
                 {collectedCarts.length === 0 ? (
-                    <View style={styles.emptyHistory}>
-                        <CheckCircle size={36} color="#94A3B8" />
-                        <Text style={styles.emptyHistoryTitle}>{t('noCompletedHandovers')}</Text>
-                        <Text style={styles.emptyHistorySub}>
-                            When suppliers scan QR codes and collect materials, they appear here.
-                        </Text>
-                    </View>
+                    <PremiumEmptyState
+                        icon="checkmark-done-outline"
+                        title={t('noCompletedHandovers')}
+                        subtitle="When suppliers scan QR codes and collect materials, they appear here."
+                    />
                 ) : (
                     <YStack gap={0}>
                         {collectedCarts.map((cart) => (
@@ -277,7 +286,7 @@ export default function ClientWalletScreen() {
                                 onPress={() => router.push(`/diaspora/project/${cart.project_id}`)}
                             >
                                 <View style={styles.statementIconWrap}>
-                                    <CheckCircle size={20} color="#34D399" strokeWidth={2.2} />
+                                    <CheckCircle size={iconSize.sm} color={SUCCESS} strokeWidth={2.2} />
                                 </View>
                                 <View style={styles.statementBody}>
                                     <Text style={styles.statementTitle} numberOfLines={1}>
@@ -302,8 +311,8 @@ export default function ClientWalletScreen() {
 
             {/* Legacy transaction history (unchanged data) */}
             {transactions.length > 0 && (
-                <YStack marginTop={28}>
-                    <TamaguiText color="#F8FAFC" fontSize={20} fontWeight="800" letterSpacing={-0.3} marginBottom={14}>
+                <YStack marginTop={space.xl}>
+                    <TamaguiText color={c.textPrimary} fontSize={font.title} fontWeight={weight.heavy} letterSpacing={-0.3} marginBottom={space.sm}>
                         Wallet Activity
                     </TamaguiText>
                     <YStack gap={0}>
@@ -311,9 +320,9 @@ export default function ClientWalletScreen() {
                             <View key={txn.id} style={styles.statementRow}>
                                 <View style={[
                                     styles.statementIconWrap,
-                                    { backgroundColor: txn.amount > 0 ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)' },
+                                    { backgroundColor: txn.amount > 0 ? withAlpha(SUCCESS, ALPHA.medium) : withAlpha(c.isDark ? '#FFFFFF' : '#0F172A', ALPHA.faint) },
                                 ]}>
-                                    <Text style={{ color: txn.amount > 0 ? '#34D399' : PREMIUM_MUTED, fontWeight: '800' }}>
+                                    <Text style={{ color: txn.amount > 0 ? SUCCESS : c.muted, fontWeight: weight.heavy }}>
                                         {txn.amount > 0 ? '+' : '−'}
                                     </Text>
                                 </View>
@@ -327,7 +336,7 @@ export default function ClientWalletScreen() {
                                 </View>
                                 <Text style={[
                                     styles.statementAmount,
-                                    { color: txn.amount > 0 ? '#34D399' : '#F8FAFC' },
+                                    { color: txn.amount > 0 ? SUCCESS : c.textPrimary },
                                 ]}>
                                     {txn.amount > 0 ? '+' : ''}{Number(txn.amount).toLocaleString()}
                                 </Text>
@@ -340,12 +349,13 @@ export default function ClientWalletScreen() {
     );
 
     return (
-        <View style={styles.screen}>
-            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <View style={[styles.screen, { backgroundColor: c.bg }]}>
+            <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
             <PremiumHeader
                 title={t('clientDashboard.myWallet') ?? 'Escrow'}
                 subtitle="Funds & material carts"
                 menuItems={clientMenuItems(router, t)}
+                onNotificationsPress={() => router.push('/notifications')}
             />
             <VaultGate promptMessage={t('unlockWalletPrompt')} lockOnBlur>
                 {walletContent}
@@ -354,38 +364,28 @@ export default function ClientWalletScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (c: PremiumColors) => StyleSheet.create({
     screen: {
         flex: 1,
-        backgroundColor: PREMIUM_BG,
-    },
-    loaderWrap: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: PREMIUM_BG,
-    },
-    scrollContent: {
-        paddingHorizontal: 16,
     },
 
     cardGlowWrap: {
         position: 'relative',
-        marginBottom: 4,
+        marginBottom: space.xxs,
     },
     cardGlow: {
         ...StyleSheet.absoluteFillObject,
-        borderRadius: 24,
+        borderRadius: radius.xl,
         overflow: 'hidden',
         opacity: 0.55,
         transform: [{ scale: 1.04 }],
     },
     escrowCard: {
-        borderRadius: 22,
-        padding: 22,
+        borderRadius: radius.xl,
+        padding: space.lg,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(212,175,55,0.22)',
+        borderColor: GOLD_BORDER,
     },
     cardShine: {
         position: 'absolute',
@@ -393,121 +393,120 @@ const styles = StyleSheet.create({
         right: -30,
         width: 140,
         height: 140,
-        borderRadius: 70,
-        backgroundColor: 'rgba(212,175,55,0.08)',
+        borderRadius: radius.pill,
+        backgroundColor: GOLD_TINT,
     },
     cardChipRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 28,
+        marginBottom: space.xl,
     },
     chip: {
         width: 42,
         height: 30,
-        borderRadius: 6,
-        backgroundColor: 'rgba(212,175,55,0.35)',
+        borderRadius: radius.sm,
+        backgroundColor: GOLD_TINT,
         borderWidth: 1,
-        borderColor: 'rgba(212,175,55,0.5)',
+        borderColor: GOLD_BORDER,
     },
     topUpPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-        borderRadius: 999,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        gap: space.xxs,
+        paddingHorizontal: space.sm,
+        paddingVertical: space.xs,
+        borderRadius: radius.pill,
+        backgroundColor: withAlpha('#FFFFFF', ALPHA.soft),
         borderWidth: 1,
-        borderColor: 'rgba(212,175,55,0.35)',
+        borderColor: GOLD_BORDER,
     },
     topUpPillText: {
-        color: PREMIUM_GOLD,
-        fontSize: 12,
-        fontWeight: '800',
+        ...text.caption,
+        color: GOLD,
+        fontWeight: weight.heavy,
     },
     cardEyebrow: {
-        color: 'rgba(255,255,255,0.55)',
-        fontSize: 11,
-        fontWeight: '800',
+        ...text.label,
+        color: ON_DARK_SECONDARY,
         letterSpacing: 1.2,
-        textTransform: 'uppercase',
     },
     cardBalance: {
-        color: PREMIUM_GOLD,
-        fontSize: 36,
-        fontWeight: '800',
+        ...text.hero,
+        color: GOLD,
         letterSpacing: -0.5,
-        marginTop: 6,
+        marginTop: space.xs,
     },
     cardFooter: {
-        marginTop: 22,
-        paddingTop: 16,
+        marginTop: space.lg,
+        paddingTop: space.md,
         borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: 'rgba(255,255,255,0.1)',
+        borderTopColor: withAlpha('#FFFFFF', ALPHA.soft),
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
     },
     cardSubBalance: {
-        color: '#F8FAFC',
-        fontSize: 15,
-        fontWeight: '700',
+        ...text.footnote,
+        color: ON_DARK_PRIMARY,
+        fontWeight: weight.heavy,
     },
 
     cartScrollRow: {
-        gap: 12,
-        paddingRight: 8,
+        gap: space.sm,
+        paddingRight: space.xs,
     },
     cartCard: {
         width: 200,
-        padding: 16,
-        borderRadius: 18,
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        padding: space.md,
+        borderRadius: radius.lg,
+        backgroundColor: c.surface,
+        borderWidth: 1,
+        borderColor: c.border,
     },
     cartProject: {
-        color: '#F8FAFC',
-        fontSize: 15,
-        fontWeight: '800',
-        marginBottom: 8,
+        ...text.footnote,
+        color: c.textPrimary,
+        fontWeight: weight.heavy,
+        marginBottom: space.xs,
     },
     cartStatus: {
-        fontSize: 11,
-        fontWeight: '800',
+        ...text.micro,
+        fontWeight: weight.heavy,
         textTransform: 'uppercase',
         letterSpacing: 0.6,
-        marginBottom: 10,
+        marginBottom: space.sm,
     },
     cartAmount: {
-        color: '#F8FAFC',
-        fontSize: 18,
-        fontWeight: '800',
+        ...text.subtitle,
+        color: c.textPrimary,
     },
     cartDate: {
-        color: PREMIUM_MUTED,
-        fontSize: 12,
-        marginTop: 4,
-        fontWeight: '600',
+        ...text.caption,
+        color: c.textSecondary,
+        marginTop: space.xxs,
     },
     emptyCartStrip: {
-        padding: 18,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.04)',
+        padding: space.lg,
+        borderRadius: radius.lg,
+        backgroundColor: c.surfaceAlt,
+        borderWidth: 1,
+        borderColor: c.border,
     },
 
     statementRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 14,
-        gap: 12,
+        paddingVertical: space.md,
+        gap: space.sm,
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: 'rgba(255,255,255,0.06)',
+        borderBottomColor: c.border,
     },
     statementIconWrap: {
         width: 40,
         height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(52,211,153,0.12)',
+        borderRadius: radius.pill,
+        backgroundColor: withAlpha(SUCCESS, ALPHA.medium),
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -515,40 +514,18 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     statementTitle: {
-        color: '#F8FAFC',
-        fontSize: 15,
-        fontWeight: '700',
+        ...text.footnote,
+        color: c.textPrimary,
+        fontWeight: weight.heavy,
     },
     statementSub: {
-        color: PREMIUM_MUTED,
-        fontSize: 12,
+        ...text.caption,
+        color: c.textSecondary,
         marginTop: 2,
-        fontWeight: '500',
     },
     statementAmount: {
-        color: '#F8FAFC',
-        fontSize: 15,
-        fontWeight: '800',
-    },
-
-    emptyHistory: {
-        alignItems: 'center',
-        paddingVertical: 32,
-        paddingHorizontal: 16,
-        backgroundColor: 'rgba(255,255,255,0.03)',
-        borderRadius: 18,
-        gap: 8,
-    },
-    emptyHistoryTitle: {
-        color: '#E2E8F0',
-        fontSize: 16,
-        fontWeight: '700',
-        marginTop: 4,
-    },
-    emptyHistorySub: {
-        color: PREMIUM_MUTED,
-        fontSize: 13,
-        textAlign: 'center',
-        lineHeight: 18,
+        ...text.footnote,
+        color: c.textPrimary,
+        fontWeight: weight.heavy,
     },
 });

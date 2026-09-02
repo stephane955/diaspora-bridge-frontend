@@ -39,19 +39,11 @@ async function registerPushToken(userId: string): Promise<void> {
     const expoPushToken = tokenResult.data;
     if (!expoPushToken) return;
 
-    const { data: existing } = await supabase
-        .from('user_push_tokens')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('expo_push_token', expoPushToken)
-        .maybeSingle();
-
-    if (!existing) {
-        await supabase.from('user_push_tokens').insert({
-            user_id: userId,
-            expo_push_token: expoPushToken,
-        });
-    }
+    // Schema stores push token on profiles (no user_push_tokens table in generated types yet)
+    await supabase
+        .from('profiles')
+        .update({ push_token: expoPushToken })
+        .eq('id', userId);
 }
 
 /**

@@ -11,11 +11,13 @@ import { clientMenuItems } from '@/constants/premiumMenus';
 import { useRouter } from 'expo-router';
 import { theme } from '@/constants/theme';
 import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_MUTED } from '@/constants/layout';
+import { requiredRouteParam } from '@/utils/routeParams';
 
 export default function ProjectTimeline() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
-    const { id } = useLocalSearchParams();
+    const params = useLocalSearchParams<{ id?: string | string[] }>();
+    const id = requiredRouteParam(params.id);
     const { t } = useLanguage();
 
     const [updates, setUpdates] = useState<any[]>([]);
@@ -90,11 +92,11 @@ export default function ProjectTimeline() {
                                             })}
                                         </Text>
                                         <View style={styles.card}>
-                                            {item.image_url && (
-                                                <Image source={{ uri: item.image_url }} style={styles.updateImage} />
+                                            {item.photo_url && (
+                                                <Image source={{ uri: item.photo_url }} style={styles.updateImage} />
                                             )}
                                             <Text style={styles.title}>{item.title}</Text>
-                                            <Text style={styles.desc}>{item.description}</Text>
+                                            <Text style={styles.desc}>{item.body}</Text>
                                         </View>
                                     </View>
                                 </View>

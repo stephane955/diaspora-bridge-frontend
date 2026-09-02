@@ -12,7 +12,6 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -20,9 +19,13 @@ import PremiumHeader from '@/components/PremiumHeader';
 import PremiumEmptyState from '@/components/PremiumEmptyState';
 import PulseLoader from '@/components/PulseLoader';
 import { providerMenuItems } from '@/constants/premiumMenus';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
 import { successFeedback, mediumFeedback } from '@/utils/haptics';
+import { fetchUserAvailableBalanceMinor } from '@/lib/ledgerBalance';
+import { resolveAmountMinor } from '@/lib/money';
+import { P00_BALANCE_UNAVAILABLE } from '@/constants/p00Security';
 import {
-  SCROLL_BOTTOM_INSET,
   PREMIUM_BG,
   PREMIUM_GOLD,
   TEXT_PRIMARY,
@@ -39,13 +42,14 @@ type Transaction = {
 };
 
 export default function ProviderEarningsScreen() {
-  const insets = useSafeAreaInsets();
+  const offsets = useScreenOffsets();
+  const c = usePremiumColors();
   const { user } = useAuth();
   const router = useRouter();
   const { t } = useLanguage();
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [balance, setBalance] = useState(0);
+  const [balance, setBalance] = useState<number | null>(null);
   const [pendingEscrow, setPendingEscrow] = useState(0);
   const [inReviewCount, setInReviewCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -55,34 +59,27 @@ export default function ProviderEarningsScreen() {
     if (!user) return;
     setLoading(true);
     try {
-      const [{ data, error }, projectsRes] = await Promise.all([
-        supabase
-          .from('transactions')
-          .select('*, projects(title)')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false }),
+      const [balanceMinor, projectsRes] = await Promise.all([
+        fetchUserAvailableBalanceMinor(),
         supabase
           .from('projects')
           .select('id')
           .eq('assigned_provider_id', user.id),
       ]);
 
-      if (error) throw error;
-      if (data) {
-        setTransactions(data as any);
-        setBalance(data.reduce((acc, curr) => acc + Number(curr.amount), 0));
-      }
+      setBalance(balanceMinor === null ? null : Number(balanceMinor));
+      setTransactions([]);
 
       const projectIds = (projectsRes.data ?? []).map((p) => p.id);
       if (projectIds.length > 0) {
         const { data: miles } = await supabase
           .from('milestones')
-          .select('amount_cfa, status')
+          .select('amount_minor, status')
           .in('project_id', projectIds)
           .in('status', ['in_review', 'approved']);
 
         const pending = (miles ?? []).reduce(
-          (sum, m) => sum + Number(m.amount_cfa || 0),
+          (sum, m) => sum + Number(resolveAmountMinor(m)),
           0,
         );
         setPendingEscrow(pending);
@@ -151,7 +148,7 @@ export default function ProviderEarningsScreen() {
   if (loading) {
     return (
       <View style={styles.screen}>
-        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
         <PremiumHeader
           title={t('walletTitle')}
           subtitle={t('history')}
@@ -168,7 +165,7 @@ export default function ProviderEarningsScreen() {
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       <PremiumHeader
         title={t('walletTitle')}
         subtitle={t('history')}
@@ -181,7 +178,7 @@ export default function ProviderEarningsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 88, paddingBottom: SCROLL_BOTTOM_INSET },
+          { paddingTop: offsets.top, paddingBottom: offsets.bottom },
         ]}
         refreshControl={
           <RefreshControl
@@ -202,7 +199,9 @@ export default function ProviderEarningsScreen() {
           <Text style={styles.balanceLabel}>
             {(t('availableBalance') || 'AVAILABLE BALANCE').toUpperCase()}
           </Text>
-          <Text style={styles.balanceValue}>{balance.toLocaleString()} CFA</Text>
+          <Text style={styles.balanceValue}>
+            {balance === null ? P00_BALANCE_UNAVAILABLE : `${balance.toLocaleString()} CFA`}
+          </Text>
 
           <View style={styles.statsRow}>
             <View style={styles.statPill}>

@@ -8,6 +8,11 @@ import type { Database } from '@/database.types';
 
 export type MessageRow = Database['public']['Tables']['messages']['Row'];
 
+type MessageListRow = Pick<
+  MessageRow,
+  'id' | 'project_id' | 'sender_id' | 'recipient_id' | 'content' | 'audio_url' | 'created_at'
+>;
+
 export type ChatMessage = {
   id: string;
   projectId: string;
@@ -27,7 +32,7 @@ export type ProjectParticipants = {
   providerId: string | null;
 };
 
-function normalizeRow(row: MessageRow): ChatMessage {
+function normalizeRow(row: MessageListRow): ChatMessage {
   return {
     id: row.id,
     projectId: row.project_id,

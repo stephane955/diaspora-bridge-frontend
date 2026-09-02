@@ -1,11 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/context/LanguageContext';
-import { Ionicons } from '@expo/vector-icons';
+import PremiumHeader from '@/components/PremiumHeader';
+import PremiumEmptyState from '@/components/PremiumEmptyState';
+import ScreenLoader from '@/components/ScreenLoader';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
+import { DANGER, radius, space, SUCCESS_DEEP, text } from '@/constants/design';
 
 export default function AdminVerifyScreen() {
     const { t } = useLanguage();
+    const c = usePremiumColors();
+    const offsets = useScreenOffsets({ tabBar: false });
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -47,11 +54,11 @@ export default function AdminVerifyScreen() {
         const docPath = item.verifications?.[0]?.document_url;
 
         return (
-            <View style={styles.card}>
-                <Text style={styles.name}>{item.full_name}</Text>
-                <Text style={styles.sub}>{item.city}</Text>
+            <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+                <Text style={[styles.name, { color: c.textPrimary }]}>{item.full_name}</Text>
+                <Text style={[styles.sub, { color: c.textSecondary }]}>{item.city}</Text>
 
-                <Text style={styles.pathLabel}>Document Path: {docPath}</Text>
+                <Text style={[styles.pathLabel, { color: c.muted }]}>Document Path: {docPath}</Text>
 
                 <View style={styles.actions}>
                     <TouchableOpacity
@@ -73,14 +80,23 @@ export default function AdminVerifyScreen() {
     };
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Pending Verifications</Text>
-            {loading ? <ActivityIndicator size="large" /> : (
+        <View style={[styles.container, { backgroundColor: c.bg }]}>
+            <PremiumHeader title="Pending Verifications" showBack fallbackRoute="/" hideMenu />
+            {loading ? (
+                <ScreenLoader />
+            ) : (
                 <FlatList
                     data={requests}
                     keyExtractor={item => item.id}
                     renderItem={renderRequest}
-                    ListEmptyComponent={<Text style={styles.empty}>No pending requests.</Text>}
+                    contentContainerStyle={offsets.content}
+                    ListEmptyComponent={
+                        <PremiumEmptyState
+                            icon="shield-checkmark-outline"
+                            title="No pending requests"
+                            subtitle="Verification submissions will appear here as providers send them."
+                        />
+                    }
                 />
             )}
         </View>
@@ -88,16 +104,24 @@ export default function AdminVerifyScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC', padding: 20, paddingTop: 60 },
-    title: { fontSize: 24, fontWeight: '800', marginBottom: 20 },
-    card: { backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0' },
-    name: { fontSize: 18, fontWeight: '700' },
-    sub: { color: '#64748B', marginBottom: 10 },
-    pathLabel: { fontSize: 12, color: '#94A3B8', marginBottom: 15 },
-    actions: { flexDirection: 'row', gap: 10 },
-    btn: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center' },
-    approveBtn: { backgroundColor: '#10B981' },
-    rejectBtn: { backgroundColor: '#EF4444' },
-    btnText: { color: '#fff', fontWeight: '700' },
-    empty: { textAlign: 'center', marginTop: 40, color: '#94A3B8' }
+    container: { flex: 1 },
+    card: {
+        padding: space.md,
+        borderRadius: radius.lg,
+        marginBottom: space.md,
+        borderWidth: 1,
+    },
+    name: text.subtitle,
+    sub: { ...text.footnote, marginBottom: space.xs },
+    pathLabel: { ...text.caption, marginBottom: space.md },
+    actions: { flexDirection: 'row', gap: space.sm },
+    btn: {
+        flex: 1,
+        paddingVertical: space.sm,
+        borderRadius: radius.lg,
+        alignItems: 'center',
+    },
+    approveBtn: { backgroundColor: SUCCESS_DEEP },
+    rejectBtn: { backgroundColor: DANGER },
+    btnText: { color: '#FFFFFF', ...text.footnote, fontWeight: '800' },
 });

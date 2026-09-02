@@ -41,7 +41,7 @@ export default function NewProjectScreen() {
     const pickImage = async () => {
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ['images'] as any,
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
                 allowsEditing: true,
                 aspect: [16, 9],
                 quality: 0.5,
@@ -56,6 +56,10 @@ export default function NewProjectScreen() {
     };
 
     const handleSubmit = async () => {
+        if (!user?.id) {
+            Alert.alert(t('errorTitle'), t('somethingWentWrong'));
+            return;
+        }
         if (!title || !city || !budget || !description) {
             Alert.alert(t('missingFields'), t('missingFields'));
             return;
@@ -64,9 +68,10 @@ export default function NewProjectScreen() {
         try {
             const imageUrl = image || 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&q=80';
             const { error } = await supabase.from('projects').insert({
-                owner_id: user?.id,
+                owner_id: user.id,
                 title, city,
-                budget: parseFloat(budget),
+                estimated_budget_minor: Math.trunc(parseFloat(budget) || 0),
+                currency: 'XAF',
                 description,
                 image_url: imageUrl,
                 status: 'pending',
@@ -74,8 +79,8 @@ export default function NewProjectScreen() {
             if (error) throw error;
             Alert.alert(t('success'), t('profileSaved'));
             router.replace('/diaspora');
-        } catch (err: any) {
-            Alert.alert(t('errorTitle'), err.message);
+        } catch (err: unknown) {
+            Alert.alert(t('errorTitle'), err instanceof Error ? err.message : t('somethingWentWrong'));
         } finally {
             setLoading(false);
         }

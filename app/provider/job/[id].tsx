@@ -15,32 +15,47 @@ import {
   Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import PremiumHeader from '@/components/PremiumHeader';
+import ScreenLoader from '@/components/ScreenLoader';
+import PremiumEmptyState from '@/components/PremiumEmptyState';
 import { providerMenuItems } from '@/constants/premiumMenus';
 import { useLanguage } from '@/context/LanguageContext';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
 import {
-  FLOATING_TAB_BAR_HEIGHT,
-  PREMIUM_BG,
-  PREMIUM_GOLD,
-  TEXT_PRIMARY,
-  TEXT_SECONDARY,
-} from '@/constants/layout';
+  ALPHA,
+  GOLD,
+  GOLD_BORDER,
+  GOLD_TINT,
+  SUCCESS,
+  font,
+  glow,
+  icon as iconSize,
+  radius,
+  shadow,
+  space,
+  text,
+  weight,
+  withAlpha,
+} from '@/constants/design';
 import { supabase } from '@/lib/supabase';
+import { resolveProjectBudgetMinor, formatBudgetDisplay } from '@/lib/money';
 import { useAuth } from '@/context/AuthContext';
 import { successFeedback, mediumFeedback } from '@/utils/haptics';
 import { formatTimePosted } from '@/lib/hireProvider';
-import { safeGoBack } from '@/utils/navigation';
+import { requiredRouteParam } from '@/utils/routeParams';
 
 export default function JobDetailsScreen() {
-  const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams();
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const id = requiredRouteParam(params.id);
   const router = useRouter();
   const { user } = useAuth();
   const { t } = useLanguage();
+  const c = usePremiumColors();
+  const offsets = useScreenOffsets();
 
   const [job, setJob] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -81,6 +96,7 @@ export default function JobDetailsScreen() {
   }, [id, user]);
 
   const submitApplication = async () => {
+    if (!id || !user?.id) return;
     if (!bidAmount || !coverLetter.trim()) {
       Alert.alert(t('missingInfo'), t('enterBidAndCoverShort'));
       return;
@@ -89,9 +105,9 @@ export default function JobDetailsScreen() {
     try {
       const { error } = await supabase.from('project_applications').insert({
         project_id: id,
-        provider_id: user?.id,
+        provider_id: user.id,
         bid_amount: parseFloat(bidAmount),
-        cover_letter: coverLetter.trim(),
+        message: coverLetter.trim(),
         status: 'pending',
       });
       if (error) {
@@ -107,8 +123,8 @@ export default function JobDetailsScreen() {
         );
         router.replace('/provider/active');
       }
-    } catch (error: any) {
-      Alert.alert(t('error'), error.message || t('couldNotSendApplication'));
+    } catch (error: unknown) {
+      Alert.alert(t('error'), error instanceof Error ? error.message : t('couldNotSendApplication'));
     } finally {
       setApplying(false);
     }
@@ -124,24 +140,28 @@ export default function JobDetailsScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={PREMIUM_GOLD} size="large" />
-      </View>
-    );
+    return <ScreenLoader />;
   }
 
   if (!job) {
     return (
-      <View style={styles.center}>
-        <Text style={{ color: TEXT_PRIMARY }}>Job not found</Text>
+      <View style={[styles.center, { backgroundColor: c.bg }]}>
+        <PremiumEmptyState
+          icon="briefcase-outline"
+          title="Job not found"
+          subtitle={t('somethingWentWrong')}
+        />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+    <View style={[styles.container, { backgroundColor: c.bg }]}>
+      <StatusBar
+        barStyle={c.isDark ? 'light-content' : 'dark-content'}
+        translucent
+        backgroundColor="transparent"
+      />
       <PremiumHeader
         title={job?.title ?? t('marketTitle')}
         subtitle={job?.city ?? t('unknownLocation')}
@@ -150,14 +170,7 @@ export default function JobDetailsScreen() {
         menuItems={providerMenuItems(router, t)}
       />
 
-      <ScrollView
-        contentContainerStyle={{
-          paddingTop: insets.top + 72,
-          paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40,
-          paddingHorizontal: 20,
-        }}
-        bounces={false}
-      >
+      <ScrollView contentContainerStyle={offsets.content} bounces={false}>
         <View style={styles.imageContainer}>
           <Image
             source={{
@@ -168,21 +181,15 @@ export default function JobDetailsScreen() {
             style={styles.image}
           />
           <LinearGradient colors={['transparent', 'rgba(10,15,26,0.92)']} style={styles.imageOverlay} />
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => safeGoBack(router, '/provider/market')}
-          >
-            <Ionicons name="arrow-back" size={24} color="#fff" />
-          </TouchableOpacity>
           <View style={styles.titleContainer}>
-            <View style={[styles.tag, isAssigned && { backgroundColor: '#16A34A' }]}>
+            <View style={[styles.tag, isAssigned && { backgroundColor: SUCCESS }]}>
               <Text style={styles.tagText}>
                 {isAssigned ? 'MY ACTIVE JOB' : 'OPEN OPPORTUNITY'}
               </Text>
             </View>
             <Text style={styles.title}>{job.title}</Text>
             <View style={styles.locationRow}>
-              <Ionicons name="location" size={16} color={TEXT_SECONDARY} />
+              <Ionicons name="location" size={iconSize.xs} color="#FFFFFF" />
               <Text style={styles.location}>
                 {job.city} · {formatTimePosted(job.created_at)}
               </Text>
@@ -190,32 +197,45 @@ export default function JobDetailsScreen() {
           </View>
         </View>
 
-        <View style={styles.statsRow}>
+        <View
+          style={[
+            styles.statsRow,
+            { backgroundColor: c.surface, borderColor: c.border },
+          ]}
+        >
           <View style={styles.statItem}>
-            <Text style={styles.statLabel}>BUDGET</Text>
-            <Text style={styles.statValue}>{job.budget?.toLocaleString()} CFA</Text>
+            <Text style={[styles.statLabel, { color: c.textSecondary }]}>BUDGET</Text>
+            <Text style={styles.statValue}>{formatBudgetDisplay(resolveProjectBudgetMinor(job ?? {}))}</Text>
           </View>
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
           <View style={styles.statItem}>
-            <Text style={styles.statLabel}>STATUS</Text>
+            <Text style={[styles.statLabel, { color: c.textSecondary }]}>STATUS</Text>
             <Text style={styles.statValue}>{job.status?.toUpperCase()}</Text>
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Scope of Work</Text>
-        <Text style={styles.description}>{job.description || 'No description provided.'}</Text>
+        <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Scope of Work</Text>
+        <Text style={[styles.description, { color: c.textSecondary }]}>
+          {job.description || 'No description provided.'}
+        </Text>
       </ScrollView>
 
-      <BlurView intensity={70} tint="dark" style={styles.footer}>
+      <BlurView
+        intensity={70}
+        tint={c.blurTint}
+        style={[styles.footer, { backgroundColor: c.glass, borderTopColor: c.border }]}
+      >
         <View>
-          <Text style={styles.footerLabel}>Total Payout</Text>
-          <Text style={styles.footerPrice}>{job.budget?.toLocaleString()} CFA</Text>
+          <Text style={[styles.footerLabel, { color: c.textSecondary }]}>Total Payout</Text>
+          <Text style={[styles.footerPrice, { color: c.textPrimary }]}>
+            {formatBudgetDisplay(resolveProjectBudgetMinor(job ?? {}))}
+          </Text>
         </View>
         <TouchableOpacity
           style={[
             styles.acceptBtn,
-            hasApplied && !isAssigned && { backgroundColor: '#475569' },
-            isAssigned && { backgroundColor: PREMIUM_GOLD },
+            hasApplied && !isAssigned && { backgroundColor: c.muted, ...shadow.card },
+            isAssigned && { backgroundColor: GOLD },
           ]}
           onPress={handlePrimary}
           disabled={(hasApplied && !isAssigned) || applying}
@@ -236,23 +256,40 @@ export default function JobDetailsScreen() {
           style={styles.modalOverlay}
         >
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setShowApply(false)} />
-          <BlurView intensity={55} tint="dark" style={styles.modal}>
-            <Text style={styles.modalTitle}>{t('submitApplication') || 'Submit Application'}</Text>
-            <Text style={styles.label}>{t('yourBid') || 'Your Bid Amount'} (CFA)</Text>
+          <BlurView
+            intensity={55}
+            tint={c.blurTint}
+            style={[styles.modal, { backgroundColor: c.glassStrong }]}
+          >
+            <Text style={[styles.modalTitle, { color: c.textPrimary }]}>
+              {t('submitApplication') || 'Submit Application'}
+            </Text>
+            <Text style={[styles.label, { color: c.textSecondary }]}>
+              {t('yourBid') || 'Your Bid Amount'} (CFA)
+            </Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                { backgroundColor: c.surface, borderColor: c.border, color: c.textPrimary },
+              ]}
               keyboardType="numeric"
               placeholder="e.g. 50000"
-              placeholderTextColor={TEXT_SECONDARY}
+              placeholderTextColor={c.muted}
               value={bidAmount}
               onChangeText={setBidAmount}
             />
-            <Text style={styles.label}>{t('coverLetterWhyMe') || 'Cover Letter / Why me'}</Text>
+            <Text style={[styles.label, { color: c.textSecondary }]}>
+              {t('coverLetterWhyMe') || 'Cover Letter / Why me'}
+            </Text>
             <TextInput
-              style={[styles.input, { height: 110, textAlignVertical: 'top' }]}
+              style={[
+                styles.input,
+                { backgroundColor: c.surface, borderColor: c.border, color: c.textPrimary },
+                { height: 110, paddingTop: space.md, textAlignVertical: 'top' },
+              ]}
               multiline
               placeholder="I have 5 years experience..."
-              placeholderTextColor={TEXT_SECONDARY}
+              placeholderTextColor={c.muted}
               value={coverLetter}
               onChangeText={setCoverLetter}
             />
@@ -277,55 +314,48 @@ export default function JobDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: PREMIUM_BG },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: PREMIUM_BG,
+  container: { flex: 1 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  imageContainer: {
+    height: 260,
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+    marginBottom: space.lg,
   },
-  imageContainer: { height: 260, borderRadius: 24, overflow: 'hidden', marginBottom: 18 },
   image: { width: '100%', height: '100%' },
   imageOverlay: { ...StyleSheet.absoluteFillObject },
-  backBtn: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  titleContainer: { position: 'absolute', left: 16, right: 16, bottom: 16 },
+  titleContainer: { position: 'absolute', left: space.md, right: space.md, bottom: space.md },
   tag: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(212,175,55,0.25)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginBottom: 8,
+    backgroundColor: GOLD_TINT,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.sm,
+    marginBottom: space.xs,
   },
-  tagText: { color: PREMIUM_GOLD, fontSize: 11, fontWeight: '800' },
-  title: { color: TEXT_PRIMARY, fontSize: 24, fontWeight: '800' },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  location: { color: TEXT_SECONDARY, fontWeight: '600' },
+  tagText: { ...text.micro, fontWeight: weight.heavy, color: GOLD },
+  title: { ...text.display, color: '#FFFFFF' },
+  location: { ...text.footnote, color: '#FFFFFF' },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    marginTop: space.xs,
+  },
   statsRow: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(17,24,39,0.75)',
-    borderRadius: 18,
-    padding: 16,
+    borderRadius: radius.lg,
+    padding: space.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    marginBottom: 20,
+    marginBottom: space.lg,
+    ...shadow.card,
   },
   statItem: { flex: 1, alignItems: 'center' },
-  divider: { width: 1, backgroundColor: 'rgba(255,255,255,0.1)' },
-  statLabel: { color: TEXT_SECONDARY, fontSize: 11, fontWeight: '800', marginBottom: 4 },
-  statValue: { color: PREMIUM_GOLD, fontSize: 16, fontWeight: '800' },
-  sectionTitle: { color: TEXT_PRIMARY, fontSize: 18, fontWeight: '800', marginBottom: 8 },
-  description: { color: TEXT_SECONDARY, fontSize: 14, lineHeight: 22 },
+  divider: { width: 1 },
+  statLabel: { ...text.label, marginBottom: space.xxs },
+  statValue: { ...text.body, fontWeight: weight.heavy, color: GOLD },
+  sectionTitle: { ...text.subtitle, marginBottom: space.xs },
+  description: { ...text.footnote, lineHeight: 22 },
   footer: {
     position: 'absolute',
     left: 0,
@@ -334,56 +364,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 20,
+    padding: space.lg,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(10,15,26,0.92)',
+    ...shadow.floating,
   },
-  footerLabel: { color: TEXT_SECONDARY, fontSize: 12, fontWeight: '700' },
-  footerPrice: { color: TEXT_PRIMARY, fontSize: 20, fontWeight: '800' },
+  footerLabel: text.caption,
+  footerPrice: text.title,
   acceptBtn: {
-    backgroundColor: PREMIUM_GOLD,
-    paddingHorizontal: 22,
-    paddingVertical: 14,
-    borderRadius: 14,
+    backgroundColor: GOLD,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderRadius: radius.lg,
+    ...glow(GOLD),
   },
-  acceptText: { color: '#0A0F1A', fontWeight: '800', fontSize: 14 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(10,15,26,0.7)', justifyContent: 'flex-end' },
+  acceptText: { ...text.footnote, fontWeight: weight.heavy, color: '#0A0F1A' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: withAlpha('#000000', ALPHA.scrim),
+    justifyContent: 'flex-end',
+  },
   modal: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 22,
-    paddingBottom: 36,
-    backgroundColor: 'rgba(17,24,39,0.96)',
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
+    padding: space.lg,
+    paddingBottom: space.xxl,
     borderTopWidth: 1,
-    borderColor: 'rgba(212,175,55,0.25)',
+    borderColor: GOLD_BORDER,
     overflow: 'hidden',
   },
-  modalTitle: { color: TEXT_PRIMARY, fontSize: 20, fontWeight: '800', marginBottom: 12 },
+  modalTitle: { ...text.title, marginBottom: space.sm },
   label: {
-    color: TEXT_SECONDARY,
-    fontSize: 12,
-    fontWeight: '800',
-    marginBottom: 8,
-    marginTop: 10,
-    textTransform: 'uppercase',
+    ...text.label,
+    marginBottom: space.xs,
+    marginTop: space.sm,
   },
   input: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 14,
-    padding: 14,
-    color: TEXT_PRIMARY,
-    fontSize: 16,
+    borderRadius: radius.lg,
+    height: 56,
+    paddingHorizontal: space.md,
+    fontSize: font.body,
+    fontWeight: weight.semibold,
   },
   submitBtn: {
-    marginTop: 20,
-    backgroundColor: PREMIUM_GOLD,
-    height: 52,
-    borderRadius: 14,
+    marginTop: space.lg,
+    backgroundColor: GOLD,
+    height: 56,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
+    ...glow(GOLD),
   },
-  submitText: { color: '#0A0F1A', fontWeight: '800', fontSize: 15 },
+  submitText: { ...text.footnote, fontWeight: weight.heavy, color: '#0A0F1A' },
 });

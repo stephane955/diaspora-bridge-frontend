@@ -28,8 +28,10 @@ import PremiumHeader from '@/components/PremiumHeader';
 import PremiumEmptyState from '@/components/PremiumEmptyState';
 import PulseLoader from '@/components/PulseLoader';
 import { providerMenuItems } from '@/constants/premiumMenus';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
 import { mediumFeedback, successFeedback, lightFeedback } from '@/utils/haptics';
 import { formatTimePosted } from '@/lib/hireProvider';
+import { resolveProjectBudgetMinor, formatBudgetDisplay } from '@/lib/money';
 import {
   SCROLL_BOTTOM_INSET,
   PREMIUM_BG,
@@ -43,6 +45,7 @@ const blurhash = 'L6PZfSi_.AyE_3t7t7R**0o#DgR4';
 
 export default function MarketScreen() {
   const insets = useSafeAreaInsets();
+  const offsets = useScreenOffsets();
   const { user } = useAuth();
   const router = useRouter();
   const { t } = useLanguage();
@@ -69,11 +72,15 @@ export default function MarketScreen() {
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('verification_status, skills')
+          .select('verification_status, bio, role')
           .eq('id', user.id)
           .single();
         setUserProfile(profile);
-        userSkills = profile?.skills || [];
+        // P01 profiles has no skills column — soft-match on bio tokens only
+        userSkills = (profile?.bio ?? '')
+          .split(/[,;/|]+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
 
       let query = supabase
@@ -129,7 +136,7 @@ export default function MarketScreen() {
     lightFeedback();
     try {
       await Share.share({
-        message: `${t('brandName') || 'Diaspora Bridge'}: Check out this job in ${job.city}!\n\n*${job.title}*\nBudget: ${job.budget?.toLocaleString()} CFA\n\nApply now on the app!`,
+        message: `${t('brandName') || 'Diaspora Bridge'}: Check out this job in ${job.city}!\n\n*${job.title}*\nBudget: ${formatBudgetDisplay(resolveProjectBudgetMinor(job))}\n\nApply now on the app!`,
       });
     } catch (error) {
       console.log(error);
@@ -147,7 +154,7 @@ export default function MarketScreen() {
           setJobs((prev) => prev.filter((j) => j.id !== jobId));
           if (user) {
             await supabase.from('hidden_projects').insert({
-              user_id: user.id,
+              provider_id: user.id,
               project_id: jobId,
             });
           }
@@ -182,19 +189,34 @@ export default function MarketScreen() {
 
     setApplying(true);
     try {
-      const payload: Record<string, unknown> = {
-        project_id: selectedJob.id,
-        provider_id: user?.id,
-        bid_amount: parseFloat(bidAmount),
-        cover_letter: coverLetter.trim(),
-        status: 'pending',
-      };
-      if (materialEstimate.trim()) payload.material_estimate = parseFloat(materialEstimate) || null;
-      if (timeToCompletionDays.trim()) {
-        payload.time_to_completion_days = parseInt(timeToCompletionDays, 10) || null;
+      if (!user?.id || !selectedJob?.id) {
+        Alert.alert(t('error'), t('missingInfo') || 'Missing account or job.');
+        return;
       }
 
-      const { error } = await supabase.from('project_applications').insert(payload);
+      const insertRow: {
+        project_id: string;
+        provider_id: string;
+        bid_amount: number;
+        message: string;
+        status: string;
+        material_estimate?: number | null;
+        time_to_completion_days?: number | null;
+      } = {
+        project_id: selectedJob.id,
+        provider_id: user.id,
+        bid_amount: parseFloat(bidAmount),
+        message: coverLetter.trim(),
+        status: 'pending',
+      };
+      if (materialEstimate.trim()) {
+        insertRow.material_estimate = parseFloat(materialEstimate) || null;
+      }
+      if (timeToCompletionDays.trim()) {
+        insertRow.time_to_completion_days = parseInt(timeToCompletionDays, 10) || null;
+      }
+
+      const { error } = await supabase.from('project_applications').insert(insertRow);
 
       if (error) {
         if (error.code === '23505') {
@@ -223,9 +245,11 @@ export default function MarketScreen() {
   };
 
   const renderJob = ({ item }: { item: any }) => {
-    const isRecommended = userProfile?.skills?.some((s: string) =>
-      item.title?.toLowerCase().includes(s.toLowerCase()),
-    );
+    const isRecommended = (userProfile?.bio ?? '')
+      .toLowerCase()
+      .split(/[,;/|\s]+/)
+      .filter(Boolean)
+      .some((s: string) => item.title?.toLowerCase().includes(s.toLowerCase()));
     const scope = (item.description || item.scope || '').trim();
 
     return (
@@ -290,7 +314,7 @@ export default function MarketScreen() {
                   {(t('budget') || 'CLIENT BUDGET').toUpperCase()}
                 </Text>
                 <Text style={styles.cardBudget}>
-                  {(item.budget || 0).toLocaleString()} CFA
+                  {formatBudgetDisplay(resolveProjectBudgetMinor(item))}
                 </Text>
               </View>
               <View style={styles.arrowBtn}>
@@ -313,17 +337,14 @@ export default function MarketScreen() {
         menuItems={providerMenuItems(router, t)}
       />
 
-      <View style={[styles.headerContainer, { paddingTop: insets.top + 72 }]}>
+      <View style={[styles.headerContainer, { paddingTop: offsets.top }]}>
         <LinearGradient colors={['#0A0F1A', '#111827']} style={styles.headerGradient}>
-          <View style={styles.headerTop}>
-            <Text style={styles.headerTitle}>{t('marketTitle') || 'Find Work'}</Text>
-            {userProfile?.verification_status === 'verified' ? (
-              <View style={styles.verifiedBadge}>
-                <Ionicons name="checkmark-circle" size={14} color={PREMIUM_GOLD} />
-                <Text style={styles.verifiedText}>{t('verified') || 'Verified'}</Text>
-              </View>
-            ) : null}
-          </View>
+          {userProfile?.verification_status === 'verified' ? (
+            <View style={styles.verifiedBadge}>
+              <Ionicons name="checkmark-circle" size={14} color={PREMIUM_GOLD} />
+              <Text style={styles.verifiedText}>{t('verified') || 'Verified'}</Text>
+            </View>
+          ) : null}
 
           <View style={styles.searchContainer}>
             <Ionicons name="search" size={20} color={TEXT_SECONDARY} />
@@ -343,7 +364,6 @@ export default function MarketScreen() {
               horizontal
               showsHorizontalScrollIndicator={false}
               data={CITIES}
-              estimatedItemSize={80}
               renderItem={({ item }: any) => (
                 <TouchableOpacity
                   style={[styles.chip, selectedCity === item && styles.chipActive]}
@@ -368,7 +388,6 @@ export default function MarketScreen() {
           <FlashList
             data={jobs}
             renderItem={renderJob}
-            estimatedItemSize={260}
             contentContainerStyle={{
               paddingBottom: SCROLL_BOTTOM_INSET,
               paddingTop: 16,
@@ -410,7 +429,7 @@ export default function MarketScreen() {
               <Text style={styles.jobBudget}>
                 {t('clientBudget') || "Client's Budget"}:{' '}
                 <Text style={{ fontWeight: '800', color: PREMIUM_GOLD }}>
-                  {selectedJob?.budget?.toLocaleString()} CFA
+                  {formatBudgetDisplay(resolveProjectBudgetMinor(selectedJob ?? {}))}
                 </Text>
               </Text>
 
@@ -489,21 +508,10 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   headerContainer: { overflow: 'hidden' },
   headerGradient: { paddingHorizontal: 20, paddingBottom: 20 },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: TEXT_PRIMARY,
-    letterSpacing: -0.5,
-  },
   verifiedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-end',
     backgroundColor: 'rgba(212,175,55,0.12)',
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -511,6 +519,7 @@ const styles = StyleSheet.create({
     gap: 6,
     borderWidth: 1,
     borderColor: 'rgba(212,175,55,0.3)',
+    marginBottom: 12,
   },
   verifiedText: { fontSize: 12, fontWeight: '700', color: PREMIUM_GOLD },
   searchContainer: {

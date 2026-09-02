@@ -1,8 +1,15 @@
 -- =============================================================================
--- Diaspora Bridge — Phase 3B: Payment intents + escrow funding posting
--- Requires: Phase 1, Phase 3A, Phase 3B.0 multisig surgical migration.
+-- Diaspora Bridge — Phase 3B: Payment intents + escrow funding posting (C06)
+-- Active migration: 20260902191944_c06_phase3b_payment_intent_escrow_funding.sql
+-- Promoted from future_migrations/c06_phase3b_escrow_funding.sql (C06-R + provider-scoped PSP identity)
+-- Requires: Phase 1, 3A, Phase 5, C05 request-scoped multisig (20260902183828).
 -- All cash movements via ledger_post_journal only.
--- DO NOT apply to live until operator requests.
+--
+-- Accounting (Decision #21 OPEN / C04 not built):
+--   Gross inbound funding ONLY. No hardcoded 1.5% / platform_insurance deduction.
+--   Platform service fee posting deferred to C04.
+-- XAF-only infrastructure. No FX. No PSP activation. No edge webhook deploy.
+-- Live money readiness remains NO after schema apply.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -142,22 +149,19 @@ BEGIN
       END IF;
 
     WHEN 'escrow_funding'::public.ledger_journal_type THEN
-      -- DR exactly one psp_*; CR project_escrow; optional CR platform_insurance
+      -- C06-R: DR exactly one psp_*; CR project_escrow for FULL gross amount.
+      -- Fee/insurance split deferred to C04 (Decision #21 OPEN).
+      IF v_n IS DISTINCT FROM 2 THEN
+        RAISE EXCEPTION 'escrow_funding requires exactly two lines (gross funding; fees deferred to C04)'
+          USING ERRCODE = '22023';
+      END IF;
       IF cardinality(v_debit_purposes) IS DISTINCT FROM 1
          OR v_debit_purposes[1] NOT IN ('psp_stripe','psp_momo','psp_orange') THEN
         RAISE EXCEPTION 'escrow_funding must debit exactly one psp_*' USING ERRCODE = '22023';
       END IF;
-      IF NOT ('project_escrow' = ANY (v_credit_purposes)) THEN
-        RAISE EXCEPTION 'escrow_funding must credit project_escrow' USING ERRCODE = '22023';
-      END IF;
-      IF EXISTS (
-        SELECT 1 FROM unnest(v_credit_purposes) c(p)
-        WHERE c.p NOT IN ('project_escrow','platform_insurance')
-      ) THEN
-        RAISE EXCEPTION 'escrow_funding credit side invalid' USING ERRCODE = '22023';
-      END IF;
-      IF v_n NOT IN (2, 3) THEN
-        RAISE EXCEPTION 'escrow_funding expects 2 or 3 lines' USING ERRCODE = '22023';
+      IF cardinality(v_credit_purposes) IS DISTINCT FROM 1
+         OR v_credit_purposes[1] IS DISTINCT FROM 'project_escrow' THEN
+        RAISE EXCEPTION 'escrow_funding must credit project_escrow only' USING ERRCODE = '22023';
       END IF;
 
     ELSE
@@ -176,7 +180,8 @@ CREATE TABLE IF NOT EXISTS public.payments (
   client_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
   amount_xaf bigint NOT NULL CHECK (amount_xaf > 0),
   psp_provider text NOT NULL CHECK (psp_provider IN ('stripe', 'momo', 'orange')),
-  psp_ref text UNIQUE,
+  -- Provider-scoped uniqueness: momo/REF1 and orange/REF1 are independent
+  psp_ref text,
   status text NOT NULL DEFAULT 'requires_action'
     CHECK (status IN ('requires_action', 'processing', 'succeeded', 'failed', 'canceled')),
   client_request_id uuid NOT NULL UNIQUE,
@@ -184,7 +189,8 @@ CREATE TABLE IF NOT EXISTS public.payments (
     REFERENCES public.ledger_journals(id) ON DELETE RESTRICT,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  ledger_posted_at timestamptz
+  ledger_posted_at timestamptz,
+  CONSTRAINT payments_psp_provider_ref_uidx UNIQUE (psp_provider, psp_ref)
 );
 
 -- Fail loud if a pre-existing payments table does not match Phase 3B contract
@@ -216,6 +222,28 @@ CREATE INDEX IF NOT EXISTS payments_status_idx ON public.payments (status);
 CREATE INDEX IF NOT EXISTS payments_psp_ref_idx ON public.payments (psp_ref)
   WHERE psp_ref IS NOT NULL;
 
+-- Bridge: client_request_id = escrow_funding_requests.id (C05 must apply first)
+DO $$
+BEGIN
+  IF to_regclass('public.escrow_funding_requests') IS NULL THEN
+    RAISE EXCEPTION
+      'C06 requires C05 escrow_funding_requests — apply C05 before C06'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'payments_client_request_id_fkey'
+  ) THEN
+    ALTER TABLE public.payments
+      ADD CONSTRAINT payments_client_request_id_fkey
+      FOREIGN KEY (client_request_id)
+      REFERENCES public.escrow_funding_requests(id)
+      ON DELETE RESTRICT;
+  END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.payments_set_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -236,8 +264,20 @@ CREATE TRIGGER payments_set_updated_at_trg
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "payments_select_own" ON public.payments;
-CREATE POLICY "payments_select_own" ON public.payments
-  FOR SELECT USING (client_id = auth.uid());
+CREATE POLICY "payments_select_participant" ON public.payments
+  FOR SELECT USING (
+    client_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM public.projects p
+      WHERE p.id = project_id
+        AND (
+          p.owner_id = auth.uid()
+          OR auth.uid() = ANY (
+            ARRAY(SELECT DISTINCT x FROM unnest(COALESCE(p.funder_ids, ARRAY[]::uuid[])) AS x WHERE x IS NOT NULL)
+          )
+        )
+    )
+  );
 
 -- No INSERT/UPDATE/DELETE policies for authenticated (deny by default)
 
@@ -313,6 +353,8 @@ DECLARE
   v_funders uuid[];
   v_payment_id uuid;
   v_row public.payments%ROWTYPE;
+  v_req public.escrow_funding_requests%ROWTYPE;
+  v_cofunder_n int;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'authentication required' USING ERRCODE = '42501';
@@ -330,28 +372,7 @@ BEGIN
     RAISE EXCEPTION 'invalid psp_provider' USING ERRCODE = '23514';
   END IF;
 
-  IF NOT public.payment_caller_may_fund_project(p_project_id, v_uid) THEN
-    RAISE EXCEPTION 'not authorized to fund this project' USING ERRCODE = '42501';
-  END IF;
-
-  SELECT COALESCE(funder_ids, ARRAY[]::uuid[])
-    INTO v_funders
-  FROM public.projects
-  WHERE id = p_project_id;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'project not found' USING ERRCODE = 'P0002';
-  END IF;
-
-  -- D2: multi-sig only when funder_ids.length > 1
-  IF cardinality(v_funders) > 1 THEN
-    IF NOT public.escrow_all_funders_approved(p_project_id) THEN
-      RAISE EXCEPTION 'multi-sig approvals incomplete or expired (72h)'
-        USING ERRCODE = 'P0001';
-    END IF;
-  END IF;
-
-  -- Idempotent create
+  -- Idempotent path FIRST: existing payment returns without re-checking approvals
   SELECT * INTO v_row
   FROM public.payments
   WHERE client_request_id = p_client_request_id;
@@ -373,6 +394,63 @@ BEGIN
     );
   END IF;
 
+  IF NOT public.payment_caller_may_fund_project(p_project_id, v_uid) THEN
+    RAISE EXCEPTION 'not authorized to fund this project' USING ERRCODE = '42501';
+  END IF;
+
+  -- Lock funding request (C05). id MUST equal client_request_id.
+  SELECT * INTO v_req
+  FROM public.escrow_funding_requests
+  WHERE id = p_client_request_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'funding request required (create via rpc_create_funding_request)'
+      USING ERRCODE = 'P0002';
+  END IF;
+
+  IF v_req.project_id IS DISTINCT FROM p_project_id
+     OR v_req.requested_by IS DISTINCT FROM v_uid
+     OR v_req.amount_xaf IS DISTINCT FROM p_amount_xaf THEN
+    RAISE EXCEPTION 'funding request scope mismatch (project/requester/amount)'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  IF v_req.status = 'revoked' THEN
+    RAISE EXCEPTION 'funding request revoked' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- Decision #31: N-of-N when DISTINCT co-funder count >= 1 (not > 1)
+  SELECT ARRAY(
+           SELECT DISTINCT x
+           FROM unnest(COALESCE(funder_ids, ARRAY[]::uuid[])) AS x
+           WHERE x IS NOT NULL
+         )
+    INTO v_funders
+  FROM public.projects
+  WHERE id = p_project_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'project not found' USING ERRCODE = 'P0002';
+  END IF;
+
+  v_cofunder_n := COALESCE(cardinality(v_funders), 0);
+
+  IF v_req.status = 'pending' THEN
+    IF v_cofunder_n >= 1 THEN
+      IF NOT public.escrow_all_funders_approved_for_request(p_client_request_id) THEN
+        RAISE EXCEPTION 'multi-sig approvals incomplete or expired (72h)'
+          USING ERRCODE = 'P0001';
+      END IF;
+    END IF;
+  ELSIF v_req.status = 'consumed' THEN
+    -- Payment missing but request consumed: abnormal; do not silently recreate
+    RAISE EXCEPTION 'funding request already consumed without matching payment'
+      USING ERRCODE = 'P0001';
+  ELSE
+    RAISE EXCEPTION 'funding request not pending' USING ERRCODE = 'P0001';
+  END IF;
+
   BEGIN
     INSERT INTO public.payments (
       project_id, client_id, amount_xaf, psp_provider, client_request_id, status
@@ -380,9 +458,14 @@ BEGIN
       p_project_id, v_uid, p_amount_xaf, v_provider, p_client_request_id, 'requires_action'
     )
     RETURNING id INTO v_payment_id;
+
+    PERFORM public.escrow_mark_funding_request_consumed(p_client_request_id);
   EXCEPTION
     WHEN unique_violation THEN
       SELECT * INTO v_row FROM public.payments WHERE client_request_id = p_client_request_id;
+      IF NOT FOUND THEN
+        RAISE;
+      END IF;
       IF v_row.client_id IS DISTINCT FROM v_uid
          OR v_row.project_id IS DISTINCT FROM p_project_id THEN
         RAISE EXCEPTION 'client_request_id already used' USING ERRCODE = '42501';
@@ -392,6 +475,8 @@ BEGIN
         RAISE EXCEPTION 'client_request_id reuse with different amount/provider'
           USING ERRCODE = 'P0001';
       END IF;
+      -- Concurrent winner already created payment; ensure request consumed
+      PERFORM public.escrow_mark_funding_request_consumed(p_client_request_id);
       RETURN jsonb_build_object(
         'payment_id', v_row.id,
         'status', v_row.status,
@@ -523,8 +608,6 @@ DECLARE
   v_jwt_role text;
   v_pay public.payments%ROWTYPE;
   v_psp_purpose public.ledger_account_purpose;
-  v_fee bigint;
-  v_net bigint;
   v_lines jsonb;
   v_res jsonb;
   v_journal_id uuid;
@@ -558,7 +641,10 @@ BEGIN
       'payment_id', v_pay.id,
       'journal_id', v_pay.ledger_journal_id,
       'idempotent_replay', true,
-      'status', v_pay.status
+      'status', v_pay.status,
+      'gross_xaf', v_pay.amount_xaf,
+      'project_escrow_credit_xaf', v_pay.amount_xaf,
+      'platform_fee_xaf', 0
     );
   END IF;
 
@@ -577,7 +663,10 @@ BEGIN
       'payment_id', p_payment_id,
       'journal_id', v_journal_id,
       'idempotent_replay', true,
-      'status', 'succeeded'
+      'status', 'succeeded',
+      'gross_xaf', v_pay.amount_xaf,
+      'project_escrow_credit_xaf', v_pay.amount_xaf,
+      'platform_fee_xaf', 0
     );
   END IF;
 
@@ -586,17 +675,13 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
+  -- Amount ALWAYS from payment row (never caller). No C05 re-check after PSP success.
   v_psp_purpose := public.ledger_psp_purpose_for_provider(v_pay.psp_provider);
   IF v_psp_purpose IS NULL THEN
     RAISE EXCEPTION 'unknown psp_provider' USING ERRCODE = '23514';
   END IF;
 
-  v_fee := TRUNC(v_pay.amount_xaf * 0.015);
-  v_net := v_pay.amount_xaf - v_fee;
-  IF v_net <= 0 THEN
-    RAISE EXCEPTION 'net escrow must be > 0' USING ERRCODE = '23514';
-  END IF;
-
+  -- Gross funding: DR psp_* amount_xaf / CR project_escrow amount_xaf (fees → C04)
   v_lines := jsonb_build_array(
     jsonb_build_object(
       'purpose', v_psp_purpose::text,
@@ -612,25 +697,11 @@ BEGIN
       'owner_type', 'project',
       'owner_id', v_pay.project_id,
       'debit_xaf', 0,
-      'credit_xaf', v_net,
+      'credit_xaf', v_pay.amount_xaf,
       'project_id', v_pay.project_id,
       'payment_id', v_pay.id
     )
   );
-
-  IF v_fee > 0 THEN
-    v_lines := v_lines || jsonb_build_array(
-      jsonb_build_object(
-        'purpose', 'platform_insurance',
-        'owner_type', 'platform',
-        'owner_id', NULL,
-        'debit_xaf', 0,
-        'credit_xaf', v_fee,
-        'project_id', v_pay.project_id,
-        'payment_id', v_pay.id
-      )
-    );
-  END IF;
 
   v_res := public.ledger_post_journal(
     'escrow_funding'::public.ledger_journal_type,
@@ -655,19 +726,37 @@ BEGIN
     'payment_id', p_payment_id,
     'journal_id', v_journal_id,
     'idempotent_replay', COALESCE((v_res->>'idempotent_replay')::boolean, false),
-    'insurance_fee_xaf', v_fee,
-    'net_escrow_xaf', v_net,
     'gross_xaf', v_pay.amount_xaf,
+    'project_escrow_credit_xaf', v_pay.amount_xaf,
+    'platform_fee_xaf', 0,
     'status', 'succeeded'
   );
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.ledger_canonical_psp_event_id(
+  p_psp_provider text,
+  p_psp_event_id text
+)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = pg_catalog, public
+AS $$
+  SELECT lower(trim(p_psp_provider)) || ':' || trim(p_psp_event_id);
+$$;
+
+COMMENT ON FUNCTION public.ledger_canonical_psp_event_id(text, text) IS
+  'C06: namespace PSP event IDs as provider:raw_id for Phase1 UNIQUE(psp_event_id) safety.';
+
 -- -----------------------------------------------------------------------------
--- Webhook: begin / complete (retry-safe)
+-- Webhook: begin / complete (retry-safe; provider-namespaced event identity)
 -- -----------------------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.rpc_begin_psp_webhook_event(text, text, text);
+
 CREATE OR REPLACE FUNCTION public.rpc_begin_psp_webhook_event(
+  p_psp_provider text,
   p_psp_event_id text,
   p_event_type text,
   p_psp_ref text
@@ -682,6 +771,9 @@ DECLARE
   v_id uuid;
   v_status public.ledger_event_status;
   v_journal uuid;
+  v_provider text := lower(trim(COALESCE(p_psp_provider, '')));
+  v_raw_event text := trim(COALESCE(p_psp_event_id, ''));
+  v_canonical text;
 BEGIN
   v_jwt_role := NULLIF(current_setting('request.jwt.claim.role', true), '');
   BEGIN
@@ -702,18 +794,25 @@ BEGIN
     RAISE EXCEPTION 'service_role required' USING ERRCODE = '42501';
   END IF;
 
-  IF p_psp_event_id IS NULL OR length(trim(p_psp_event_id)) = 0 THEN
+  IF v_provider NOT IN ('stripe', 'momo', 'orange') THEN
+    RAISE EXCEPTION 'invalid psp_provider' USING ERRCODE = '23514';
+  END IF;
+
+  IF length(v_raw_event) = 0 THEN
     RAISE EXCEPTION 'psp_event_id required' USING ERRCODE = '23502';
   END IF;
 
+  v_canonical := public.ledger_canonical_psp_event_id(v_provider, v_raw_event);
+
   BEGIN
     INSERT INTO public.ledger_posted_events (psp_event_id, event_type, psp_ref, status)
-    VALUES (p_psp_event_id, p_event_type, p_psp_ref, 'received')
+    VALUES (v_canonical, p_event_type, p_psp_ref, 'received')
     RETURNING id INTO v_id;
 
     RETURN jsonb_build_object(
       'proceed', true,
       'event_id', v_id,
+      'canonical_psp_event_id', v_canonical,
       'status', 'received',
       'is_new', true
     );
@@ -722,13 +821,14 @@ BEGIN
       SELECT id, status, journal_id
         INTO v_id, v_status, v_journal
       FROM public.ledger_posted_events
-      WHERE psp_event_id = p_psp_event_id
+      WHERE psp_event_id = v_canonical
       FOR UPDATE;
 
       IF v_status = 'processed'::public.ledger_event_status THEN
         RETURN jsonb_build_object(
           'proceed', false,
           'event_id', v_id,
+          'canonical_psp_event_id', v_canonical,
           'status', v_status,
           'journal_id', v_journal,
           'is_new', false,
@@ -736,7 +836,6 @@ BEGIN
         );
       END IF;
 
-      -- received / failed / ignored → allow retry
       UPDATE public.ledger_posted_events
       SET event_type = COALESCE(p_event_type, event_type),
           psp_ref = COALESCE(p_psp_ref, psp_ref),
@@ -747,6 +846,7 @@ BEGIN
       RETURN jsonb_build_object(
         'proceed', true,
         'event_id', v_id,
+        'canonical_psp_event_id', v_canonical,
         'status', 'received',
         'is_new', false,
         'retry', true
@@ -886,7 +986,8 @@ REVOKE ALL ON FUNCTION public.payment_caller_may_fund_project(uuid, uuid) FROM P
 REVOKE ALL ON FUNCTION public.rpc_create_payment_intent(uuid, bigint, text, uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.rpc_attach_payment_psp_ref(uuid, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.rpc_post_escrow_funding(uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.rpc_begin_psp_webhook_event(text, text, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.rpc_begin_psp_webhook_event(text, text, text, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ledger_canonical_psp_event_id(text, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.rpc_complete_psp_webhook_event(uuid, public.ledger_event_status, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.rpc_mark_payment_succeeded(uuid, text, bigint, text, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.payments_set_updated_at() FROM PUBLIC, anon, authenticated;
@@ -898,15 +999,19 @@ GRANT SELECT ON TABLE public.payments TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.rpc_create_payment_intent(uuid, bigint, text, uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.rpc_attach_payment_psp_ref(uuid, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.rpc_post_escrow_funding(uuid) TO service_role;
-GRANT EXECUTE ON FUNCTION public.rpc_begin_psp_webhook_event(text, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.rpc_begin_psp_webhook_event(text, text, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.ledger_canonical_psp_event_id(text, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.rpc_complete_psp_webhook_event(uuid, public.ledger_event_status, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.rpc_mark_payment_succeeded(uuid, text, bigint, text, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.payment_caller_may_fund_project(uuid, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.ledger_psp_purpose_for_provider(text) TO service_role;
 
 COMMENT ON FUNCTION public.rpc_create_payment_intent IS
-  'Phase 3B: create funding intent; auth.uid() authority; D2 multi-sig when funder_ids > 1.';
+  'Phase 3B: create funding intent; binds C05 escrow_funding_requests.id (=client_request_id); '
+  'N-of-N when distinct co-funders >= 1; consumes request atomically; no approval re-check at ledger.';
 COMMENT ON FUNCTION public.rpc_post_escrow_funding IS
-  'Phase 3B: post escrow_funding via ledger_post_journal for succeeded payments only.';
+  'Phase 3B: post escrow_funding via ledger_post_journal for succeeded payments only. '
+  'Gross amount_xaf from payment row → project_escrow. No C05 re-check. Fees deferred to C04.';
 COMMENT ON TABLE public.payments IS
-  'Phase 3B PSP funding intents. Cash only after webhook success + ledger_post_journal.';
+  'Phase 3B PSP funding intents (XAF-only). Cash only after trusted success + ledger_post_journal. '
+  'status=succeeded means PSP confirmed; ledger_journal_id proves accounting posted.';

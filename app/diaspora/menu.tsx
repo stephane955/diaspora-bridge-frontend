@@ -6,16 +6,26 @@ import {
     TouchableOpacity,
     ScrollView,
     Alert,
-    Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { lightFeedback, mediumFeedback } from '@/utils/haptics';
-import NavigationBar from '@/components/NavigationBar';
-import { theme } from '@/constants/theme';
+import PremiumHeader from '@/components/PremiumHeader';
+import { clientMenuItems } from '@/constants/premiumMenus';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
+import {
+    ALPHA,
+    DANGER,
+    icon as iconSize,
+    radius,
+    shadow,
+    space,
+    text,
+    withAlpha,
+} from '@/constants/design';
 
 const NAV_ITEMS: Array<{
     key: string;
@@ -40,10 +50,11 @@ const MENU_ITEMS: Array<{
 ];
 
 export default function MenuScreen() {
-    const insets = useSafeAreaInsets();
     const router = useRouter();
     const { logout } = useAuth();
     const { t } = useLanguage();
+    const c = usePremiumColors();
+    const offsets = useScreenOffsets();
 
     const handleLogout = () => {
         mediumFeedback();
@@ -64,78 +75,69 @@ export default function MenuScreen() {
         );
     };
 
+    const renderRow = (item: { key: string; href: any; labelKey: string; icon: keyof typeof Ionicons.glyphMap }) => (
+        <TouchableOpacity
+            key={item.key}
+            activeOpacity={0.8}
+            onPress={() => {
+                lightFeedback();
+                router.push(item.href);
+            }}
+            style={styles.cardTouch}
+        >
+            <View
+                style={[
+                    styles.card,
+                    { backgroundColor: c.surface, borderColor: c.border },
+                ]}
+            >
+                <View style={styles.cardLeft}>
+                    <View style={[styles.iconWrap, { backgroundColor: withAlpha(c.gold, ALPHA.medium) }]}>
+                        <Ionicons name={item.icon} size={iconSize.md} color={c.gold} />
+                    </View>
+                    <Text style={[styles.cardLabel, { color: c.textPrimary }]}>
+                        {t(item.labelKey) ?? item.labelKey}
+                    </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={iconSize.sm} color={c.muted} />
+            </View>
+        </TouchableOpacity>
+    );
+
     return (
-        <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-            <NavigationBar title={t('menuTitle') ?? 'Menu'} showBack dynamicColor={theme.colors.active} />
+        <View style={[styles.container, { backgroundColor: c.bg }]}>
+            <PremiumHeader
+                title={t('menuTitle') ?? 'Menu'}
+                showBack
+                fallbackRoute="/diaspora"
+                menuItems={clientMenuItems(router, t)}
+            />
             <ScrollView
                 style={styles.scroll}
-                contentContainerStyle={[styles.scrollContent, { paddingBottom: 120, paddingHorizontal: theme.spacing.lg }]}
+                contentContainerStyle={offsets.content}
                 showsVerticalScrollIndicator={false}
             >
-
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>{t('menuNavigate') ?? 'Navigate'}</Text>
-                    <View style={styles.cardGroup}>
-                        {NAV_ITEMS.map((item) => (
-                            <TouchableOpacity
-                                key={item.key}
-                                activeOpacity={0.8}
-                                onPress={() => {
-                                    lightFeedback();
-                                    router.push(item.href);
-                                }}
-                                style={styles.cardTouch}
-                            >
-                                <View style={[styles.card, styles.cardSurface]}>
-                                    <View style={styles.cardLeft}>
-                                        <View style={styles.iconWrap}>
-                                            <Ionicons name={item.icon} size={22} color={theme.colors.active} />
-                                        </View>
-                                        <Text style={styles.cardLabel}>{t(item.labelKey) ?? item.labelKey}</Text>
-                                    </View>
-                                    <Ionicons name="chevron-forward" size={20} color={theme.colors.textSubtle} />
-                                </View>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
+                    <Text style={[styles.sectionTitle, { color: c.muted }]}>
+                        {t('menuNavigate') ?? 'Navigate'}
+                    </Text>
+                    <View style={styles.cardGroup}>{NAV_ITEMS.map(renderRow)}</View>
                 </View>
 
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>{t('menuAccount') ?? 'Account'}</Text>
-                    <View style={styles.cardGroup}>
-                    {MENU_ITEMS.map((item) => (
-                        <TouchableOpacity
-                            key={item.key}
-                            activeOpacity={0.8}
-                            onPress={() => {
-                                lightFeedback();
-                                router.push(item.href);
-                            }}
-                            style={styles.cardTouch}
-                        >
-                            <View style={[styles.card, styles.cardSurface]}>
-                                <View style={styles.cardLeft}>
-                                    <View style={styles.iconWrap}>
-                                        <Ionicons name={item.icon} size={22} color={theme.colors.active} />
-                                    </View>
-                                    <Text style={styles.cardLabel}>{t(item.labelKey)}</Text>
-                                </View>
-                                <Ionicons name="chevron-forward" size={20} color={theme.colors.textSubtle} />
-                            </View>
-                        </TouchableOpacity>
-                    ))}
-                    </View>
+                    <Text style={[styles.sectionTitle, { color: c.muted }]}>
+                        {t('menuAccount') ?? 'Account'}
+                    </Text>
+                    <View style={styles.cardGroup}>{MENU_ITEMS.map(renderRow)}</View>
                 </View>
-
-                <View style={styles.spacer} />
 
                 <TouchableOpacity
                     activeOpacity={0.8}
                     onPress={handleLogout}
-                    style={styles.logoutTouch}
+                    style={styles.cardTouch}
                 >
-                    <View style={styles.logoutBtn}>
-                        <Ionicons name="log-out-outline" size={22} color={theme.colors.danger} />
+                    <View style={[styles.logoutBtn, { backgroundColor: c.surface }]}>
+                        <Ionicons name="log-out-outline" size={iconSize.md} color={DANGER} />
                         <Text style={styles.logoutText}>{t('menuLogout')}</Text>
                     </View>
                 </TouchableOpacity>
@@ -147,45 +149,32 @@ export default function MenuScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.background,
     },
     scroll: {
         flex: 1,
     },
-    scrollContent: {
-        paddingTop: theme.spacing.md,
-    },
     section: {
-        marginBottom: theme.spacing.xl,
+        marginBottom: space.xl,
     },
     sectionTitle: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: theme.colors.textMuted,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-        marginBottom: theme.spacing.sm,
+        ...text.label,
+        marginBottom: space.sm,
     },
     cardGroup: {
-        gap: theme.spacing.sm,
+        gap: space.sm,
     },
     cardTouch: {
-        borderRadius: theme.radii.md,
-        overflow: 'hidden',
-        ...theme.shadow.soft,
-    },
-    cardSurface: {
-        backgroundColor: theme.colors.surface,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
+        borderRadius: radius.lg,
+        ...shadow.card,
     },
     card: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: theme.spacing.md,
-        paddingHorizontal: theme.spacing.lg,
-        borderRadius: theme.radii.md,
+        paddingVertical: space.md,
+        paddingHorizontal: space.lg,
+        borderRadius: radius.lg,
+        borderWidth: 1,
     },
     cardLeft: {
         flexDirection: 'row',
@@ -195,48 +184,26 @@ const styles = StyleSheet.create({
     iconWrap: {
         width: 40,
         height: 40,
-        borderRadius: theme.radii.sm,
-        backgroundColor: `${theme.colors.active}18`,
+        borderRadius: radius.md,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: theme.spacing.md,
+        marginRight: space.md,
     },
-    cardLabel: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: theme.colors.text,
-    },
-    spacer: {
-        height: theme.spacing.xl,
-    },
-    logoutTouch: {
-        borderRadius: theme.radii.md,
-        overflow: 'hidden',
-        ...Platform.select({
-            ios: {
-                shadowColor: theme.colors.danger,
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.15,
-                shadowRadius: 6,
-            },
-            android: { elevation: 3 },
-        }),
-    },
+    cardLabel: text.body,
     logoutBtn: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: theme.colors.surface,
-        paddingVertical: theme.spacing.md,
-        paddingHorizontal: theme.spacing.lg,
-        borderRadius: theme.radii.md,
-        gap: theme.spacing.sm,
+        paddingVertical: space.md,
+        paddingHorizontal: space.lg,
+        borderRadius: radius.lg,
+        gap: space.sm,
         borderWidth: 1.5,
-        borderColor: theme.colors.danger,
+        borderColor: DANGER,
     },
     logoutText: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: theme.colors.danger,
+        ...text.body,
+        fontWeight: '800',
+        color: DANGER,
     },
 });

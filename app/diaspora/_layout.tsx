@@ -13,7 +13,7 @@ export default function DiasporaLayout() {
             tabBar={(props) => <GlassTabBar {...props} role="client" />}
             screenOptions={{
                 headerShown: false,
-                sceneContainerStyle: { backgroundColor: c.bg },
+                sceneStyle: { backgroundColor: c.bg },
                 tabBarStyle: { display: 'none' },
             }}
         >

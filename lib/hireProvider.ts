@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { SETTLEMENT_CURRENCY } from '@/lib/money';
 
 export type HireProviderParams = {
   projectId: string;
@@ -56,14 +57,16 @@ export async function hireProvider({
       {
         project_id: projectId,
         title: 'Phase 1: Mobilization & Materials',
-        amount_cfa: halfAmount,
+        currency: SETTLEMENT_CURRENCY,
+        amount_minor: halfAmount,
         status: 'in_progress',
         step_order: 1,
       },
       {
         project_id: projectId,
         title: 'Phase 2: Completion & Handover',
-        amount_cfa: remainder,
+        currency: SETTLEMENT_CURRENCY,
+        amount_minor: remainder,
         status: 'locked',
         step_order: 2,
       },

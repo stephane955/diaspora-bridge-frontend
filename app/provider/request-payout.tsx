@@ -9,10 +9,12 @@ import { providerMenuItems } from '@/constants/premiumMenus';
 import { useAuth } from '@/context/AuthContext';
 import { theme } from '@/constants/theme';
 import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG } from '@/constants/layout';
+import { requiredRouteParam } from '@/utils/routeParams';
 
 export default function RequestPayout() {
     const insets = useSafeAreaInsets();
-    const { projectId } = useLocalSearchParams();
+    const params = useLocalSearchParams<{ projectId?: string | string[] }>();
+    const projectId = requiredRouteParam(params.projectId);
     const { user } = useAuth();
     const router = useRouter();
     const { t } = useLanguage();
@@ -20,13 +22,22 @@ export default function RequestPayout() {
     const [desc, setDesc] = useState('');
 
     const handleSubmit = async () => {
+        if (!projectId || !user?.id) {
+            Alert.alert(t('error'), t('missingInfo'));
+            return;
+        }
+        const parsed = parseInt(amount, 10);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            Alert.alert(t('error'), t('invalidAmount'));
+            return;
+        }
         const { error } = await supabase.from('project_expenses').insert({
             project_id: projectId,
-            provider_id: user?.id,
-            amount: parseInt(amount),
+            provider_id: user.id,
+            amount: parsed,
             description: desc,
-            category: 'Milestone',
-            status: 'pending'
+            type: 'Milestone',
+            status: 'pending',
         });
 
         if (!error) {

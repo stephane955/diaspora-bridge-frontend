@@ -31,7 +31,7 @@ export function useFavoriteProviders() {
         .eq('client_id', user.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      const rows = (data ?? []) as FavoriteRow[];
+      const rows = (data ?? []) as unknown as FavoriteRow[];
       setFavorites(rows);
       setFavoriteIds(new Set(rows.map((r) => r.provider_id)));
     } catch (e) {

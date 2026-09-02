@@ -7,10 +7,10 @@ export type QueuedAction = {
     type: 'project_update';
     payload: {
         project_id: string;
-        provider_id: string;
+        author_id: string;
         title: string;
-        description: string;
-        image_url: string | null;
+        body: string;
+        photo_url: string | null;
     };
 };
 
@@ -43,10 +43,10 @@ export async function processQueue(): Promise<{ processed: number; failed: numbe
             if (action.type === 'project_update') {
                 const { error } = await supabase.from('project_updates').insert({
                     project_id: action.payload.project_id,
-                    provider_id: action.payload.provider_id,
+                    author_id: action.payload.author_id,
                     title: action.payload.title,
-                    description: action.payload.description,
-                    image_url: action.payload.image_url,
+                    body: action.payload.body,
+                    photo_url: action.payload.photo_url,
                 });
                 if (error) throw error;
             }

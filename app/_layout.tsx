@@ -23,6 +23,8 @@ Notifications.setNotificationHandler({
         shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
     }),
 });
 
@@ -52,14 +54,13 @@ function InitialLayout() {
     useEffect(() => {
         if (!isMounted || loading) return;
 
-        // FIX: Check if we are on the root path (Landing Page)
-        // segments is [] when on the Landing Page ('/')
+        // Public routes: landing (`/` → empty segments), login, signup, observer join
+        const root = segments[0] as string | undefined;
         const inPublicGroup =
-            segments.length === 0 ||
-            segments[0] === 'index' ||
-            segments[0] === 'login' ||
-            segments[0] === 'signup' ||
-            segments[0] === 'observer';
+            root == null ||
+            root === 'login' ||
+            root === 'signup' ||
+            root === 'observer';
 
         // 1. If NOT logged in and trying to access a private page -> Send to Login
         if (!session && !inPublicGroup) {

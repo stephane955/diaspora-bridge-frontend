@@ -1,0 +1,31 @@
+{
+  "cli": {
+    "version": ">= 13.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EAS_BUILD_PROFILE": "development",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://tvorurbmzrpwvxwztpix.supabase.co"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EAS_BUILD_PROFILE": "preview",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://tvorurbmzrpwvxwztpix.supabase.co"
+      }
+    },
+    "production": {
+      "env": {
+        "EAS_BUILD_PROFILE": "production"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

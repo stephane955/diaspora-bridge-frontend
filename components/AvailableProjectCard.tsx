@@ -35,7 +35,14 @@ export default function AvailableProjectCard({
     return (
         <View style={styles.oppCard}>
             {/* 1. Background Image must come FIRST in JSX */}
-            <Image source={{ uri: project.image_url }} style={styles.oppImage} />
+            <Image
+                source={{
+                    uri:
+                        project.image_url ||
+                        'https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&q=80',
+                }}
+                style={styles.oppImage}
+            />
             <LinearGradient
                 colors={['transparent', 'rgba(15, 23, 42, 0.95)']}
                 style={styles.oppGradient}
@@ -45,7 +52,7 @@ export default function AvailableProjectCard({
             <View style={styles.oppContent}>
                 <View style={styles.oppHeader}>
                     <Text style={styles.oppBudget}>
-                        {project.budget?.toLocaleString()} <Text style={styles.cfa}>CFA</Text>
+                        {(project.budget ?? 0).toLocaleString()} <Text style={styles.cfa}>CFA</Text>
                     </Text>
                 </View>
 
@@ -100,6 +107,9 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
         padding: 20,
         zIndex: 10 // Content stays above background
+    },
+    oppHeader: {
+        marginBottom: 8,
     },
     oppBudget: {
         color: '#38BDF8',

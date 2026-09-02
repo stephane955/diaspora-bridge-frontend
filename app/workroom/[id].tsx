@@ -28,31 +28,35 @@ import { useOfflineWorkroom } from '@/hooks/useOfflineWorkroom';
 import ProjectChatFab from '@/components/ProjectChatFab';
 import ChatRoom from '@/components/ChatRoom';
 import PremiumHeader from '@/components/PremiumHeader';
+import { providerMenuItems } from '@/constants/premiumMenus';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
+import { resolveAmountMinor, SETTLEMENT_CURRENCY } from '@/lib/money';
 import MilestoneTimelineItem from '@/components/MilestoneTimelineItem';
 import PremiumEmptyState from '@/components/PremiumEmptyState';
 import { markProjectChatRead } from '@/lib/chatReadState';
 import { uploadMilestoneEvidence } from '@/lib/storage';
 import {
-  SCROLL_BOTTOM_INSET,
   PREMIUM_BG,
   PREMIUM_GOLD,
   TEXT_PRIMARY,
   TEXT_SECONDARY,
 } from '@/constants/layout';
 import { successFeedback } from '@/utils/haptics';
+import { requiredRouteParam } from '@/utils/routeParams';
 
 const WORKROOM_KEY = (projectId: string) => ['workroom', projectId] as const;
 const DOCK_HEIGHT = 88;
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function WorkroomScreen() {
-  const { id } = useLocalSearchParams();
-  const projectId = typeof id === 'string' ? id : id?.[0];
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const projectId = requiredRouteParam(params.id);
   const { user } = useAuth();
   const { t } = useLanguage();
   const router = useRouter();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
+  const offsets = useScreenOffsets({ tabBar: false });
 
   const {
     data,
@@ -242,18 +246,15 @@ export default function WorkroomScreen() {
         subtitle={project?.title}
         showBack
         fallbackRoute="/provider/active"
-        menuItems={[
-          { label: t('settingsTitle'), icon: 'settings', onPress: () => router.push('/provider/settings') },
-          { label: t('tabProfile'), icon: 'profile', onPress: () => router.push('/provider/profile') },
-        ]}
+        menuItems={providerMenuItems(router, t)}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingTop: insets.top + 88,
-          paddingHorizontal: 16,
-          paddingBottom: SCROLL_BOTTOM_INSET + DOCK_HEIGHT,
+          paddingTop: offsets.top,
+          paddingHorizontal: offsets.horizontal,
+          paddingBottom: offsets.bottom + DOCK_HEIGHT,
         }}
       >
         {/* Top dashboard: title, client, progress */}
@@ -319,7 +320,7 @@ export default function WorkroomScreen() {
 
         {existingAdvance ? (
           <Text style={styles.advanceStatusText}>
-            Advance: {Number(existingAdvance.amount_cfa).toLocaleString()} CFA (
+            Advance: {Number(resolveAmountMinor(existingAdvance)).toLocaleString()} CFA (
             {existingAdvance.status})
           </Text>
         ) : null}
@@ -334,7 +335,9 @@ export default function WorkroomScreen() {
               successFeedback();
               const firstLocked = milestones.find((m: any) => m.status === 'locked');
               const pct = Math.min(20, advanceEligibility.max_advance_pct ?? 15);
-              const amount = Math.floor((Number(firstLocked?.amount_cfa ?? firstLocked?.amount) || 0) * (pct / 100));
+              const amount = Number(
+                (resolveAmountMinor(firstLocked ?? {}) * BigInt(pct)) / 100n,
+              );
               if (amount <= 0) return;
               Alert.alert(
                 'Bridge Credit',
@@ -344,12 +347,14 @@ export default function WorkroomScreen() {
                   {
                     text: 'Request',
                     onPress: async () => {
+                      if (!projectId || !user?.id) return;
                       setRequestingAdvance(true);
                       try {
                         const { error } = await supabase.from('provider_advances').insert({
-                          project_id: id,
-                          provider_id: user?.id,
-                          amount_cfa: amount,
+                          project_id: projectId,
+                          provider_id: user.id,
+                          currency: SETTLEMENT_CURRENCY,
+                          amount_minor: amount,
                           status: 'pending',
                         });
                         if (error) throw error;
@@ -359,8 +364,8 @@ export default function WorkroomScreen() {
                           'Your advance request has been recorded. Funds will be disbursed per platform policy.',
                         );
                         fetchWorkroomData();
-                      } catch (e: any) {
-                        Alert.alert(t('error'), e.message);
+                      } catch (e: unknown) {
+                        Alert.alert(t('error'), e instanceof Error ? e.message : t('somethingWentWrong'));
                       } finally {
                         setRequestingAdvance(false);
                       }
@@ -398,7 +403,7 @@ export default function WorkroomScreen() {
                 key={item.id}
                 index={index}
                 title={item.title}
-                amountCfa={Number(item.amount_cfa ?? item.amount ?? 0)}
+                amountCfa={Number(resolveAmountMinor(item))}
                 status={item.status}
                 isSequentiallyLocked={isSequentiallyLocked}
                 evidenceUrl={item.evidence_url}
@@ -432,7 +437,7 @@ export default function WorkroomScreen() {
           style={styles.dockBtn}
           onPress={() => {
             successFeedback();
-            router.push({ pathname: '/provider/material-cart', params: { projectId: id } });
+            router.push({ pathname: '/provider/material-cart', params: { projectId } });
           }}
         >
           <LinearGradient colors={['#10B981', '#059669']} style={styles.dockIcon}>

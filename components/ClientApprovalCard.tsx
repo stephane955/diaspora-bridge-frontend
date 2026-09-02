@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { theme } from '@/constants/theme';
 import { successFeedback, mediumFeedback } from '@/utils/haptics';
+import { P00_MATERIAL_PAY_UNAVAILABLE } from '@/constants/p00Security';
 
 type CartItem = { name?: string; quantity?: number; price?: number };
 
@@ -38,29 +39,7 @@ export default function ClientApprovalCard({ cart, onApproved }: Props) {
     const statusColor = STATUS_COLORS[cart.status as keyof typeof STATUS_COLORS] || theme.colors.textMuted;
 
     const handlePayAndApprove = async () => {
-        mediumFeedback();
-        setLoading(true);
-        try {
-            const { error } = await supabase
-                .from('project_material_carts')
-                .update({
-                    status: 'approved',
-                    payment_status: 'paid',
-                    approved_at: new Date().toISOString(),
-                    approved_by: user?.id,
-                    updated_at: new Date().toISOString(),
-                })
-                .eq('id', cart.id);
-
-            if (error) throw error;
-            successFeedback();
-            setPaymentSuccess(true);
-            onApproved();
-        } catch (e: any) {
-            Alert.alert(t('error'), e.message || t('couldNotApproveCart'));
-        } finally {
-            setLoading(false);
-        }
+        Alert.alert(t('error'), P00_MATERIAL_PAY_UNAVAILABLE);
     };
 
     if (paymentSuccess) {

@@ -1,22 +1,25 @@
 import { StatusBar } from 'expo-status-bar';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Link } from 'expo-router';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { radius, space, text } from '@/constants/design';
 
 export default function ModalScreen() {
-  return (
-      <View style={styles.container}>
-        <Text style={styles.title}>About Diaspora Bridge</Text>
-        <View style={styles.separator} />
+  const c = usePremiumColors();
 
-        <Text style={styles.info}>
+  return (
+      <View style={[styles.container, { backgroundColor: c.bg }]}>
+        <Text style={[styles.title, { color: c.textPrimary }]}>About Diaspora Bridge</Text>
+        <View style={[styles.separator, { backgroundColor: c.border }]} />
+
+        <Text style={[styles.info, { color: c.textSecondary }]}>
           Connecting the diaspora with trusted local providers for seamless construction projects.
         </Text>
 
-        {/* Use a light status bar on iOS to account for the modal presentation */}
-        <StatusBar style={Platform.OS === 'ios' ? 'light' : 'auto'} />
+        <StatusBar style={c.isDark ? 'light' : 'dark'} />
 
         <Link href="../" style={styles.link}>
-          <Text style={styles.linkText}>Close Info</Text>
+          <Text style={[styles.linkText, { color: c.gold }]}>Close Info</Text>
         </Link>
       </View>
   );
@@ -27,33 +30,26 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
-    padding: 20,
+    padding: space.lg,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#0F172A',
-  },
+  title: text.display,
   separator: {
-    marginVertical: 30,
+    marginVertical: space.xl,
     height: 1,
     width: '80%',
-    backgroundColor: '#E2E8F0',
+    borderRadius: radius.pill,
   },
   info: {
-    fontSize: 16,
-    color: '#64748B',
+    ...text.body,
     textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: space.xl,
     lineHeight: 24,
   },
   link: {
-    paddingVertical: 15,
+    paddingVertical: space.md,
   },
   linkText: {
-    color: '#0EA5E9',
-    fontSize: 16,
-    fontWeight: 'bold',
+    ...text.body,
+    fontWeight: '800',
   }
 });

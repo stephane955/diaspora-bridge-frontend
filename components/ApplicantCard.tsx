@@ -144,7 +144,7 @@ export default function ApplicantCard({
             <ActivityIndicator color="#0A0F1A" />
           ) : (
             <>
-              <Ionicons name="handshake" size={16} color="#0A0F1A" />
+              <Ionicons name="hand-left" size={16} color="#0A0F1A" />
               <Text style={styles.hireText}>Hire</Text>
             </>
           )}

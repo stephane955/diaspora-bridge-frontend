@@ -54,6 +54,15 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // P00: legacy escrow path disabled until Phase 3B/C06 canonical funding.
+    return new Response(
+      JSON.stringify({
+        error: "legacy_escrow_disabled",
+        message: "Escrow funding is temporarily unavailable while secure payment processing is being upgraded.",
+      }),
+      { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
     const body = (await req.json().catch(() => ({}))) as ProcessEscrowBody;
     const { project_id, amount_cfa, provider, payment_method_id, provider_account_id, phone, reference } = body;
 
@@ -213,7 +222,8 @@ Deno.serve(async (req: Request) => {
     }
 
     if (project?.insurance_premium) {
-      const insuranceFee = Math.round(amount_cfa * 0.015);
+      // Integer 1.5% fee — matches platform_fee_insurance_minor (truncate toward zero)
+      const insuranceFee = Math.trunc((amount_cfa * 15) / 1000);
       const platformInsuranceWallet = Deno.env.get("PLATFORM_INSURANCE_WALLET_ID");
       if (platformInsuranceWallet && insuranceFee > 0) {
         await adminClient.from("transactions").insert({

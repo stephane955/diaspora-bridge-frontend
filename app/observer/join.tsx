@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { claimObserverInvite } from '@/utils/observers';
-import { theme } from '@/constants/theme';
+import ScreenLoader from '@/components/ScreenLoader';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { GOLD, radius, space, text } from '@/constants/design';
 
 export default function ObserverJoinScreen() {
     const { token } = useLocalSearchParams<{ token: string }>();
     const router = useRouter();
     const { user } = useAuth();
     const { t } = useLanguage();
+    const c = usePremiumColors();
     const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'login'>('loading');
 
     useEffect(() => {
@@ -36,9 +39,9 @@ export default function ObserverJoinScreen() {
     if (status === 'login') {
         const returnUrl = `/observer/join?token=${token}`;
         return (
-            <View style={styles.container}>
-                <Text style={styles.title}>{t('viewOnlyAccess')}</Text>
-                <Text style={styles.sub}>{t('signInToAcceptInvite')}</Text>
+            <View style={[styles.container, { backgroundColor: c.bg }]}>
+                <Text style={[styles.title, { color: c.textPrimary }]}>{t('viewOnlyAccess')}</Text>
+                <Text style={[styles.sub, { color: c.textSecondary }]}>{t('signInToAcceptInvite')}</Text>
                 <TouchableOpacity
                     style={styles.btn}
                     onPress={() => router.replace({ pathname: '/login', params: { redirect: returnUrl } })}
@@ -51,8 +54,8 @@ export default function ObserverJoinScreen() {
 
     if (status === 'error') {
         return (
-            <View style={styles.container}>
-                <Text style={styles.title}>{t('invalidOrExpiredLink')}</Text>
+            <View style={[styles.container, { backgroundColor: c.bg }]}>
+                <Text style={[styles.title, { color: c.textPrimary }]}>{t('invalidOrExpiredLink')}</Text>
                 <TouchableOpacity style={styles.btn} onPress={() => router.replace('/')}>
                     <Text style={styles.btnText}>{t('goHome')}</Text>
                 </TouchableOpacity>
@@ -60,12 +63,7 @@ export default function ObserverJoinScreen() {
         );
     }
 
-    return (
-        <View style={styles.container}>
-            <ActivityIndicator size="large" color={theme.colors.active} />
-            <Text style={styles.sub}>{t('joiningProject')}</Text>
-        </View>
-    );
+    return <ScreenLoader label={t('joiningProject')} />;
 }
 
 const styles = StyleSheet.create({
@@ -73,16 +71,15 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: theme.spacing.xl,
-        backgroundColor: theme.colors.background,
+        padding: space.xl,
     },
-    title: { fontSize: 20, fontWeight: '800', color: theme.colors.text, marginBottom: 8 },
-    sub: { fontSize: 15, color: theme.colors.textMuted, marginBottom: 24 },
+    title: { ...text.title, marginBottom: space.xs, textAlign: 'center' },
+    sub: { ...text.footnote, marginBottom: space.lg, textAlign: 'center' },
     btn: {
-        backgroundColor: theme.colors.active,
-        paddingHorizontal: 24,
-        paddingVertical: 12,
-        borderRadius: theme.radii.pill,
+        backgroundColor: GOLD,
+        paddingHorizontal: space.lg,
+        paddingVertical: space.sm,
+        borderRadius: radius.lg,
     },
-    btnText: { color: '#fff', fontWeight: '700' },
+    btnText: { color: '#0A0F1A', ...text.footnote, fontWeight: '800' },
 });

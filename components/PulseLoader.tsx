@@ -1,13 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
-import { theme } from '@/constants/theme';
+import { GOLD, space } from '@/constants/design';
 
 type Props = {
     size?: number;
     color?: string;
 };
 
-export default function PulseLoader({ size = 48, color = theme.colors.active }: Props) {
+export default function PulseLoader({ size = 48, color = GOLD }: Props) {
     const scale = useRef(new Animated.Value(0.85)).current;
     const opacity = useRef(new Animated.Value(0.4)).current;
 
@@ -32,7 +32,6 @@ export default function PulseLoader({ size = 48, color = theme.colors.active }: 
         <View style={styles.wrap}>
             <Animated.View
                 style={[
-                    styles.dot,
                     {
                         width: size,
                         height: size,
@@ -48,6 +47,5 @@ export default function PulseLoader({ size = 48, color = theme.colors.active }: 
 }
 
 const styles = StyleSheet.create({
-    wrap: { alignItems: 'center', justifyContent: 'center', padding: 20 },
-    dot: {},
+    wrap: { alignItems: 'center', justifyContent: 'center', padding: space.lg },
 });

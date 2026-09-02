@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import {
   Home,
@@ -9,15 +10,37 @@ import {
   User,
   HardHat,
   ScanLine,
+  ClipboardList,
 } from 'lucide-react-native';
 import { successFeedback } from '@/utils/haptics';
-import { FLOATING_TAB_BAR_HEIGHT } from '@/constants/layout';
+import {
+  ALPHA,
+  FLOATING_TAB_BAR_HEIGHT,
+  GOLD,
+  GOLD_BORDER,
+  GOLD_TINT,
+  ICON_BUTTON_SIZE,
+  icon as iconSize,
+  radius,
+  shadow,
+  TAB_BAR_BOTTOM_GAP,
+  TAB_BAR_SIDE_INSET,
+  TAB_BAR_VISUAL_HEIGHT,
+  withAlpha,
+} from '@/constants/design';
 import { usePremiumColors } from '@/hooks/usePremiumColors';
 
-export type TabBarRole = 'client' | 'provider';
+export type TabBarRole = 'client' | 'provider' | 'supplier';
 
 const CLIENT_ROUTES = ['index', 'wallet', 'inbox', 'profile'] as const;
 const PROVIDER_ROUTES = ['active', 'cart-hub', 'inbox', 'profile'] as const;
+const SUPPLIER_ROUTES = ['dashboard', 'scanner'] as const;
+
+/**
+ * Full-bleed routes where a floating pill over the content is wrong — a camera
+ * viewfinder needs its whole frame and its own capture control at the bottom.
+ */
+const HIDE_TAB_BAR_ON = new Set(['verification-scan', 'scanner']);
 
 type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
@@ -35,14 +58,22 @@ const PROVIDER_ICONS: Record<string, LucideIcon> = {
   profile: User,
 };
 
+const SUPPLIER_ICONS: Record<string, LucideIcon> = {
+  dashboard: ClipboardList,
+  scanner: ScanLine,
+};
+
 type Props = BottomTabBarProps & {
   role?: TabBarRole;
 };
 
 export default function GlassTabBar({ state, descriptors, navigation, role = 'client' }: Props) {
   const c = usePremiumColors();
-  const allowed = role === 'provider' ? PROVIDER_ROUTES : CLIENT_ROUTES;
-  const iconMap = role === 'provider' ? PROVIDER_ICONS : CLIENT_ICONS;
+  const insets = useSafeAreaInsets();
+  const allowed =
+    role === 'provider' ? PROVIDER_ROUTES : role === 'supplier' ? SUPPLIER_ROUTES : CLIENT_ROUTES;
+  const iconMap =
+    role === 'provider' ? PROVIDER_ICONS : role === 'supplier' ? SUPPLIER_ICONS : CLIENT_ICONS;
 
   const visibleRoutes = state.routes.filter((route) => {
     const options = descriptors[route.key]?.options ?? {};
@@ -52,18 +83,28 @@ export default function GlassTabBar({ state, descriptors, navigation, role = 'cl
     return (allowed as readonly string[]).includes(route.name);
   });
 
+  if (HIDE_TAB_BAR_ON.has(state.routes[state.index]?.name)) return null;
+
   return (
-    <View style={styles.container} pointerEvents="box-none">
+    <View
+      style={[styles.container, { bottom: Math.max(insets.bottom, TAB_BAR_BOTTOM_GAP) }]}
+      pointerEvents="box-none"
+    >
       <BlurView
         intensity={Platform.OS === 'ios' ? 92 : 80}
         tint={c.blurTint}
-        style={[styles.glass, { borderColor: c.isDark ? 'rgba(212,175,55,0.18)' : 'rgba(15,23,42,0.08)' }]}
+        style={[
+          styles.glass,
+          { borderColor: c.isDark ? withAlpha(GOLD, ALPHA.medium) : c.border },
+        ]}
       >
         <View style={[styles.glassTint, { backgroundColor: c.glass }]} pointerEvents="none" />
         {visibleRoutes.map((route) => {
           const isFocused = state.routes[state.index].key === route.key;
           const Icon = iconMap[route.name] ?? Home;
           const color = isFocused ? c.gold : c.textSecondary;
+          const label =
+            (descriptors[route.key]?.options as { title?: string })?.title ?? route.name;
 
           const onPress = () => {
             const event = navigation.emit({
@@ -81,13 +122,14 @@ export default function GlassTabBar({ state, descriptors, navigation, role = 'cl
             <TouchableOpacity
               key={route.key}
               accessibilityRole="button"
+              accessibilityLabel={label}
               accessibilityState={isFocused ? { selected: true } : {}}
               onPress={onPress}
               style={styles.tab}
               activeOpacity={0.85}
             >
               <View style={[styles.iconWrap, isFocused && styles.iconWrapActive]}>
-                <Icon size={22} color={color} strokeWidth={isFocused ? 2.5 : 2} />
+                <Icon size={iconSize.md} color={color} strokeWidth={isFocused ? 2.5 : 2} />
               </View>
               {isFocused ? <View style={styles.activeGlow} /> : null}
             </TouchableOpacity>
@@ -103,28 +145,19 @@ export { FLOATING_TAB_BAR_HEIGHT };
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 20,
-    left: 16,
-    right: 16,
-    height: FLOATING_TAB_BAR_HEIGHT - 28,
-    borderRadius: 999,
+    left: TAB_BAR_SIDE_INSET,
+    right: TAB_BAR_SIDE_INSET,
+    height: TAB_BAR_VISUAL_HEIGHT,
+    borderRadius: radius.pill,
     overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.4,
-        shadowRadius: 28,
-      },
-      android: { elevation: 18 },
-    }),
+    ...shadow.floating,
   },
   glass: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    borderRadius: 999,
+    borderRadius: radius.pill,
     overflow: 'hidden',
     borderWidth: 1,
   },
@@ -138,23 +171,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: ICON_BUTTON_SIZE,
+    height: ICON_BUTTON_SIZE,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconWrapActive: {
-    backgroundColor: 'rgba(212,175,55,0.16)',
+    backgroundColor: GOLD_TINT,
     borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.35)',
+    borderColor: GOLD_BORDER,
   },
   activeGlow: {
     position: 'absolute',
     bottom: 8,
     width: 18,
     height: 3,
-    borderRadius: 2,
-    backgroundColor: '#D4AF37',
+    borderRadius: radius.pill,
+    backgroundColor: GOLD,
   },
 });

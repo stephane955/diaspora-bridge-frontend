@@ -10,12 +10,14 @@ import { useLanguage } from '@/context/LanguageContext';
 type Props = {
   /** Compact row for settings lists */
   compact?: boolean;
+  /** Render inside SettingsSection card (no outer chrome) */
+  embedded?: boolean;
 };
 
 /**
  * Sun/Moon theme toggle — cycles light ↔ dark (stores explicit mode, not system).
  */
-export default function ThemeToggleRow({ compact }: Props) {
+export default function ThemeToggleRow({ compact, embedded }: Props) {
   const { isDark, setThemeMode, themeMode } = useTheme();
   const c = usePremiumColors();
   const { t } = useLanguage();
@@ -25,8 +27,8 @@ export default function ThemeToggleRow({ compact }: Props) {
     await setThemeMode(isDark ? 'light' : 'dark');
   };
 
-  return (
-    <BlurView intensity={36} tint={c.blurTint} style={[styles.row, compact && styles.compact]}>
+  const row = (
+    <>
       <View style={[styles.iconWrap, { backgroundColor: isDark ? 'rgba(212,175,55,0.15)' : 'rgba(37,99,235,0.12)' }]}>
         <Ionicons
           name={isDark ? 'moon' : 'sunny'}
@@ -56,6 +58,20 @@ export default function ThemeToggleRow({ compact }: Props) {
           color={c.textSecondary}
         />
       </TouchableOpacity>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <View style={[styles.row, styles.embedded, compact && styles.compact]}>
+        {row}
+      </View>
+    );
+  }
+
+  return (
+    <BlurView intensity={36} tint={c.blurTint} style={[styles.row, compact && styles.compact]}>
+      {row}
     </BlurView>
   );
 }
@@ -71,6 +87,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(148,163,184,0.2)',
     marginBottom: 12,
+  },
+  embedded: {
+    borderWidth: 0,
+    borderRadius: 0,
+    marginBottom: 0,
+    backgroundColor: 'transparent',
   },
   compact: { paddingVertical: 12 },
   iconWrap: {

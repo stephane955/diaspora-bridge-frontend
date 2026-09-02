@@ -1,22 +1,19 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, StyleSheet, FlatList } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/context/LanguageContext';
 import PremiumHeader from '@/components/PremiumHeader';
 import PremiumEmptyState from '@/components/PremiumEmptyState';
 import ApplicantCard from '@/components/ApplicantCard';
-import PulseLoader from '@/components/PulseLoader';
+import ScreenLoader from '@/components/ScreenLoader';
 import { clientMenuItems } from '@/constants/premiumMenus';
-import {
-  FLOATING_TAB_BAR_HEIGHT,
-  PREMIUM_BG,
-  PREMIUM_GOLD,
-} from '@/constants/layout';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
 
 export default function ApplicantsScreen() {
-  const insets = useSafeAreaInsets();
+  const c = usePremiumColors();
+  const offsets = useScreenOffsets();
   const { id } = useLocalSearchParams();
   const projectId = typeof id === 'string' ? id : id?.[0];
   const router = useRouter();
@@ -45,7 +42,7 @@ export default function ApplicantsScreen() {
   }, [fetchApplicants]);
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: c.bg }]}>
       <PremiumHeader
         title={t('applicantsTitle')}
         subtitle={t('proposalsTitle')}
@@ -54,18 +51,12 @@ export default function ApplicantsScreen() {
         menuItems={clientMenuItems(router, t)}
       />
       {loading ? (
-        <View style={styles.center}>
-          <PulseLoader color={PREMIUM_GOLD} />
-        </View>
+        <ScreenLoader />
       ) : (
         <FlatList
           data={applicants}
           keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={{
-            paddingTop: insets.top + 88,
-            paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40,
-            paddingHorizontal: 20,
-          }}
+          contentContainerStyle={offsets.content}
           ListEmptyComponent={
             <PremiumEmptyState
               icon="people-outline"
@@ -89,6 +80,5 @@ export default function ApplicantsScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: PREMIUM_BG },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  screen: { flex: 1 },
 });

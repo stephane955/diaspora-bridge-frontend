@@ -16,6 +16,8 @@ import PulseLoader from '@/components/PulseLoader';
 import { clientMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
 import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_MUTED } from '@/constants/layout';
+import { normalizeProjectStatus } from '@/utils/projectStatus';
+import { resolveProjectBudgetMinor, formatBudgetDisplay } from '@/lib/money';
 
 export default function MyProjectsScreen() {
     const insets = useSafeAreaInsets();
@@ -54,8 +56,13 @@ export default function MyProjectsScreen() {
 
     // --- RENDER ITEM (The "State of the Art" Card) ---
     const renderProjectCard = ({ item }: { item: any }) => {
-        const isActive = item.status === 'in_progress';
+        const status = normalizeProjectStatus(item.status);
         const hasProvider = !!item.provider;
+        const statusMeta = {
+            in_progress: { label: t('activeSiteLabel').toUpperCase(), color: theme.colors.success },
+            pending: { label: t('pendingProviderLabel').toUpperCase(), color: theme.colors.warning },
+            completed: { label: t('completedTitle').toUpperCase(), color: theme.colors.success },
+        }[status];
 
         return (
             <TouchableOpacity
@@ -75,10 +82,8 @@ export default function MyProjectsScreen() {
                         {/* Header: Status Badge */}
                         <View style={styles.cardHeader}>
                             <BlurView intensity={20} tint="light" style={styles.statusBadge}>
-                                <View style={[styles.statusDot, { backgroundColor: isActive ? theme.colors.success : theme.colors.warning }]} />
-                                <Text style={styles.statusText}>
-                                    {isActive ? t('activeSiteLabel').toUpperCase() : t('pendingProviderLabel').toUpperCase()}
-                                </Text>
+                                <View style={[styles.statusDot, { backgroundColor: statusMeta.color }]} />
+                                <Text style={styles.statusText}>{statusMeta.label}</Text>
                             </BlurView>
                         </View>
 
@@ -96,7 +101,7 @@ export default function MyProjectsScreen() {
                             <View style={styles.metaRow}>
                                 <View>
                                     <Text style={styles.metaLabel}>{t('project.budget')}</Text>
-                                    <Text style={styles.metaValue}>{item.budget?.toLocaleString()} CFA</Text>
+                                    <Text style={styles.metaValue}>{formatBudgetDisplay(resolveProjectBudgetMinor(item))}</Text>
                                 </View>
                                 <View style={{ alignItems: 'flex-end' }}>
                                     <Text style={styles.metaLabel}>{t('providerLabel')}</Text>

@@ -1,32 +1,71 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TouchableOpacity,
     Image, ActivityIndicator, Alert
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { mediumFeedback, successFeedback } from '@/utils/haptics';
 import { useLanguage } from '@/context/LanguageContext';
 import PremiumHeader from '@/components/PremiumHeader';
 import PremiumEmptyState from '@/components/PremiumEmptyState';
-import PulseLoader from '@/components/PulseLoader';
+import ScreenLoader from '@/components/ScreenLoader';
 import { clientMenuItems } from '@/constants/premiumMenus';
-import { theme } from '@/constants/theme';
-import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_GOLD, TEXT_PRIMARY, TEXT_SECONDARY } from '@/constants/layout';
+import { usePremiumColors, type PremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
+import {
+    DANGER_SOFT,
+    GOLD,
+    GOLD_BORDER,
+    GOLD_TINT,
+    icon as iconSize,
+    radius,
+    space,
+    SUCCESS,
+    text,
+    WARNING,
+    weight,
+} from '@/constants/design';
 import { rankBids, type ProviderStats } from '@/utils/bidScoring';
+import { resolveProjectBudgetMinor, formatBudgetDisplay } from '@/lib/money';
 import { hireProvider } from '@/lib/hireProvider';
 import FavoriteProviderButton from '@/components/FavoriteProviderButton';
+import { requiredRouteParam } from '@/utils/routeParams';
+
+type ProposalProfile = {
+    full_name: string | null;
+    avatar_url: string | null;
+    rating: number | null;
+    city: string | null;
+};
+
+type ProposalRow = {
+    id: string;
+    project_id: string;
+    provider_id: string;
+    bid_amount: number | null;
+    material_estimate: number | null;
+    time_to_completion_days: number | null;
+    message: string | null;
+    status: string;
+    created_at: string;
+    updated_at: string;
+    profiles: ProposalProfile | null;
+    bidScore?: number;
+};
 
 export default function ProposalsScreen() {
-    const insets = useSafeAreaInsets();
-    const { id } = useLocalSearchParams(); // Project ID
+    const c = usePremiumColors();
+    const offsets = useScreenOffsets();
+    const styles = useMemo(() => makeStyles(c), [c]);
+    const params = useLocalSearchParams<{ id?: string | string[] }>();
+    const id = requiredRouteParam(params.id);
     const router = useRouter();
     const { t } = useLanguage();
 
     const [project, setProject] = useState<any>(null);
-    const [proposals, setProposals] = useState<any[]>([]);
+    const [proposals, setProposals] = useState<ProposalRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [hiringId, setHiringId] = useState<string | null>(null);
     const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -37,38 +76,70 @@ export default function ProposalsScreen() {
             // 1. Get Project Info (To compare budgets)
             const { data: proj } = await supabase
                 .from('projects')
-                .select('budget, title, status')
+                .select('estimated_budget_minor, title, status')
                 .eq('id', id)
                 .single();
             setProject(proj);
 
-            // 2. Get Applications with Smart Bid fields
+            // 2. Get Applications (profiles joined separately — no FK on provider_id)
             const { data: apps, error } = await supabase
                 .from('project_applications')
-                .select('*, profiles:provider_id(full_name, avatar_url, rating, city)')
+                .select('*')
                 .eq('project_id', id)
                 .in('status', ['pending']);
 
             if (error) throw error;
 
+            const providerIds = [...new Set((apps || []).map((a) => a.provider_id))];
+            const profileById: Record<string, ProposalProfile> = {};
+            if (providerIds.length > 0) {
+                const { data: profiles } = await supabase
+                    .from('profiles')
+                    .select('id, full_name, avatar_url, rating, city')
+                    .in('id', providerIds);
+                for (const p of profiles ?? []) {
+                    profileById[p.id] = {
+                        full_name: p.full_name,
+                        avatar_url: p.avatar_url,
+                        rating: p.rating,
+                        city: p.city,
+                    };
+                }
+            }
+
+            const appsWithProfiles: ProposalRow[] = (apps || []).map((a) => ({
+                ...a,
+                profiles: profileById[a.provider_id] ?? null,
+            }));
+
             // 3. Fetch provider stats for AI scoring and rank bids
-            const providerIds = [...new Set((apps || []).map((a: any) => a.provider_id))];
             const statsMap: Record<string, ProviderStats> = {};
             await Promise.all(providerIds.map(async (pid) => {
                 const { data: stats } = await supabase.rpc('get_provider_stats', { p_provider_id: pid });
-                if (stats && typeof stats === 'object') {
+                if (stats && typeof stats === 'object' && !Array.isArray(stats)) {
+                    const s = stats as Record<string, unknown>;
                     statsMap[pid] = {
-                        completionRate: Number((stats as any).completion_rate) || 0,
-                        avgReviewScore: Number((stats as any).avg_review_score) || 0,
-                        disputeCount: Number((stats as any).dispute_count) || 0,
-                        completedProjectsCount: Number((stats as any).completed_projects_count) || 0,
+                        completionRate: Number(s.completion_rate) || 0,
+                        avgReviewScore: Number(s.avg_review_score) || 0,
+                        disputeCount: Number(s.dispute_count) || 0,
+                        completedProjectsCount: Number(s.completed_projects_count) || 0,
                     };
                 }
             }));
 
             const getStats = (providerId: string) => statsMap[providerId] ?? null;
-            const ranked = rankBids(apps || [], getStats, proj?.budget ?? undefined);
-            setProposals(ranked);
+            const projectBudgetMinor = Number(resolveProjectBudgetMinor(proj ?? {}));
+            const rankedInput = appsWithProfiles.map((a) => ({
+                ...a,
+                bid_amount: a.bid_amount ?? undefined,
+            }));
+            const ranked = rankBids(rankedInput, getStats, projectBudgetMinor || undefined);
+            setProposals(
+                ranked.map((row) => ({
+                    ...row,
+                    bid_amount: row.bid_amount ?? null,
+                })),
+            );
 
         } catch (err) {
             console.error(err);
@@ -118,7 +189,8 @@ export default function ProposalsScreen() {
 
     const renderProposal = ({ item, index }: { item: any; index: number }) => {
         const isExpanded = expandedId === item.id;
-        const budgetDiff = project?.budget ? item.bid_amount - project.budget : 0;
+        const projectBudgetMinor = Number(resolveProjectBudgetMinor(project ?? {}));
+        const budgetDiff = projectBudgetMinor > 0 ? item.bid_amount - projectBudgetMinor : 0;
         const isOverBudget = budgetDiff > 0;
         const isAlgorithmRecommended = index === 0 && proposals.length > 0;
 
@@ -134,7 +206,7 @@ export default function ProposalsScreen() {
             >
                 {isAlgorithmRecommended && (
                     <View style={styles.recommendedBadge}>
-                        <Ionicons name="sparkles" size={12} color={theme.colors.emerald} />
+                        <Ionicons name="sparkles" size={iconSize.xs} color={GOLD} />
                         <Text style={styles.recommendedText}>{t('algorithmRecommended')}</Text>
                     </View>
                 )}
@@ -147,14 +219,14 @@ export default function ProposalsScreen() {
                     <View style={{ flex: 1 }}>
                         <Text style={styles.name}>{item.profiles?.full_name}</Text>
                         <View style={styles.ratingRow}>
-                            <Ionicons name="star" size={14} color={theme.colors.warning} />
+                            <Ionicons name="star" size={iconSize.xs} color={WARNING} />
                             <Text style={styles.rating}>{item.profiles?.rating || 'New'} • {item.profiles?.city}</Text>
                         </View>
                     </View>
                     <View style={styles.bidBadge}>
                         <Text style={styles.bidAmount}>{item.bid_amount?.toLocaleString()} CFA</Text>
                     </View>
-                    <FavoriteProviderButton providerId={item.provider_id} size={18} />
+                    <FavoriteProviderButton providerId={item.provider_id} size={iconSize.sm} />
                 </View>
 
                 {/* Smart Bid details */}
@@ -170,7 +242,7 @@ export default function ProposalsScreen() {
                 )}
 
                 {/* Budget Comparison Logic */}
-                {project?.budget && (
+                {projectBudgetMinor > 0 && (
                     <View style={styles.budgetRow}>
                         {isOverBudget ? (
                             <Text style={styles.overBudget}>⚠️ {budgetDiff.toLocaleString()} CFA over budget</Text>
@@ -210,7 +282,7 @@ export default function ProposalsScreen() {
     };
 
     return (
-        <View style={styles.screen}>
+        <View style={[styles.screen, { backgroundColor: c.bg }]}>
             <PremiumHeader
                 title={t('proposalsTitle')}
                 subtitle={t('applicantsTitle')}
@@ -219,17 +291,13 @@ export default function ProposalsScreen() {
                 menuItems={clientMenuItems(router, t)}
             />
             {loading ? (
-                <View style={styles.center}><PulseLoader color={PREMIUM_GOLD} /></View>
+                <ScreenLoader />
             ) : (
                 <FlatList
                     data={proposals}
                     keyExtractor={item => item.id}
                     renderItem={renderProposal}
-                    contentContainerStyle={{
-                        paddingTop: insets.top + 88,
-                        paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40,
-                        paddingHorizontal: theme.spacing.lg,
-                    }}
+                    contentContainerStyle={offsets.content}
                     ListEmptyComponent={
                         <PremiumEmptyState
                             icon="documents-outline"
@@ -243,43 +311,36 @@ export default function ProposalsScreen() {
     );
 }
 
-const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: PREMIUM_BG },
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+const makeStyles = (c: PremiumColors) => StyleSheet.create({
+    screen: { flex: 1 },
 
-    list: { paddingTop: theme.spacing.md },
+    card: { backgroundColor: c.surface, borderRadius: radius.lg, padding: space.md, marginBottom: space.md, borderWidth: 1, borderColor: c.border },
+    cardExpanded: { borderColor: GOLD, borderWidth: 1.5 },
+    cardRecommended: { borderColor: GOLD, borderWidth: 2, backgroundColor: GOLD_TINT },
+    recommendedBadge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: space.xs, marginBottom: space.sm, paddingHorizontal: space.sm, paddingVertical: space.xs, borderRadius: radius.pill, backgroundColor: GOLD_TINT, borderWidth: 1, borderColor: GOLD_BORDER },
+    recommendedText: { ...text.micro, fontWeight: weight.heavy, color: GOLD, letterSpacing: 0.5 },
+    smartBidRow: { flexDirection: 'row', gap: space.md, marginBottom: space.sm },
+    smartBidText: { ...text.caption, color: c.textSecondary },
 
-    card: { backgroundColor: 'rgba(17,24,39,0.75)', borderRadius: theme.radii.md, padding: theme.spacing.md, marginBottom: theme.spacing.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-    cardExpanded: { borderColor: PREMIUM_GOLD, borderWidth: 1.5 },
-    cardRecommended: { borderColor: PREMIUM_GOLD, borderWidth: 2, backgroundColor: 'rgba(212,175,55,0.08)' },
-    recommendedBadge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, marginBottom: theme.spacing.sm, paddingHorizontal: 10, paddingVertical: 6, borderRadius: theme.radii.pill, backgroundColor: 'rgba(212,175,55,0.15)', borderWidth: 1, borderColor: 'rgba(212,175,55,0.35)' },
-    recommendedText: { fontSize: 11, fontWeight: '800', color: PREMIUM_GOLD, letterSpacing: 0.5 },
-    smartBidRow: { flexDirection: 'row', gap: theme.spacing.md, marginBottom: theme.spacing.sm },
-    smartBidText: { fontSize: 12, color: TEXT_SECONDARY, fontWeight: '600' },
+    cardHeader: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm },
+    avatar: { width: 48, height: 48, borderRadius: radius.pill, backgroundColor: c.surfaceAlt },
+    name: { ...text.body, fontWeight: weight.heavy, color: c.textPrimary },
+    ratingRow: { flexDirection: 'row', alignItems: 'center', gap: space.xxs, marginTop: 2 },
+    rating: { ...text.caption, color: c.textSecondary },
 
-    cardHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
-    avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#1E293B' },
-    name: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY },
-    ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-    rating: { fontSize: 12, color: TEXT_SECONDARY },
+    bidBadge: { backgroundColor: GOLD_TINT, paddingHorizontal: space.sm, paddingVertical: space.xs, borderRadius: radius.sm, borderWidth: 1, borderColor: GOLD_BORDER },
+    bidAmount: { ...text.footnote, fontWeight: weight.heavy, color: GOLD },
 
-    bidBadge: { backgroundColor: 'rgba(212,175,55,0.12)', paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, borderRadius: theme.radii.xs, borderWidth: 1, borderColor: 'rgba(212,175,55,0.3)' },
-    bidAmount: { fontSize: 14, fontWeight: '800', color: PREMIUM_GOLD },
+    budgetRow: { marginBottom: space.sm, paddingBottom: space.sm, borderBottomWidth: 1, borderBottomColor: c.border },
+    overBudget: { ...text.caption, color: DANGER_SOFT },
+    underBudget: { ...text.caption, color: SUCCESS },
 
-    budgetRow: { marginBottom: theme.spacing.sm, paddingBottom: theme.spacing.sm, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
-    overBudget: { color: '#F87171', fontSize: 12, fontWeight: '600' },
-    underBudget: { color: '#34D399', fontSize: 12, fontWeight: '600' },
+    letterContainer: { marginBottom: space.md },
+    letterLabel: { ...text.label, color: c.textSecondary, marginBottom: space.xxs },
+    letterText: { ...text.footnote, color: c.textPrimary, lineHeight: 22 },
+    readMore: { ...text.caption, color: GOLD, marginTop: space.xxs },
 
-    letterContainer: { marginBottom: theme.spacing.md },
-    letterLabel: { fontSize: 12, fontWeight: '700', color: TEXT_SECONDARY, marginBottom: 4, textTransform: 'uppercase' },
-    letterText: { fontSize: 14, color: TEXT_PRIMARY, lineHeight: 22 },
-    readMore: { fontSize: 12, color: PREMIUM_GOLD, fontWeight: '600', marginTop: 4 },
-
-    hireBtn: { backgroundColor: PREMIUM_GOLD, paddingVertical: theme.spacing.md, borderRadius: 14, alignItems: 'center' },
+    hireBtn: { backgroundColor: GOLD, paddingVertical: space.md, borderRadius: radius.lg, alignItems: 'center' },
     hireBtnDisabled: { opacity: 0.7 },
-    hireText: { color: '#0A0F1A', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
-
-    emptyState: { alignItems: 'center', marginTop: 60, gap: theme.spacing.sm },
-    emptyText: { fontSize: 18, fontWeight: '700', color: TEXT_PRIMARY },
-    emptySub: { color: TEXT_SECONDARY },
+    hireText: { ...text.footnote, fontWeight: weight.heavy, color: '#0A0F1A', letterSpacing: 0.5 },
 });

@@ -41,6 +41,8 @@ type ChatRoomProps = {
   headerOffset?: number;
   /** Hide the built-in "Project Chat" strip when parent renders a richer header */
   hideInternalHeader?: boolean;
+  /** Edge-to-edge chat surface for full-screen route */
+  fullBleed?: boolean;
 };
 
 function formatDuration(seconds: number) {
@@ -204,6 +206,7 @@ export default function ChatRoom({
   bottomInset,
   headerOffset = 0,
   hideInternalHeader = false,
+  fullBleed = false,
 }: ChatRoomProps) {
   const { user } = useAuth();
   const colors = usePremiumColors();
@@ -297,10 +300,11 @@ export default function ChatRoom({
     <KeyboardAvoidingView
       style={[
         styles.root,
+        fullBleed && styles.rootFullBleed,
         {
           height: maxHeight,
-          backgroundColor: colors.bg,
-          borderColor: colors.border,
+          backgroundColor: fullBleed ? 'transparent' : colors.bg,
+          borderColor: fullBleed ? 'transparent' : colors.border,
         },
       ]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -342,9 +346,14 @@ export default function ChatRoom({
               </Text>
             </YStack>
           ) : messages.length === 0 ? (
-            <YStack flex={1} alignItems="center" justifyContent="center" padding={16}>
-              <Ionicons name="chatbubbles-outline" size={28} color={colors.textSecondary} />
-              <Text color={colors.textSecondary} marginTop={8} textAlign="center">
+            <YStack flex={1} alignItems="center" justifyContent="center" padding={24} gap={10}>
+              <View style={[styles.emptyIconWrap, { backgroundColor: colors.isDark ? 'rgba(212,175,55,0.12)' : 'rgba(37,99,235,0.08)' }]}>
+                <Ionicons name="chatbubbles-outline" size={32} color={colors.gold} />
+              </View>
+              <Text color={colors.textPrimary} fontSize={17} fontWeight="800" textAlign="center">
+                {t('projectChatTitle')}
+              </Text>
+              <Text color={colors.textSecondary} fontSize={14} lineHeight={20} textAlign="center" maxWidth={280}>
                 {t('noConversationsSub')}
               </Text>
             </YStack>
@@ -478,8 +487,20 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
   },
+  rootFullBleed: {
+    borderRadius: 0,
+    borderWidth: 0,
+  },
   inner: {
     flex: 1,
+  },
+  emptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   listWrap: {
     flex: 1,

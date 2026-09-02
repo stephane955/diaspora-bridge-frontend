@@ -43,7 +43,9 @@ export default function LandingScreen() {
     }));
 
     const handleSelectLanguage = (code: string) => {
-        setLanguage(code);
+        if (code === 'en' || code === 'fr' || code === 'es' || code === 'de' || code === 'it') {
+            setLanguage(code);
+        }
         setLangMenuOpen(false);
     };
 

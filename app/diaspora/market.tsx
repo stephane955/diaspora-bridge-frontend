@@ -17,6 +17,8 @@ import { clientMenuItems } from '@/constants/premiumMenus';
 import { theme } from '@/constants/theme';
 import { mediumFeedback } from '@/utils/haptics';
 import { FLOATING_TAB_BAR_HEIGHT, PREMIUM_BG, PREMIUM_MUTED } from '@/constants/layout';
+import { normalizeProjectStatus } from '@/utils/projectStatus';
+import { resolveProjectBudgetMinor, formatBudgetDisplay } from '@/lib/money';
 
 const blurhash = 'L6PZfSi_.AyE_3t7t7R**0o#DgR4';
 
@@ -52,12 +54,19 @@ export default function MarketScreen() {
     useFocusEffect(useCallback(() => { fetchProjects(); }, [fetchProjects]));
 
     const renderProject = ({ item }: { item: any }) => {
+        const status = normalizeProjectStatus(item.status);
         const statusColors: Record<string, string> = {
             pending: theme.colors.warning,
-            active: theme.colors.active,
+            in_progress: theme.colors.active,
             completed: theme.colors.success,
         };
-        const statusColor = statusColors[item.status] || theme.colors.textMuted;
+        const statusLabels: Record<string, string> = {
+            pending: 'PENDING',
+            in_progress: 'ACTIVE',
+            completed: 'COMPLETED',
+        };
+        const statusColor = statusColors[status] || theme.colors.textMuted;
+        const statusLabel = statusLabels[status] || status.toUpperCase();
 
         return (
             <TouchableOpacity
@@ -79,7 +88,7 @@ export default function MarketScreen() {
                     <View style={styles.topRow}>
                         <View style={[styles.statusBadge, { backgroundColor: statusColor + '25' }]}>
                             <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-                            <Text style={[styles.statusText, { color: statusColor }]}>{item.status?.toUpperCase()}</Text>
+                            <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
                         </View>
                         {item.city && (
                             <View style={styles.cityBadge}>
@@ -91,7 +100,7 @@ export default function MarketScreen() {
                     <View>
                         <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
                         <View style={styles.priceRow}>
-                            <Text style={styles.cardBudget}>{(item.budget || 0).toLocaleString()} CFA</Text>
+                            <Text style={styles.cardBudget}>{formatBudgetDisplay(resolveProjectBudgetMinor(item))}</Text>
                             <View style={styles.arrowBtn}>
                                 <Ionicons name="arrow-forward" size={18} color={theme.colors.primary} />
                             </View>
@@ -120,7 +129,6 @@ export default function MarketScreen() {
                 <FlashList
                     data={projects}
                     renderItem={renderProject}
-                    estimatedItemSize={220}
                     contentContainerStyle={{
                         paddingTop: insets.top + 88,
                         paddingBottom: FLOATING_TAB_BAR_HEIGHT + 40,

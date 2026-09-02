@@ -16,18 +16,32 @@ import { ShoppingCart, ScanLine, Camera, ChevronRight } from 'lucide-react-nativ
 import { Ionicons } from '@expo/vector-icons';
 import PremiumHeader from '@/components/PremiumHeader';
 import PremiumEmptyState from '@/components/PremiumEmptyState';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ScreenLoader from '@/components/ScreenLoader';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { providerMenuItems } from '@/constants/premiumMenus';
 import { supabase } from '@/lib/supabase';
+import { usePremiumColors } from '@/hooks/usePremiumColors';
+import { useScreenOffsets } from '@/hooks/useScreenOffsets';
 import {
-  SCROLL_BOTTOM_INSET,
-  PREMIUM_BG,
-  PREMIUM_GOLD,
-  TEXT_PRIMARY,
-  TEXT_SECONDARY,
-} from '@/constants/layout';
+  ALPHA,
+  DANGER,
+  DANGER_SOFT,
+  GOLD,
+  GOLD_DEEP,
+  INFO,
+  INFO_SOFT,
+  SUCCESS,
+  SUCCESS_DEEP,
+  WARNING,
+  font,
+  icon as iconSize,
+  radius,
+  space,
+  text,
+  weight,
+  withAlpha,
+} from '@/constants/design';
 import { successFeedback } from '@/utils/haptics';
 
 type CartRow = {
@@ -43,17 +57,18 @@ type CartRow = {
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   pending_approval: {
     label: 'Pending',
-    color: '#FBBF24',
-    bg: 'rgba(251,191,36,0.15)',
+    color: WARNING,
+    bg: withAlpha(WARNING, ALPHA.medium),
   },
-  approved: { label: 'Approved', color: '#34D399', bg: 'rgba(52,211,153,0.15)' },
-  collected: { label: 'Collected', color: '#60A5FA', bg: 'rgba(96,165,250,0.15)' },
-  rejected: { label: 'Rejected', color: '#F87171', bg: 'rgba(248,113,113,0.15)' },
+  approved: { label: 'Approved', color: SUCCESS, bg: withAlpha(SUCCESS, ALPHA.medium) },
+  collected: { label: 'Collected', color: INFO_SOFT, bg: withAlpha(INFO_SOFT, ALPHA.medium) },
+  rejected: { label: 'Rejected', color: DANGER_SOFT, bg: withAlpha(DANGER, ALPHA.medium) },
 };
 
 export default function CartHubScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const offsets = useScreenOffsets();
+  const c = usePremiumColors();
   const { t } = useLanguage();
   const { user } = useAuth();
 
@@ -134,7 +149,7 @@ export default function CartHubScreen() {
       title: t('createCart'),
       subtitle: t('createCartSub'),
       icon: ShoppingCart,
-      colors: ['#10B981', '#059669'] as [string, string],
+      colors: [SUCCESS, SUCCESS_DEEP] as [string, string],
       onPress: openCreateCart,
     },
     {
@@ -142,7 +157,7 @@ export default function CartHubScreen() {
       title: t('scanQR'),
       subtitle: t('scanQRSub'),
       icon: ScanLine,
-      colors: ['#2563EB', '#1D4ED8'] as [string, string],
+      colors: [INFO, INFO] as [string, string],
       onPress: () => {
         successFeedback();
         router.push('/provider/verification-scan?type=front');
@@ -153,27 +168,38 @@ export default function CartHubScreen() {
       title: t('takePhoto'),
       subtitle: t('takePhotoSub'),
       icon: Camera,
-      colors: ['#D4AF37', '#B8860B'] as [string, string],
+      colors: [GOLD, GOLD_DEEP] as [string, string],
       onPress: openTakePhoto,
     },
   ];
 
+  if (loading) {
+    return (
+      <View style={[styles.screen, { backgroundColor: c.bg }]}>
+        <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
+        <PremiumHeader
+          title={t('cartHubTitle')}
+          subtitle={t('cartHubQuickActionsSub')}
+          menuItems={providerMenuItems(router, t)}
+        onNotificationsPress={() => router.push('/notifications')}
+        />
+        <ScreenLoader />
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.screen}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+    <View style={[styles.screen, { backgroundColor: c.bg }]}>
+      <StatusBar barStyle={c.isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       <PremiumHeader
         title={t('cartHubTitle')}
         subtitle={t('cartHubQuickActionsSub')}
         menuItems={providerMenuItems(router, t)}
+        onNotificationsPress={() => router.push('/notifications')}
       />
 
       <ScrollView
-        contentContainerStyle={{
-          paddingTop: insets.top + 88,
-          paddingHorizontal: 20,
-          paddingBottom: SCROLL_BOTTOM_INSET,
-          gap: 16,
-        }}
+        contentContainerStyle={[offsets.content, { gap: space.md }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -182,32 +208,36 @@ export default function CartHubScreen() {
               setRefreshing(true);
               load();
             }}
-            tintColor={PREMIUM_GOLD}
+            tintColor={GOLD}
           />
         }
       >
-        <Text style={styles.heroTitle}>{t('cartHubQuickActions')}</Text>
-        <Text style={styles.heroSub}>{t('cartHubQuickActionsSub')}</Text>
+        <Text style={[styles.heroTitle, { color: c.textPrimary }]}>{t('cartHubQuickActions')}</Text>
+        <Text style={[styles.heroSub, { color: c.textSecondary }]}>{t('cartHubQuickActionsSub')}</Text>
 
         {ACTIONS.map((action) => {
           const Icon = action.icon;
           return (
             <TouchableOpacity key={action.key} activeOpacity={0.92} onPress={action.onPress}>
-              <BlurView intensity={40} tint="dark" style={styles.actionCard}>
+              <BlurView
+                intensity={40}
+                tint={c.blurTint}
+                style={[styles.actionCard, { backgroundColor: c.surface, borderColor: c.border }]}
+              >
                 <LinearGradient colors={action.colors} style={styles.actionIcon}>
-                  <Icon size={26} color="#fff" strokeWidth={2.2} />
+                  <Icon size={iconSize.md} color="#FFFFFF" strokeWidth={2.2} />
                 </LinearGradient>
                 <View style={styles.actionCopy}>
-                  <Text style={styles.actionTitle}>{action.title}</Text>
-                  <Text style={styles.actionSub}>{action.subtitle}</Text>
+                  <Text style={[styles.actionTitle, { color: c.textPrimary }]}>{action.title}</Text>
+                  <Text style={[styles.actionSub, { color: c.textSecondary }]}>{action.subtitle}</Text>
                 </View>
-                <ChevronRight size={22} color={PREMIUM_GOLD} />
+                <ChevronRight size={iconSize.md} color={GOLD} />
               </BlurView>
             </TouchableOpacity>
           );
         })}
 
-        <Text style={styles.sectionTitle}>{t('recentCarts') || 'Recent carts'}</Text>
+        <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>{t('recentCarts') || 'Recent carts'}</Text>
 
         {!loading && carts.length === 0 ? (
           <PremiumEmptyState
@@ -235,15 +265,19 @@ export default function CartHubScreen() {
                   });
                 }}
               >
-                <BlurView intensity={32} tint="dark" style={styles.cartRow}>
+                <BlurView
+                  intensity={32}
+                  tint={c.blurTint}
+                  style={[styles.cartRow, { backgroundColor: c.surface, borderColor: c.border }]}
+                >
                   <View style={[styles.cartIcon, { backgroundColor: meta.bg }]}>
-                    <Ionicons name="cart" size={20} color={meta.color} />
+                    <Ionicons name="cart" size={iconSize.sm} color={meta.color} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.cartTitle} numberOfLines={1}>
+                    <Text style={[styles.cartTitle, { color: c.textPrimary }]} numberOfLines={1}>
                       {cart.projects?.title || t('materialCartTitle') || 'Material cart'}
                     </Text>
-                    <Text style={styles.cartMeta}>
+                    <Text style={[styles.cartMeta, { color: c.textSecondary }]}>
                       {Number(cart.total_amount_cfa || 0).toLocaleString()} CFA ·{' '}
                       {new Date(cart.created_at).toLocaleDateString()}
                     </Text>
@@ -262,66 +296,58 @@ export default function CartHubScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: PREMIUM_BG },
+  screen: { flex: 1 },
   heroTitle: {
-    color: TEXT_PRIMARY,
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: font.displayLg,
+    fontWeight: weight.heavy,
     letterSpacing: -0.5,
   },
   heroSub: {
-    color: TEXT_SECONDARY,
-    fontSize: 15,
+    ...text.footnote,
     lineHeight: 22,
-    marginBottom: 8,
+    marginBottom: space.xs,
   },
   actionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    padding: 20,
-    borderRadius: 24,
+    gap: space.md,
+    padding: space.lg,
+    borderRadius: radius.xl,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(17,24,39,0.6)',
   },
   actionIcon: {
     width: 56,
     height: 56,
-    borderRadius: 18,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionCopy: { flex: 1, gap: 4 },
-  actionTitle: { color: TEXT_PRIMARY, fontSize: 18, fontWeight: '800' },
-  actionSub: { color: TEXT_SECONDARY, fontSize: 13, lineHeight: 18 },
+  actionCopy: { flex: 1, gap: space.xxs },
+  actionTitle: text.subtitle,
+  actionSub: { ...text.caption, lineHeight: 18 },
   sectionTitle: {
-    marginTop: 8,
-    color: TEXT_PRIMARY,
-    fontSize: 18,
-    fontWeight: '800',
+    ...text.subtitle,
+    marginTop: space.xs,
   },
   cartRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 18,
+    gap: space.sm,
+    padding: space.md,
+    borderRadius: radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(17,24,39,0.65)',
   },
   cartIcon: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cartTitle: { color: TEXT_PRIMARY, fontSize: 15, fontWeight: '700' },
-  cartMeta: { color: TEXT_SECONDARY, fontSize: 12, marginTop: 2 },
-  badge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  badgeText: { fontSize: 11, fontWeight: '800' },
+  cartTitle: { ...text.footnote, fontWeight: weight.heavy },
+  cartMeta: { ...text.caption, marginTop: 2 },
+  badge: { paddingHorizontal: space.sm, paddingVertical: space.xs, borderRadius: radius.pill },
+  badgeText: { fontSize: font.micro, fontWeight: weight.heavy },
 });
