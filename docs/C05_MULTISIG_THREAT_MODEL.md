@@ -1,10 +1,13 @@
 # C05 Multisig Threat Model (Phase 3B.0 funding approvals)
 
 **Generated:** 2026-09-02  
-**Updated:** 2026-09-02 (C05-R2 request-scoped freeze — Decision #31)  
+**Updated:** 2026-09-03 (post-apply header; Decision #31 unchanged)  
 **Scope:** Funding approvals only — not release governance (Decision #18 OPEN)  
-**Candidate:** `supabase/future_migrations/c05_phase3b0_multisig_approvals.sql`  
-**Staging:** C05 objects ABSENT (review only)
+**Active migration:** `supabase/migrations/20260902183828_c05_phase3b0_request_scoped_multisig.sql`  
+**Staging:** C05 **APPLIED** (`20260902183828`)  
+**C06:** applied schema only (`20260902191944`); live money NO  
+
+> Historical C05-R2 candidate path `future_migrations/c05_phase3b0_multisig_approvals.sql` was promoted. Threat ratings below remain the current funding-auth model.
 
 Chain:
 
@@ -57,5 +60,5 @@ Ratings: **BLOCKED** | **MITIGATED** | **OPEN** | **NOT APPLICABLE**
 
 ## Apply gate implication
 
-`C05_APPLY_READY = YES` when local C05 + C05/C06 disposable integration PASS and Decision #31 frozen (this document).  
-Still do **not** apply to staging in C05-R2 — separate APPLY task.
+C05 **is applied** on staging (`20260902183828`). This document is the current C05 threat model, not a pre-apply review.  
+C06 schema is also applied; C05 does not authorize live money.

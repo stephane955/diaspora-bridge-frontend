@@ -1,10 +1,15 @@
 # P01 Migration Inventory
 
+> **HISTORICAL — P01 POINT-IN-TIME SNAPSHOT**  
+> **DO NOT USE FOR CURRENT SCHEMA STATE.**  
+> Counts below (6/7 active, C05/C06 future) describe P01 inventory at generation time. Current chain is **9** migrations including C05 `20260902183828` and C06 `20260902191944`. See `docs/CURRENT_STATE.yaml`.
+
 ```yaml
 generated: 2026-09-02
 last_verified: 2026-09-02
 repo_commit: be1af5a0333a0b75867fdc60c6f8bb7670558e54
 staging_ref: tvorurbmzrpwvxwztpix
+document_class: HISTORICAL_P01_SNAPSHOT
 ```
 
 ## Summary counts

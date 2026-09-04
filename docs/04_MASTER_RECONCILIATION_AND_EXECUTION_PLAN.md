@@ -2,8 +2,8 @@
 
 ```yaml
 generated: 2026-09-02
-last_verified: 2026-09-02
-repo_commit: be1af5a0333a0b75867fdc60c6f8bb7670558e54
+last_verified: 2026-09-03
+repo_commit: fbea0b12c18c1936b34ffe00a5db2a29719c66d7
 staging_ref: tvorurbmzrpwvxwztpix
 production_ref: xtyqcdktwxzuezarnqhz
 production_touched: false
@@ -14,6 +14,7 @@ r00_1_reconciled: 2026-09-02
 p00_implemented: 2026-09-02
 p01_in_progress: false
 p01_done: 2026-09-02
+c03_d1_corridor_frozen: 2026-09-03
 ```
 
 **Rule:** Repository code + verified staging schema beat document prose. Production was **not** queried or modified in this audit.
@@ -41,12 +42,12 @@ p01_done: 2026-09-02
 | Phase 3B.0 multisig (C05) | `20260902183828` | **APPLIED** — request-scoped auth | **not app-wired**; not operational payment processing |
 | Phase 3B funding (C06) | `20260902191944` | **APPLIED** — inbound payment/ledger DB primitives | **not app-wired**; not live-money / PSP / webhooks |
 | `rpc_release_milestone` (16-step) | spec only | **not exists** | no |
-| FX quotes / EUR funding layer | spec | **not exists** | no |
+| FX quotes / EUR metadata layer | `20260903175839` | **APPLIED SCHEMA ONLY** — `fx_quotes` + RPCs; EUR `is_funding=false` | **not app-wired**; EUR funding NOT enabled |
 | Evidence bundles | spec | **not exists** | scattered photos only |
 | Payout state machine + instruments | spec | **not exists** | disabled (P00) |
 | Reconciliation / treasury | spec | **not exists** | no |
 | Domain event chain | spec | **not exists** | no |
-| P01+C05+C06 schema | applied — 29 tables / 49 policies | **applied** | compiles against generated types; live money NO |
+| P01+C05+C06+C03+C12 schema | applied — 31 tables / 51 policies | **applied** | types regenerated; live money NO |
 
 ### POST-P00 current state (verified 2026-09-02)
 
@@ -112,21 +113,27 @@ Legal/regulatory operating model frozen
 
 ---
 
-## SECTION B — Environment state (post-P01.10)
+## SECTION B — Environment state (current — post P01 index repair)
 
 | | **REPO** | **STAGING** (`tvorurbmzrpwvxwztpix`) | **PRODUCTION** (`xtyqcdktwxzuezarnqhz`) |
 |---|----------|--------------------------------------|------------------------------------------|
-| Active migrations | **7** (bootstrap + Phase1/3A/5/P00/P01/P01.10) | **7 applied — history aligned** | Not queried |
-| Public tables | 26 | **26** | Not queried |
+| Active migrations | **12** | **12 applied — history aligned** | Not queried |
+| Public tables | 31 | **31** | Not queried |
+| Policies | 51 | **51** | Not queried |
+| Public indexes | **91** | **91** (parity restored) | Not queried |
 | Ledger balance | N/A | **0 XAF** | Not queried |
 | Journals | N/A | **0** | Not queried |
 | App connection (dev) | `EXPO_PUBLIC_*` | **Staging when configured** | **Blocked in __DEV__** |
-| Phase 3B | `future_migrations/` | **Absent** | Not queried |
-| Phase 5 | active migration | **Applied** | Not queried |
-| P00 | active migration | **Applied** (`20260902122609`) | Not queried |
-| Clean reset | **PASS** | N/A (remote) | Forbidden |
+| C05 | active `20260902183828` | **APPLIED** | Not queried |
+| C06 | active `20260902191944` | **APPLIED SCHEMA ONLY** | Not queried |
+| C03 | active `20260903175839` | **APPLIED SCHEMA ONLY** | Not queried |
+| C12 | active `20260903192834` | **APPLIED SCHEMA ONLY** | Not queried |
+| P01 index repair | active `20260904193500` | **APPLIED** | Not queried |
+| Phase 5 / P00 / P01 | active | **Applied** | Not queried |
+| Clean reset | **PASS** (12 migrations / 91 indexes) | N/A (remote) | Forbidden |
+| Live money | **NO** | **NO** | Forbidden |
 
-### Staging applied migrations (verified 2026-09-02 P01.10)
+### Staging applied migrations (verified post P01 index repair)
 
 ```text
 20260812000000           p01_minimal_bootstrap
@@ -136,19 +143,41 @@ Legal/regulatory operating model frozen
 20260902122609           p00_security_lockdown
 20260902140000           p01_core_app_schema
 20260902162321           p01_10_favorite_providers
+20260902183828           c05_phase3b0_request_scoped_multisig
+20260902191944           c06_phase3b_payment_intent_escrow_funding
+20260903175839           c03_fx_quotes_cross_border
+20260903192834           c12_payment_attempts
+20260904193500           p01_restore_missing_lookup_indexes
 ```
+
+### HISTORICAL P01.10 BASELINE (superseded — do not treat as current)
+
+At P01.10 close, staging had **7** active migrations and **26** public tables (C05/C06 not yet applied). That snapshot is historical only.
 
 ### PRE-P01 HISTORICAL (no longer current)
 
 Before P01 apply, staging had ~12 tables and 4 migration markers. That state is superseded.
 
-### Staging public tables (current — post C06 schema apply)
+### HISTORICAL post-C03 schema block (superseded by post-C12)
+
+At C03 APPLY close: 10 migrations / 30 tables / 50 policies. Superseded by C12 APPLY.
+
+### Staging public tables (current — post P01 index repair)
 
 ```text
-29 base tables (28 prior + payments)
-49 policies
-C05 + C06 present; rpc_release_milestone ABSENT
-ledger journals 0; live money NO; PSP NOT activated
+12 migrations / 31 tables / 51 policies / 91 public indexes
+C05 APPLIED
+C06 APPLIED SCHEMA ONLY
+C03 APPLIED SCHEMA ONLY
+C12 APPLIED SCHEMA ONLY
+P01 LOOKUP INDEX REPAIR APPLIED (20260904193500) — non-financial
+EUR metadata present with is_funding=false
+payments PRESENT; fx_quotes PRESENT; payment_attempts PRESENT
+rpc_release_milestone ABSENT
+ledger journals 0; live money NO; PSP NOT activated; EUR FUNDING NOT ENABLED
+INCIDENT (repaired): post-C12 reconciliation found LOCAL=91 STAGING=85 ONLY_LOCAL=6
+      (idx_messages_project, idx_notifications_user, idx_project_applications_*,
+       idx_project_expenses_project, idx_project_updates_project). Additive repair restored parity.
 ```
 
 ---
@@ -163,7 +192,7 @@ See **`DOCUMENT_STATUS_INDEX.md`** for full file-by-file status and stale-statem
 
 ## SECTION D — Decision register
 
-See **`DECISION_REGISTER.md`** for decisions 1–31, Phase 5 naming, hireProvider verification, fee rounding table.
+See **`DECISION_REGISTER.md`** for decisions 1–44, Phase 5 naming, hireProvider verification, fee rounding table.
 
 ---
 
@@ -191,7 +220,8 @@ See **`DECISION_REGISTER.md`** for decisions 1–31, Phase 5 naming, hireProvide
  Contracts                ratings                    Legacy transactions [FROZEN]
  Evidence (photos)        QR handoff [DISABLED]      Withdrawals [FROZEN]
  Materials (carts)*                                  process-escrow [503]
- Disputes* (temp table)                              Phase 3B [NOT APPLIED]
+ Disputes* (temp table)                              C05+C06 DB PRIMITIVES [STAGING]
+                                                     LIVE PSP / MONEY [DISABLED]
 
  * = workflow only; no client financial mutation (P00)
  LEGACY — WRITE FROZEN = transactions, withdrawals client writes denied
@@ -202,39 +232,34 @@ See **`DECISION_REGISTER.md`** for decisions 1–31, Phase 5 naming, hireProvide
 
 ---
 
-## SECTION F — Canonical money lifecycle (target)
+## SECTION F — Canonical money lifecycle (target vs current DB)
 
 ```text
-EUR CLIENT
+FX QUOTE
+  DB SCHEMA BUILT — C03 (fx_quotes + RPCs; staging)
+  NOT APP-WIRED; EUR FUNDING NOT ENABLED
    ↓
-FX QUOTE (fx_quotes — NOT BUILT)
+PAYMENT INTENT
+  DB RPC BUILT — C06 (rpc_create_payment_intent)
+  NOT APP-WIRED
    ↓
-PAYMENT INTENT (rpc_create_payment_intent — NOT APPLIED)
+PSP
+  NOT INTEGRATED — C12 (forbidden until approved)
    ↓
-PSP (forbidden until approved)
+SIGNED WEBHOOK
+  NOT BUILT — C11 (edge absent / fail-closed)
    ↓
-SIGNED WEBHOOK (escrow-webhook — NOT AUTHENTICATED)
-   ↓
-rpc_post_escrow_funding → ledger_post_journal(escrow_funding)
+ESCROW LEDGER POST
+  DB RPC BUILT — C06 (rpc_post_escrow_funding)
+  NO LIVE CALLER — journals remain 0
    ↓
 PROJECT ESCROW (ledger account)
    ↓
-EVIDENCE BUNDLE ACCEPTED (NOT BUILT)
-   ↓
-CLIENT APPROVAL (workflow_state)
-   ↓
-rpc_release_milestone (NOT BUILT) → ledger_post_journal(milestone_release)
-   ↓
-PROVIDER PAYABLE
-   ↓
-PAYOUT STATE MACHINE + payout_instruments (NOT BUILT)
-   ↓
-MoMo / Orange
-   ↓
-RECONCILIATION (NOT BUILT)
+EVIDENCE / APPROVAL / RELEASE / PAYOUT / RECONCILIATION
+  NOT BUILT (D01–D03, C07, C08, C13)
 ```
 
-**Current reality (post-P00):** Client release/payout paths are **fail-closed**. Workflow status changes do not post ledger journals or insert legacy transactions.
+**Current reality:** C05+C06+C03 schema on staging; client release/payout fail-closed; no operational inbound money; EUR funding NO; live money NO.
 
 ---
 
@@ -254,13 +279,13 @@ Scores are **verified maturity** (0–5): 0 absent, 1 designed, 2 migrated, 3 ap
 
 | System | Old doc score | Verified | Exists | Missing | Blocker | Priority |
 |--------|---------------|----------|--------|---------|---------|----------|
-| Ledger | strong design | **2** | schema+posting RPC | journals, app reads | no inbound/outbound RPCs | **P01/C06** |
-| Phase 3B funding | C05+C06 schema applied | **2** | payments+RPCs on staging | app_wired/live money | C03/C11/C12/C13/legal | **live blockers** |
+| Ledger | strong design | **2** | schema+posting+C06/C12 inbound DB | trusted PSP caller; live journals | inbound DB RPC exists; no C11 authenticity layer; no live journals | **C11 / real PSP** |
+| Phase 3B funding | C05+C06+C03+C12 schema applied | **2** | payments+fx_quotes+attempts+RPCs | app_wired/live money | C09/C11/C13/legal/real PSP orchestration | **live blockers** |
 | CI/DR | local green | **2** | workflow + local pass | GitHub Actions not executed | hosted CI | **ops** |
 | Phase 5 money | "complete" | **2** | staging columns | legacy retirement | app legacy paths | **C02** |
 | Release | broken legacy | **1** | UI fail-closed | rpc_release_milestone | P00 disabled client path | **C07** |
 | Payout | legacy queue | **1** | withdrawals frozen | state machine, instruments | P00 disabled | **C08** |
-| FX | spec | **0** | — | all tables | corridor design | **C03** |
+| FX | schema migrated | **2** | fx_quotes + C03 RPCs on staging | app_wired / provider path / live | EUR is_funding=false; no PSP | **C11 / real PSP / legal** |
 | Fees | partial | **2** | bps helpers | fee_schedules table | insurance naming | **C04** |
 | Evidence | scattered | **1** | photos | bundles, verdicts | gating | **D02** |
 | Disputes | 3 models | **1** | partial SQL | unified model + freeze | ledger tie-in | **D04-D06** |
@@ -362,7 +387,7 @@ Full detail in `FINANCIAL_FIELD_INVENTORY.md`. Key rows (**post-P01.10**):
 |----|------|--------|
 | P01.1 | Timestamp/order all migrations; resolve 23 untimestamped files | **DONE (P01 historical)** — at P01 close: 7 active, 21 legacy, 2 future; **current chain later grew with C05/C06** |
 | P01.2 | Authoritative CREATE TABLE for core tables | **DONE** — `20260902140000` + `20260902162321` favorites |
-| P01.3 | `supabase db reset` reproduces staging intent | **P01 historical completion evidence** — at P01 close C05/C06 not executed; **current** reset includes C05+C06 (9 migrations) |
+| P01.3 | `supabase db reset` reproduces staging intent | **P01 historical completion evidence** — at P01 close C05/C06 not executed; **current** reset includes C05+C06+C03 (**10** migrations) |
 | P01.4 | Regenerate database.types.ts from staging | **DONE** |
 | P01.5 | CI: SQL tests + tsc + lint | **DONE** locally — GitHub Actions not executed in session |
 | P01.6 | Staging migration history aligned | **DONE** |
@@ -379,7 +404,7 @@ Full detail in `FINANCIAL_FIELD_INVENTORY.md`. Key rows (**post-P01.10**):
 |----|------|------|--------|
 | C01 | Freeze decisions (fee truncate, platform_currencies, no insurance semantics) | R00 | **DONE** (register) |
 | C02 | Phase 5 legacy read migration in app; stop new numeric writes | P01 | PARTIAL |
-| C03 | FX tables + quote consumption | C01 | NOT STARTED |
+| C03 | **APPLIED TO STAGING — SCHEMA ONLY** (`20260903175839`) | C01, C05, C06, #11, #32 | not app-wired; EUR funding NO; C12 owns retry attempts |
 | C04 | fee_schedules + rename insurance helper (additive) | C01 | NOT STARTED |
 | C05 | **APPLIED TO STAGING + VERIFIED** (`20260902183828`) | P0, P01, Decision #31 | authorization infra only — no payments |
 | C06 | **APPLIED TO STAGING — SCHEMA ONLY** (`20260902191944`) | C05 | not app-wired; live money NO |
@@ -388,7 +413,7 @@ Full detail in `FINANCIAL_FIELD_INVENTORY.md`. Key rows (**post-P01.10**):
 | C09 | Refunds/reversals/chargebacks | C07 | NOT STARTED |
 | C10 | Material money path (ledger) | D07 | NOT STARTED |
 | C11 | Edge function hardening | P0.3–4 | NOT STARTED |
-| C12 | PSP integration (still forbidden until approved) | C06, legal | BLOCKED |
+| C12 | Payment attempts — **APPLIED TO STAGING — SCHEMA ONLY** (`20260903192834`) | C03, C06, legal | **SCHEMA ONLY** — not PSP; live money NO |
 | C13 | Reconciliation + treasury | C08 | NOT STARTED |
 | C14 | Legacy retirement | C07–C08 | NOT STARTED |
 
@@ -448,14 +473,20 @@ Full detail in `FINANCIAL_FIELD_INVENTORY.md`. Key rows (**post-P01.10**):
 |--------|------|---------|-------------|--------------|--------|
 | ledger_accounts | 20260813 | YES (11 rows) | none | YES (when used) | empty |
 | ledger_post_journal | 20260826100000 | YES | none | YES | ready |
-| platform_currencies | 20260902100000 | YES (XAF) | none | metadata | applied |
+| platform_currencies | 20260902100000 + C03 EUR | YES (XAF+EUR) | none | metadata | EUR is_funding=false |
 | payments | 20260902191944 | **YES** | none | inbound funding | C06 schema; live money NO |
 | escrow_funding_requests | 20260902183828 | **YES** | none | funding auth | C05 applied |
 | escrow_funder_approvals | 20260902183828 | **YES** | none | funding auth | C05 applied |
 | rpc_create_payment_intent | 20260902191944 | **YES** | none | — | C06 schema |
 | rpc_post_escrow_funding | 20260902191944 | **YES** | none | — | C06 schema; service_role |
+| fx_quotes | 20260903175839 | **YES** | none | quote economics | C03 schema only; EUR funding NO |
+| rpc_record_fx_quote | 20260903175839 | **YES** | none | — | service_role |
+| rpc_create_cross_border_payment_intent | 20260903175839 | **YES** | none | — | authenticated wrapper |
+| payments_fx_quotes_close_terminal_trg | 20260903175839 | **YES** | — | — | closes usable quotes on succeed/ledger |
+| trg_fx_quotes_immutability | 20260903175839 | **YES** | — | — | economic immutability |
 | release_milestone | legacy/monopoly | **NO** | none | no | DO NOT RECREATE |
 | rpc_release_milestone | 01_CANONICAL_MODELS | **NO** | none | target | C07 future |
+| payment_attempts | — | **NO** | none | target | **C12 future** |
 | transactions | bootstrap + P00 | YES **RLS ON** | none (ledger RPC) | **NO** | **FROZEN** |
 | withdrawals | bootstrap + P00 | YES **RLS ON** | admin read-only | **NO** | **FROZEN** |
 | milestones.amount_minor | phase5 | YES | hireProvider | workflow | partial |
@@ -484,9 +515,13 @@ Full detail in `FINANCIAL_FIELD_INVENTORY.md`. Key rows (**post-P01.10**):
                             ▼
               C06 ✅ inbound funding DB primitives (schema only; live money NO)
                             │
+                            ▼
+              C03 ✅ FX quotes / corridor schema (schema only; EUR funding NO)
+                            │
                 ┌───────────┴─────────────┐
                 ▼                         ▼
-     C03/C09/C11/C12/C13/legal        D01/D02
+     C09/C11/C13/legal                D01/D02
+     + real PSP orchestration             │
      (before live money)                  │
                 │                         │
          C07 release (later)              │
@@ -495,6 +530,9 @@ Full detail in `FINANCIAL_FIELD_INVENTORY.md`. Key rows (**post-P01.10**):
                     (not yet operational funding)
 ```
 
+C03 + C12 are **schema complete** on staging.
+- **C12 payment-attempt DB capability = DONE (schema only)**
+- Remaining live-money blockers are **C09 / C11 / C13 / Decision #13 / real PSP provider integration / provider orchestration** — not missing C12 schema.
 ---
 
 ## Launch gate (§59) — current
@@ -514,7 +552,7 @@ Full detail in `FINANCIAL_FIELD_INVENTORY.md`. Key rows (**post-P01.10**):
 | Payout state machine | **NO** |
 | Reconciliation | **NO** |
 | KYC + limits | **NO** |
-| DB rebuild tested | **YES** — local clean reset PASS (P01, 7 migrations) |
+| DB rebuild tested | **YES** — local clean reset PASS (**10** active migrations) |
 | CI + backup/restore | **PARTIAL** — workflow added |
 | Financial kill switch | **PARTIAL** — P00 fail-closed |
 
@@ -553,8 +591,8 @@ See **`docs/CURRENT_STATE.yaml`**.
 
 | # | Question | Answer |
 |---|----------|--------|
-| 1 | Actual staging schema? | **28** public tables; P01 + C05 auth objects; see §B |
-| 2 | Applied migrations? | **8** canonical identities (aligned local/staging) |
+| 1 | Actual staging schema? | **31** public tables; **51** policies; C05+C06+C03+C12 present; see §B |
+| 2 | Applied migrations? | **11** canonical identities (aligned local/staging) |
 | 3 | Phase 5 complete? | **Scaffolding yes; migration complete no** (C14 remains) |
 | 4 | Stale docs after Phase 5? | Historical maps remain HISTORICAL; fee rounding reconciled P01.9 |
 | 5 | hireProvider amount_minor? | **Yes — amount_minor only** (no amount_cfa write) |
@@ -572,7 +610,7 @@ See **`docs/CURRENT_STATE.yaml`**.
 | 17 | Why insurance helper? | Phase 3B/5 naming; **rename to service fee** (decision 21 / C04) |
 | 18 | Multi-funder release authority? | **OPEN** — owner default + funders veto TBD (C05 funding only) |
 | 19 | 16-step release canonical? | **Yes** — do not abbreviate |
-| 20 | DB recreate from zero? | **Yes (local)** — **9** active migrations including C05+C06 |
+| 20 | DB recreate from zero? | **Yes (local)** — **10** active migrations including C05+C06+C03 |
 | 21 | CI operational? | **Local engineering checks PASS** (lint/tsc/reset/SQL via npm install substitute). **npm ci reproducibility on Windows host NOT VERIFIED** (EPERM on esbuild). **GitHub Actions NOT EXECUTED**. |
 | 22 | Binary build (EAS)? | **BLOCKED ON PRODUCT IDENTIFIER** — `eas.json` present; no bundleIdentifier/package |
 | 23 | Before rpc_release_milestone? | P01+C05+C06 schema DONE; D01–D03, C04, decision 18, live-money deps remain |
@@ -583,9 +621,22 @@ See **`docs/CURRENT_STATE.yaml`**.
 
 ## Recommended next implementation phase
 
-**P00 + P01 + C05 + C06 schema complete.** C06 inbound-funding database infrastructure is on staging. It is **not** operational funding.
+**P00 + P01 + C05 + C06 + C03 + C12 schema complete (staging schema only). P01 lookup index drift repaired.**
 
-**Exact next action:** Address live-money dependencies (**C03 / C09 / C11 / C12 / C13 / legal**) before any PSP activation, webhook deploy, or funding UI. Do **not** jump to C07 solely because C06 RPCs exist. Binary IDs still blocked on product.
+Payment chain (database, not operational):
+
+```text
+C05 funding authorization
+→ C03 FX economics when cross-border
+→ C06 logical payment
+→ C12 execution-attempt database state
+→ C11 authenticated provider event [NOT BUILT]
+→ C06/C12 atomic ledger finalization
+```
+
+C12 is **not** PSP integration.
+
+**Exact next action:** **C11-D2** — freeze provider-neutral Decisions #39–#44 (design only; do not invent provider crypto). Not C11-R yet. Still no live money, funding UI, EUR funding, or production. Blockers: C09, C11, C13, Decision #13, real PSP orchestration.
 
 ---
 

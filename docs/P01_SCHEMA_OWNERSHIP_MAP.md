@@ -1,5 +1,9 @@
 # P01 Schema Ownership Map
 
+> **HISTORICAL — P01 POINT-IN-TIME SNAPSHOT**  
+> **DO NOT USE FOR CURRENT SCHEMA STATE.**  
+> Rows marked C05/C06 FUTURE described P01-reset ownership. After later applies: `escrow_*` owned by C05 `20260902183828`; `payments` owned by C06 `20260902191944`.
+
 One authoritative source per active object after P01.
 
 | Object | Owner migration | Notes |

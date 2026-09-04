@@ -1,17 +1,18 @@
 # DiasporaBridge — Canonical Models
 
 **Generated:** 2026-09-02  
-**Last verified:** 2026-09-02 (P01.9)  
-**Status:** PARTIALLY APPLIED — canonical money scaffolding + P01 schema on staging; C05/C06/C07 not applied.  
-**Current schema truth:** `docs/CURRENT_STATE.yaml` + `docs/04_MASTER_RECONCILIATION_AND_EXECUTION_PLAN.md`  
-**Repo head:** `be1af5a0333a0b75867fdc60c6f8bb7670558e54` (+ uncommitted P00/P01 working tree)
+**Last verified:** 2026-09-03 (C03-R2)  
+**Status:** PARTIALLY_STALE for apply-state prose — **CURRENT schema truth is** `docs/CURRENT_STATE.yaml` + `docs/04_MASTER_RECONCILIATION_AND_EXECUTION_PLAN.md`.  
+**Staging today:** C05 + C06 schema applied; C03 **not** applied (future candidate only); C07 absent; live money NO.  
+**Repo head (committed baseline):** `fbea0b12c18c1936b34ffe00a5db2a29719c66d7`
 
 **Frozen applied decisions (override proposals below):**
 - Settlement currency table: **`public.platform_currencies`** (not `public.currencies`)
 - Fee rounding: **truncate toward zero** (see `lib/money.ts`, `platform_fee_bps_minor`, DECISION_REGISTER #19)
 - Insurance naming in legacy helpers → future semantic target = **platform service fee** (C04 rename)
+- Cross-border v1: **TARGET-XAF-FIRST** (Decision #32); Decision #11 corridor pricing FROZEN
 
-**Purpose:** concrete designs referenced by `00_PLATFORM_BLUEPRINT.md`. Proposals below are reviewed against applied migrations before C05+.
+**Purpose:** concrete designs referenced by `00_PLATFORM_BLUEPRINT.md`. §1.3 FX prose is a **historical design sketch** — superseded for authority/order by C03-D1/C03-R2 (`docs/C03_C05_C06_COMPATIBILITY_REVIEW.md`). Do not treat dealer PnL / `fx_conversion` journals as C03-R2 scope.
 
 Nothing in this document should be applied to production. Staging only.
 

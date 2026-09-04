@@ -1,7 +1,7 @@
 # DiasporaBridge — machine-readable current state
-# last_verified: 2026-09-02 (C06 SCHEMA APPLIED staging; LIVE MONEY NO)
-# repo_head: be1af5a0333a0b75867fdc60c6f8bb7670558e54
-# working_tree_state: uncommitted P00/P01/C05/C06 foundation (preserved)
+# last_verified: 2026-09-04 (P01 index drift repair applied staging; LIVE MONEY NO)
+# repo_head: fbea0b12c18c1936b34ffe00a5db2a29719c66d7
+# working_tree_state: C12 + P01 lookup index repair on staging; C11-D1 design only; next C11-D2
 # authority: docs/04_MASTER_RECONCILIATION_AND_EXECUTION_PLAN.md
 # production_touched: false
 
@@ -12,7 +12,7 @@ environment:
   production_touched: false
 
 migrations:
-  active_migration_count: 9
+  active_migration_count: 12
   legacy_archived_count: 21
   future_migration_count: 0
   active_chain:
@@ -25,12 +25,15 @@ migrations:
     - "20260902162321:p01_10_favorite_providers"
     - "20260902183828:c05_phase3b0_request_scoped_multisig"
     - "20260902191944:c06_phase3b_payment_intent_escrow_funding"
+    - "20260903175839:c03_fx_quotes_cross_border"
+    - "20260903192834:c12_payment_attempts"
+    - "20260904193500:p01_restore_missing_lookup_indexes"
   staging_applied: aligned_with_local
   local_applied: aligned_with_staging
-  staging_table_count: 29
-  local_reset_table_count: 29
-  staging_policy_count: 49
-  local_reset_policy_count: 49
+  staging_table_count: 31
+  local_reset_table_count: 31
+  staging_policy_count: 51
+  local_reset_policy_count: 51
   production_applied: unknown_read_only_not_queried
 
 ledger:
@@ -94,6 +97,42 @@ p01_foundation:
   github_actions: NOT_EXECUTED
   npm_ci_windows: NOT_VERIFIED_EPERM
 
+latest_static_verification:
+  typecheck: PASS
+  lint: PASS
+  expo_doctor: ENVIRONMENT_FAILURE
+  expo_doctor_reason:
+    - network_fetch_timeout
+    - local_node_outdated
+  note: "P01 index repair run (typecheck PASS). Expo ENVIRONMENT_FAILURE unchanged. Historical p01_foundation.expo_doctor remains PASS."
+
+post_c12_index_reconciliation:
+  incident_detected: true
+  original_local_public_indexes: 91
+  original_staging_public_indexes: 85
+  original_missing_count: 6
+  original_only_local:
+    - idx_messages_project
+    - idx_notifications_user
+    - idx_project_applications_project
+    - idx_project_applications_provider
+    - idx_project_expenses_project
+    - idx_project_updates_project
+  missing_origin_migration: "20260902140000_p01_core_app_schema"
+  financial_significance: non_financial_lookup_indexes_only
+  root_cause: UNKNOWN_HISTORICAL_DRIFT
+  root_cause_note: "SCHEMA DRIFT CONFIRMED — P01 recorded in schema_migrations but six migration-owned lookup indexes absent on staging; git shows single historical commit for P01 file (no post-apply file edit proven)."
+  repair_migration: "20260904193500:p01_restore_missing_lookup_indexes"
+  historical_p01_modified: false
+  repaired: true
+  local_public_indexes: 91
+  staging_public_indexes: 91
+  only_local_count: 0
+  only_staging_count: 0
+  index_definition_drift: false
+  missing_migration_owned_staging_indexes: false
+  post_c12_reconciliation_pass: true
+
 security_p0:
   P0_1_transactions_rls: DONE
   P0_2_admin_gate: DONE
@@ -113,6 +152,7 @@ expo:
   bundle_identifier: BLOCKED_ON_PRODUCT_IDENTIFIER
   android_package: BLOCKED_ON_PRODUCT_IDENTIFIER
   expo_doctor: PASS
+  # latest C12 APPLY verification: see latest_static_verification.expo_doctor
 
 c05_readiness:
   c05_applied: true
@@ -131,13 +171,139 @@ c06_readiness:
   app_wired: false
   operational: false
   live_blockers:
-    - C03
     - C09
     - C11
-    - C12
     - C13
     - decision_13_regulatory
+    - real_psp_provider_integration
+    - provider_orchestration
+  # C12 payment-attempt DB schema is applied; do not list bare "C12" as unfinished schema.
 
-recommended_next_phase: C03_or_C11_or_C12_dependency_work_before_live_money
-  # Do NOT jump to C07 solely because C06 schema exists.
-  # DATABASE CAPABILITY ≠ TRUSTED PSP ≠ LEGAL ≠ LIVE MONEY
+c03_readiness:
+  c03_r_review: complete
+  c03_d1_review: complete
+  c03_r2_review: complete
+  c03_r3_review: complete
+  c03_r3_1_review: complete
+  c03_corridor_semantics_frozen: true
+  quote_direction: target_xaf_first
+  source_first_v1_supported: false
+  c03_schema_design_ready: true
+  c03_candidate_exists: false
+  c03_candidate_file: null
+  c03_active_migration: supabase/migrations/20260903175839_c03_fx_quotes_cross_border.sql
+  c03_migration_version: "20260903175839"
+  c03_local_proof_pass: true
+  canonical_lock_order: funding_request_payment_fx_quote
+  canonical_lock_order_proven: true
+  deadlock_concurrency_test_pass: true
+  success_race_test_pass: true
+  initial_quote_consumption_safe: true
+  post_intent_quote_recording_safe: true
+  post_intent_wrapper_does_not_fake_attempt: true
+  post_success_requote_denied: true
+  post_ledger_requote_denied: true
+  processing_requote_denied: true
+  requires_action_requote_denied: true
+  quote_request_idempotency_proven: true
+  usable_quote_concurrency_proven: true
+  nested_security_definer_proven: true
+  post_intent_requote_model_safe: true
+  c12_payment_attempt_model_required: true
+  c03_candidate_ready: true
+  c03_apply_ready: true
+  c03_schema_applied: true
+  c03_staging_verified: true
+  currency_model: xaf_ledger_fx_on_quote_layer
+  eur_metadata: present_is_funding_false
+  eur_funding_enabled: false
+  recommended_table: fx_quotes
+  c06_compat_strategy: additive_wrapper_rpc_create_cross_border_payment_intent
+  xaf_native_path: no_fx_quote_required
+  requote: many_quotes_per_request_one_usable_q2_not_consumed_by_c03_when_p1_exists
+  apply_blockers: []
+  live_only_blockers:
+    - C09
+    - C11
+    - C13
+    - decision_13_regulatory
+    - real_fx_psp_provider_integration
+    - provider_orchestration
+  # C12 payment-attempt DB schema is applied; bare "C12" removed as unfinished-schema blocker.
+  live_money_ready: false
+  app_wired: false
+  operational: false
+
+c12_readiness:
+  c12_d1_review: complete
+  c12_d2_review: complete
+  c12_r_review: complete
+  decisions_33_to_38_frozen: true
+  payment_attempt_model_defined: true
+  quote_attempt_binding_defined: true
+  decision_33_provider_authority: frozen_same_provider_v1
+  cross_provider_retry: deferred
+  decision_34_payment_attempt_status: frozen_attempt_local_failure
+  terminal_payment_reopen_allowed: false
+  decision_35_payment_psp_ref: frozen_successful_winner_ref
+  decision_36_one_active_attempt: frozen
+  decision_37_funding_mode: frozen_immutable_payment_funding_mode
+  decision_38_initial_quote_bootstrap: frozen
+  initial_q1_bootstrap_defined: true
+  retry_quote_consumption_defined: true
+  c03_c12_requote_patch_defined: true
+  atomic_success_finalization_defined: true
+  provider_authority_defined: true
+  status_model_defined: true
+  c11_boundary_defined: true
+  lock_order_defined: true
+  lock_order: funding_request_payment_fx_quote_attempt
+  late_provider_success_after_attempt_failed: open_quarantine_c11_c13
+  late_provider_success_policy: quarantine_c11_c13
+  double_provider_http_submission: open
+  c12_schema_candidate_exists: false
+  c12_active_migration_exists: true
+  c12_local_proof_pass: true
+  c12_staging_verified: true
+  funding_mode_enforced: true
+  committed_unclassified_payment_possible: false
+  legacy_direct_c06_bypass_closed: true
+  initial_q1_bootstrap_proven: true
+  retry_quote_atomic_consumption_proven: true
+  one_active_attempt_proven: true
+  atomic_success_finalization_proven: true
+  forced_success_rollback_proven: true
+  one_success_proven: true
+  canonical_lock_order_proven: true
+  concurrency_proven: true
+  c12_schema_applied: true
+  c12_schema_design_ready: true
+  c12_candidate_ready: true
+  c12_apply_ready: true
+  database_schema_implementation_ready: true
+  operational: false
+  psp_integrated: false
+  eur_funding_enabled: false
+  live_money_ready: false
+
+c11_readiness:
+  c11_d1_review: complete
+  provider_neutral_schema_design_ready: true
+  provider_specific_verifier_ready: false
+  c11_schema_candidate_exists: false
+  c11_schema_applied: false
+  decisions_39_to_44: open
+  recommended_model: additive_provider_events_keep_ledger_posted_events_ledger_dedupe_only
+  authenticity_vs_processing_separated: true
+  attempt_correlation_primary: payment_attempt_id_outbound_idempotency
+  late_success_policy: quarantine_c13
+  double_provider_http_submission: open
+  raw_body_verification_required: true
+  psp_integrated: false
+  live_money_ready: false
+
+recommended_next_phase: c11_d2_freeze_provider_neutral_decisions_39_to_44
+  # P01 lookup index drift repaired (staging = local public index set). C11-D1 design complete.
+  # Next: C11-D2 freeze Decisions #39–#44 (provider-neutral only). NOT C11-R yet. No live money.
+  # C09/C11/C13/Decision #13/real PSP remain. DATABASE CAPABILITY ≠ TRUSTED PSP ≠ LEGAL ≠ LIVE MONEY
+  future_migration_count_note: "0 future files; active chain 11; C12 20260903192834 applied staging schema only"

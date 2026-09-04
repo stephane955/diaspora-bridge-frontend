@@ -1,9 +1,10 @@
 # C06 Payment Intent + Escrow Funding Threat Model
 
-**Generated:** 2026-09-02 (C06-R)  
-**Candidate:** `supabase/future_migrations/c06_phase3b_escrow_funding.sql`  
+**Updated:** 2026-09-03 (R00.2 post-C06)  
+**Active migration:** `supabase/migrations/20260902191944_c06_phase3b_payment_intent_escrow_funding.sql`  
 **C05 staging:** `20260902183828` (applied)  
-**C06 applied:** NO  
+**C06 applied:** YES — `20260902191944` — schema only  
+**Live money:** NO  
 **Currency model:** XAF-only infrastructure (C03 FX not built)
 
 Ratings: **BLOCKED** | **MITIGATED** | **OPEN** | **NOT APPLICABLE**

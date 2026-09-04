@@ -4,6 +4,21 @@
 -- No PSP. No requirement to post ledger. Reset afterward.
 -- =============================================================================
 
+-- After C12 candidate: historical create is internal; use native wrapper.
+CREATE OR REPLACE FUNCTION public.c06_test_create_intent(
+  p_project_id uuid, p_amount_xaf bigint, p_psp_provider text, p_client_request_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+  IF to_regclass('public.payment_attempts') IS NOT NULL THEN
+    RETURN public.rpc_create_xaf_payment_intent(p_project_id, p_amount_xaf, p_psp_provider, p_client_request_id);
+  END IF;
+  RETURN public.rpc_create_payment_intent(p_project_id, p_amount_xaf, p_psp_provider, p_client_request_id);
+END;
+$$;
+
 DO $$
 DECLARE
   u_owner uuid := gen_random_uuid();
@@ -19,11 +34,13 @@ DECLARE
   v_status text;
   v_err text;
   v_journals int;
+  v_journals_before int;
 BEGIN
   IF to_regclass('public.escrow_funding_requests') IS NULL
      OR to_regclass('public.payments') IS NULL THEN
     RAISE EXCEPTION 'INTEGRATION FAIL: apply future C05 then C06 on disposable local DB first';
   END IF;
+  SELECT count(*)::int INTO v_journals_before FROM public.ledger_journals;
 
   INSERT INTO auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, instance_id, confirmation_token, recovery_token, email_change_token_new, email_change)
   VALUES
@@ -46,7 +63,7 @@ BEGIN
   PERFORM public.rpc_create_funding_request(v_project, 100000, r1);
 
   BEGIN
-    PERFORM public.rpc_create_payment_intent(v_project, 100000, 'momo', r1);
+    PERFORM public.c06_test_create_intent(v_project, 100000, 'momo', r1);
     RAISE EXCEPTION 'INTEGRATION FAIL: 1 co-funder missing approval must DENY intent';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
@@ -57,7 +74,7 @@ BEGIN
   PERFORM public.rpc_approve_funding_request(r1);
 
   PERFORM set_config('request.jwt.claim.sub', u_owner::text, true);
-  v_res := public.rpc_create_payment_intent(v_project, 100000, 'momo', r1);
+  v_res := public.c06_test_create_intent(v_project, 100000, 'momo', r1);
   IF (v_res->>'idempotent_replay')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'INTEGRATION FAIL: first intent should not be replay';
   END IF;
@@ -69,7 +86,7 @@ BEGIN
   END IF;
 
   -- Idempotent retry after consumption
-  v_res := public.rpc_create_payment_intent(v_project, 100000, 'momo', r1);
+  v_res := public.c06_test_create_intent(v_project, 100000, 'momo', r1);
   IF (v_res->>'idempotent_replay')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'INTEGRATION FAIL: retry must return idempotent_replay';
   END IF;
@@ -79,7 +96,7 @@ BEGIN
 
   -- Mismatched amount retry
   BEGIN
-    PERFORM public.rpc_create_payment_intent(v_project, 100001, 'momo', r1);
+    PERFORM public.c06_test_create_intent(v_project, 100001, 'momo', r1);
     RAISE EXCEPTION 'INTEGRATION FAIL: amount mismatch must DENY';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
@@ -90,7 +107,7 @@ BEGIN
   PERFORM public.rpc_set_project_funders(v_project, ARRAY[u_a, u_b]);
   PERFORM public.rpc_create_funding_request(v_project, 200000, r2);
   BEGIN
-    PERFORM public.rpc_create_payment_intent(v_project, 200000, 'momo', r2);
+    PERFORM public.c06_test_create_intent(v_project, 200000, 'momo', r2);
     RAISE EXCEPTION 'INTEGRATION FAIL: missing A+B must DENY';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
@@ -101,7 +118,7 @@ BEGIN
   PERFORM public.rpc_approve_funding_request(r2);
   PERFORM set_config('request.jwt.claim.sub', u_owner::text, true);
   BEGIN
-    PERFORM public.rpc_create_payment_intent(v_project, 200000, 'momo', r2);
+    PERFORM public.c06_test_create_intent(v_project, 200000, 'momo', r2);
     RAISE EXCEPTION 'INTEGRATION FAIL: only A approved must DENY';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
@@ -111,7 +128,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', u_b::text, true);
   PERFORM public.rpc_approve_funding_request(r2);
   PERFORM set_config('request.jwt.claim.sub', u_owner::text, true);
-  v_res := public.rpc_create_payment_intent(v_project, 200000, 'momo', r2);
+  v_res := public.c06_test_create_intent(v_project, 200000, 'momo', r2);
   IF (v_res->>'payment_id') IS NULL THEN
     RAISE EXCEPTION 'INTEGRATION FAIL: A+B should ALLOW intent';
   END IF;
@@ -119,7 +136,7 @@ BEGIN
   -- Cross-request: new request needs new approvals
   PERFORM public.rpc_create_funding_request(v_project, 200000, r3);
   BEGIN
-    PERFORM public.rpc_create_payment_intent(v_project, 200000, 'momo', r3);
+    PERFORM public.c06_test_create_intent(v_project, 200000, 'momo', r3);
     RAISE EXCEPTION 'INTEGRATION FAIL: cross-request must DENY without fresh approvals';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
@@ -128,8 +145,8 @@ BEGIN
 
   -- No ledger posts from intent create alone
   SELECT count(*)::int INTO v_journals FROM public.ledger_journals;
-  IF v_journals <> 0 THEN
-    RAISE EXCEPTION 'INTEGRATION FAIL: journals must stay 0, got %', v_journals;
+  IF v_journals <> v_journals_before THEN
+    RAISE EXCEPTION 'INTEGRATION FAIL: journals must stay %, got %', v_journals_before, v_journals;
   END IF;
 
   -- Exactly one payment per request id
@@ -140,5 +157,7 @@ BEGIN
   RAISE NOTICE 'c05_c06_funding_integration.sql: PASS';
 END;
 $$;
+
+DROP FUNCTION IF EXISTS public.c06_test_create_intent(uuid, bigint, text, uuid);
 
 SELECT 'c05_c06_funding_integration.sql: PASS' AS result;

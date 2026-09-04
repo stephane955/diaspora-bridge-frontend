@@ -1,8 +1,11 @@
 # Canonical Money Model
 
 **Phase:** 5  
-**Status:** Implemented (staging)  
-**Settlement currency:** XAF only (Phase 5 scope)
+**Status:** CURRENT for canonical amount representation; PARTIALLY_STALE for Phase3B apply-state and insurance product wording  
+**Settlement currency:** XAF only (Phase 5 scope)  
+**Current schema truth:** `docs/CURRENT_STATE.yaml` (C05+C06 applied; C03 future candidate; live money NO)
+
+> **Note:** Section 3 “Insurance fee 1.5%” names a **historical helper arithmetic** still present in code (`insuranceFeeMinor`). Decision #21 remains OPEN (rename to platform service fee). **C06 does not post insurance or 1.5%** — inbound funding is gross. Do not treat this section as an active fee product.
 
 ---
 
@@ -66,7 +69,7 @@ Rounding: **truncate toward zero** (matches PostgreSQL `TRUNC(amount * 0.015)` f
 |-------|----------|------------------------|
 | **Planning estimates** | `estimated_budget_minor`, `material_budget_minor` | NO |
 | **Workflow contract amounts** | `milestones.amount_minor` | Contract reference; ledger on release |
-| **Payment intents** | `payments.amount_xaf` (Phase 3B, not applied) | Intent until PSP + ledger |
+| **Payment intents** | `payments.amount_xaf` (C06 applied staging — schema only; not live) | Intent until PSP + ledger |
 | **Ledger** | journals/lines/accounts | **YES** |
 | **Legacy** | `transactions.amount` | NO |
 | **Evidence** | `receipt_amount_minor` | NO |

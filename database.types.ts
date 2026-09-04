@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -7,11 +7,6 @@
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   public: {
     Tables: {
       escrow_funder_approvals: {
@@ -101,6 +96,102 @@ export type Database = {
           provider_id?: string
         }
         Relationships: []
+      }
+      fx_quotes: {
+        Row: {
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          funding_request_id: string
+          fx_provider: string
+          id: string
+          payment_id: string | null
+          project_id: string
+          provider_quote_ref: string
+          quote_request_id: string | null
+          quoted_rate: number | null
+          requested_by: string
+          source_amount_minor: number
+          source_currency: string
+          status: string
+          target_amount_xaf: number
+          target_currency: string
+        }
+        Insert: {
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          funding_request_id: string
+          fx_provider: string
+          id?: string
+          payment_id?: string | null
+          project_id: string
+          provider_quote_ref: string
+          quote_request_id?: string | null
+          quoted_rate?: number | null
+          requested_by: string
+          source_amount_minor: number
+          source_currency: string
+          status?: string
+          target_amount_xaf: number
+          target_currency?: string
+        }
+        Update: {
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          funding_request_id?: string
+          fx_provider?: string
+          id?: string
+          payment_id?: string | null
+          project_id?: string
+          provider_quote_ref?: string
+          quote_request_id?: string | null
+          quoted_rate?: number | null
+          requested_by?: string
+          source_amount_minor?: number
+          source_currency?: string
+          status?: string
+          target_amount_xaf?: number
+          target_currency?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fx_quotes_funding_request_id_fkey"
+            columns: ["funding_request_id"]
+            isOneToOne: false
+            referencedRelation: "escrow_funding_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fx_quotes_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fx_quotes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fx_quotes_source_currency_fkey"
+            columns: ["source_currency"]
+            isOneToOne: false
+            referencedRelation: "platform_currencies"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "fx_quotes_target_currency_fkey"
+            columns: ["target_currency"]
+            isOneToOne: false
+            referencedRelation: "platform_currencies"
+            referencedColumns: ["code"]
+          },
+        ]
       }
       hidden_projects: {
         Row: {
@@ -453,12 +544,85 @@ export type Database = {
           },
         ]
       }
+      payment_attempts: {
+        Row: {
+          attempt_request_id: string
+          canceled_at: string | null
+          created_at: string
+          failed_at: string | null
+          failure_code: string | null
+          failure_detail_safe: string | null
+          fx_quote_id: string | null
+          id: string
+          payment_id: string
+          processing_at: string | null
+          provider_attempt_ref: string | null
+          psp_provider: string
+          status: string
+          submitted_at: string | null
+          succeeded_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempt_request_id: string
+          canceled_at?: string | null
+          created_at?: string
+          failed_at?: string | null
+          failure_code?: string | null
+          failure_detail_safe?: string | null
+          fx_quote_id?: string | null
+          id?: string
+          payment_id: string
+          processing_at?: string | null
+          provider_attempt_ref?: string | null
+          psp_provider: string
+          status?: string
+          submitted_at?: string | null
+          succeeded_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempt_request_id?: string
+          canceled_at?: string | null
+          created_at?: string
+          failed_at?: string | null
+          failure_code?: string | null
+          failure_detail_safe?: string | null
+          fx_quote_id?: string | null
+          id?: string
+          payment_id?: string
+          processing_at?: string | null
+          provider_attempt_ref?: string | null
+          psp_provider?: string
+          status?: string
+          submitted_at?: string | null
+          succeeded_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_attempts_fx_quote_id_fkey"
+            columns: ["fx_quote_id"]
+            isOneToOne: false
+            referencedRelation: "fx_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_attempts_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount_xaf: number
           client_id: string
           client_request_id: string
           created_at: string
+          funding_mode: string | null
           id: string
           ledger_journal_id: string | null
           ledger_posted_at: string | null
@@ -473,6 +637,7 @@ export type Database = {
           client_id: string
           client_request_id: string
           created_at?: string
+          funding_mode?: string | null
           id?: string
           ledger_journal_id?: string | null
           ledger_posted_at?: string | null
@@ -487,6 +652,7 @@ export type Database = {
           client_id?: string
           client_request_id?: string
           created_at?: string
+          funding_mode?: string | null
           id?: string
           ledger_journal_id?: string | null
           ledger_posted_at?: string | null
@@ -1172,13 +1338,28 @@ export type Database = {
       }
       transactions: {
         Row: {
+          amount: number | null
+          created_at: string
+          description: string | null
           id: number
+          type: string | null
+          user_id: string | null
         }
         Insert: {
+          amount?: number | null
+          created_at?: string
+          description?: string | null
           id?: number
+          type?: string | null
+          user_id?: string | null
         }
         Update: {
+          amount?: number | null
+          created_at?: string
+          description?: string | null
           id?: number
+          type?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -1186,23 +1367,29 @@ export type Database = {
         Row: {
           amount: number | null
           amount_minor: number | null
+          created_at: string
           currency: string | null
           id: number
-          status: string | null
+          status: string
+          user_id: string | null
         }
         Insert: {
           amount?: number | null
           amount_minor?: number | null
+          created_at?: string
           currency?: string | null
           id?: number
-          status?: string | null
+          status?: string
+          user_id?: string | null
         }
         Update: {
           amount?: number | null
           amount_minor?: number | null
+          created_at?: string
           currency?: string | null
           id?: number
-          status?: string | null
+          status?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -1222,6 +1409,7 @@ export type Database = {
       }
     }
     Functions: {
+      c12_caller_is_service: { Args: never; Returns: boolean }
       escrow_all_funders_approved_for_request: {
         Args: { p_funding_request_id: string }
         Returns: boolean
@@ -1366,8 +1554,16 @@ export type Database = {
         Args: { p_amount: number; p_amount_cfa: number; p_amount_minor: number }
         Returns: number
       }
+      rpc_abandon_payment: {
+        Args: { p_payment_id: string; p_status: string }
+        Returns: Json
+      }
       rpc_approve_funding_request: {
         Args: { p_funding_request_id: string }
+        Returns: Json
+      }
+      rpc_attach_payment_attempt_ref: {
+        Args: { p_attempt_id: string; p_provider_attempt_ref: string }
         Returns: Json
       }
       rpc_attach_payment_psp_ref: {
@@ -1391,6 +1587,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      rpc_create_cross_border_payment_intent: {
+        Args: { p_fx_quote_id: string; p_psp_provider: string }
+        Returns: Json
+      }
       rpc_create_funding_request: {
         Args: {
           p_amount_xaf: number
@@ -1399,11 +1599,45 @@ export type Database = {
         }
         Returns: Json
       }
+      rpc_create_payment_attempt: {
+        Args: {
+          p_attempt_request_id: string
+          p_fx_quote_id?: string
+          p_payment_id: string
+        }
+        Returns: Json
+      }
       rpc_create_payment_intent: {
         Args: {
           p_amount_xaf: number
           p_client_request_id: string
           p_project_id: string
+          p_psp_provider: string
+        }
+        Returns: Json
+      }
+      rpc_create_xaf_payment_intent: {
+        Args: {
+          p_amount_xaf: number
+          p_client_request_id: string
+          p_project_id: string
+          p_psp_provider: string
+        }
+        Returns: Json
+      }
+      rpc_fail_payment_attempt: {
+        Args: {
+          p_attempt_id: string
+          p_failure_code?: string
+          p_failure_detail_safe?: string
+          p_outcome?: string
+        }
+        Returns: Json
+      }
+      rpc_finalize_payment_attempt_success: {
+        Args: {
+          p_attempt_id: string
+          p_provider_attempt_ref: string
           p_psp_provider: string
         }
         Returns: Json
@@ -1420,6 +1654,19 @@ export type Database = {
         Returns: Json
       }
       rpc_post_escrow_funding: { Args: { p_payment_id: string }; Returns: Json }
+      rpc_record_fx_quote: {
+        Args: {
+          p_expires_at: string
+          p_funding_request_id: string
+          p_fx_provider: string
+          p_provider_quote_ref: string
+          p_quote_request_id?: string
+          p_quoted_rate?: number
+          p_source_amount_minor: number
+          p_source_currency: string
+        }
+        Returns: Json
+      }
       rpc_revoke_funding_approval: {
         Args: { p_funding_request_id: string }
         Returns: Json
@@ -1511,12 +1758,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1540,11 +1787,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1565,11 +1812,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1590,11 +1837,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1607,11 +1854,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1682,3 +1929,4 @@ export const Constants = {
     },
   },
 } as const
+

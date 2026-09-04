@@ -1,5 +1,9 @@
 # P01 Migration Crosswalk
 
+> **HISTORICAL — P01 POINT-IN-TIME SNAPSHOT**  
+> **DO NOT USE FOR CURRENT SCHEMA STATE.**  
+> Rows that say C05/C06 “future” or “DEFERRED” were true at P01. C05 and C06 are now applied on staging (schema only for C06).
+
 Maps legacy SQL files to canonical P01 owners. **Do not apply legacy files directly.**
 
 | OLD FILE | OBJECTS | PROBLEM | NEW AUTHORITATIVE OWNER | CARRIED? |

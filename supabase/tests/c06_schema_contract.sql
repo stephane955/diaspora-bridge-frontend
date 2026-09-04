@@ -77,6 +77,21 @@ BEGIN
     RAISE EXCEPTION 'C06 FAIL: authenticated must not EXECUTE attach_psp_ref';
   END IF;
 
+  -- C12-era: historical create is an internal primitive (authenticated EXECUTE revoked).
+  -- Pre-C12: authenticated still EXECUTE rpc_create_payment_intent.
+  IF to_regclass('public.payment_attempts') IS NULL THEN
+    IF NOT has_function_privilege('authenticated', 'public.rpc_create_payment_intent(uuid,bigint,text,uuid)', 'EXECUTE') THEN
+      RAISE EXCEPTION 'C06 FAIL: authenticated should EXECUTE rpc_create_payment_intent pre-C12';
+    END IF;
+  ELSE
+    IF has_function_privilege('authenticated', 'public.rpc_create_payment_intent(uuid,bigint,text,uuid)', 'EXECUTE') THEN
+      RAISE EXCEPTION 'C06 FAIL: authenticated must not EXECUTE rpc_create_payment_intent after C12';
+    END IF;
+    IF NOT has_function_privilege('authenticated', 'public.rpc_create_xaf_payment_intent(uuid,bigint,text,uuid)', 'EXECUTE') THEN
+      RAISE EXCEPTION 'C06 FAIL: authenticated should EXECUTE rpc_create_xaf_payment_intent after C12';
+    END IF;
+  END IF;
+
   -- C07 / payout absent
   IF to_regprocedure('public.rpc_release_milestone(uuid)') IS NOT NULL THEN
     RAISE EXCEPTION 'C06 FAIL: rpc_release_milestone must remain absent';
@@ -84,9 +99,8 @@ BEGIN
   IF to_regclass('public.payout_instruments') IS NOT NULL THEN
     RAISE EXCEPTION 'C06 FAIL: payout_instruments must remain absent';
   END IF;
-  IF to_regclass('public.fx_quotes') IS NOT NULL THEN
-    RAISE EXCEPTION 'C06 FAIL: fx_quotes must remain absent';
-  END IF;
+  -- C03 fx_quotes may exist as a later additive migration; C06 must not
+  -- permanently require future phases to remain absent.
 
   -- No insurance fee in post function body
   IF EXISTS (

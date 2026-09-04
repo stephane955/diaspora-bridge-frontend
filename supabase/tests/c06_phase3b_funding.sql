@@ -2,7 +2,23 @@
 -- C06-R disposable funding tests (LOCAL ONLY)
 -- Prerequisites: active C05 chain, then manually apply future C06 SQL.
 -- No external PSP. Reset afterward to C05 baseline (payments ABSENT).
+-- After C12 candidate: historical rpc_create_payment_intent is internal;
+-- XAF tests use rpc_create_xaf_payment_intent. Financial assertions unchanged.
 -- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.c06_test_create_intent(
+  p_project_id uuid, p_amount_xaf bigint, p_psp_provider text, p_client_request_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+  IF to_regclass('public.payment_attempts') IS NOT NULL THEN
+    RETURN public.rpc_create_xaf_payment_intent(p_project_id, p_amount_xaf, p_psp_provider, p_client_request_id);
+  END IF;
+  RETURN public.rpc_create_payment_intent(p_project_id, p_amount_xaf, p_psp_provider, p_client_request_id);
+END;
+$$;
 
 DO $$
 DECLARE
@@ -50,14 +66,14 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', u_owner::text, true);
   PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
   PERFORM public.rpc_create_funding_request(v_project, 100000, r0);
-  v_res := public.rpc_create_payment_intent(v_project, 100000, 'momo', r0);
+  v_res := public.c06_test_create_intent(v_project, 100000, 'momo', r0);
   v_pay := (v_res->>'payment_id')::uuid;
   IF v_pay IS NULL THEN
     RAISE EXCEPTION 'C06 FAIL: 0-cofunder intent create';
   END IF;
 
   -- Idempotent retry
-  v_res := public.rpc_create_payment_intent(v_project, 100000, 'momo', r0);
+  v_res := public.c06_test_create_intent(v_project, 100000, 'momo', r0);
   IF (v_res->>'idempotent_replay')::boolean IS DISTINCT FROM true
      OR (v_res->>'payment_id')::uuid IS DISTINCT FROM v_pay THEN
     RAISE EXCEPTION 'C06 FAIL: idempotent intent retry';
@@ -65,7 +81,7 @@ BEGIN
 
   -- Amount mismatch
   BEGIN
-    PERFORM public.rpc_create_payment_intent(v_project, 100001, 'momo', r0);
+    PERFORM public.c06_test_create_intent(v_project, 100001, 'momo', r0);
     RAISE EXCEPTION 'C06 FAIL: amount mismatch should DENY';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
@@ -74,7 +90,7 @@ BEGIN
 
   -- PSP mismatch
   BEGIN
-    PERFORM public.rpc_create_payment_intent(v_project, 100000, 'stripe', r0);
+    PERFORM public.c06_test_create_intent(v_project, 100000, 'stripe', r0);
     RAISE EXCEPTION 'C06 FAIL: psp mismatch should DENY';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
@@ -84,7 +100,7 @@ BEGIN
   -- Different requester
   BEGIN
     PERFORM set_config('request.jwt.claim.sub', u_other::text, true);
-    PERFORM public.rpc_create_payment_intent(v_project, 100000, 'momo', r0);
+    PERFORM public.c06_test_create_intent(v_project, 100000, 'momo', r0);
     RAISE EXCEPTION 'C06 FAIL: other requester should DENY';
   EXCEPTION WHEN raise_exception OR insufficient_privilege THEN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
@@ -199,7 +215,7 @@ BEGIN
   PERFORM public.rpc_set_project_funders(v_project, ARRAY[u_a]);
   PERFORM public.rpc_create_funding_request(v_project, 50000, r1);
   BEGIN
-    PERFORM public.rpc_create_payment_intent(v_project, 50000, 'momo', r1);
+    PERFORM public.c06_test_create_intent(v_project, 50000, 'momo', r1);
     RAISE EXCEPTION 'C06 FAIL: 1-cofunder missing approval must DENY';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
@@ -208,7 +224,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', u_a::text, true);
   PERFORM public.rpc_approve_funding_request(r1);
   PERFORM set_config('request.jwt.claim.sub', u_owner::text, true);
-  v_res := public.rpc_create_payment_intent(v_project, 50000, 'orange', r1);
+  v_res := public.c06_test_create_intent(v_project, 50000, 'orange', r1);
   v_pay2 := (v_res->>'payment_id')::uuid;
 
   -- Same raw psp_ref across providers must NOT collide
@@ -223,7 +239,7 @@ BEGIN
   PERFORM public.rpc_set_project_funders(v_project, ARRAY[u_a, u_b]);
   PERFORM public.rpc_create_funding_request(v_project, 75000, r2);
   BEGIN
-    PERFORM public.rpc_create_payment_intent(v_project, 75000, 'momo', r2);
+    PERFORM public.c06_test_create_intent(v_project, 75000, 'momo', r2);
     RAISE EXCEPTION 'C06 FAIL: 2-cofunder missing approvals must DENY';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
@@ -234,7 +250,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', u_b::text, true);
   PERFORM public.rpc_approve_funding_request(r2);
   PERFORM set_config('request.jwt.claim.sub', u_owner::text, true);
-  v_res := public.rpc_create_payment_intent(v_project, 75000, 'momo', r2);
+  v_res := public.c06_test_create_intent(v_project, 75000, 'momo', r2);
   IF (v_res->>'payment_id') IS NULL THEN
     RAISE EXCEPTION 'C06 FAIL: 2-cofunder intent after approvals';
   END IF;
@@ -253,5 +269,7 @@ BEGIN
   RAISE NOTICE 'c06_phase3b_funding.sql: PASS';
 END;
 $$;
+
+DROP FUNCTION IF EXISTS public.c06_test_create_intent(uuid, bigint, text, uuid);
 
 SELECT 'c06_phase3b_funding.sql: PASS' AS result;
